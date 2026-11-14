@@ -1,4 +1,11 @@
-import type { FrameJob, FrameRequest, ObservationSummary, ResolvedTarget } from './types'
+import type {
+  FrameJob,
+  FrameRequest,
+  ObservationSummary,
+  ResolvedTarget,
+  SpectrumJob,
+  SpectrumRequest,
+} from './types'
 
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
   const response = await fetch(path, init)
@@ -24,3 +31,12 @@ export const createFrames = (body: FrameRequest) =>
   })
 
 export const getFrameJob = (jobId: string) => request<FrameJob>(`/api/frames/${jobId}`)
+
+export const createSpectrum = (body: SpectrumRequest) =>
+  request<SpectrumJob>('/api/spectrum', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  })
+
+export const getSpectrumJob = (jobId: string) => request<SpectrumJob>(`/api/spectrum/${jobId}`)

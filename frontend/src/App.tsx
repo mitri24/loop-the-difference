@@ -8,6 +8,7 @@ import { DifferenceView } from './components/DifferenceView'
 import { ModeSwitch } from './components/ModeSwitch'
 import { ObservationInfo } from './components/ObservationInfo'
 import { SkyView } from './components/SkyView'
+import { SpectrumChart } from './components/SpectrumChart'
 import { TargetForm } from './components/TargetForm'
 import { useFrameLayers } from './frameLayers'
 import type { FrameJob, ObservationSummary, ProperMotion } from './types'
@@ -191,6 +192,13 @@ export default function App() {
           grid={manifest}
           motion={motion}
           onIndexChange={setFrameIndex}
+        />
+      )}
+      {manifest && !EMBED && (
+        <SpectrumChart
+          key={`${manifest.ra},${manifest.dec}`}
+          ra={`${manifest.ra}`}
+          dec={`${manifest.dec}`}
         />
       )}
       {!busy && !job && !error && (
