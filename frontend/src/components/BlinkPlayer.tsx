@@ -30,6 +30,8 @@ interface Props {
   // Playback and shortcuts pause while the player and the sky are covered by another panel.
   active?: boolean
   showShare?: boolean
+  // Pauses and shows this frame; a new object each time, so the same frame can be asked for again.
+  seek?: { index: number } | null
 }
 
 // Remount with a new key for new frames: playback state then starts fresh.
@@ -42,6 +44,7 @@ export function BlinkPlayer({
   onIndexChange,
   active = true,
   showShare = true,
+  seek = null,
 }: Props) {
   const [reduced] = useState(prefersReducedMotion)
   const [pair, setPair] = useState<BlinkPair | null>(() => defaultBlinkPair(frames))
@@ -58,6 +61,16 @@ export function BlinkPlayer({
   const letter = letterOf(index, blinkPair)
 
   useEffect(() => onIndexChange?.(index, letter), [index, letter, onIndexChange])
+
+  const [lastSeek, setLastSeek] = useState(seek)
+  if (seek !== lastSeek) {
+    setLastSeek(seek)
+    if (seek) {
+      setPlaying(false)
+      setMode('all')
+      setIndex(seek.index)
+    }
+  }
 
   useEffect(() => {
     if (!active || !playing || count < 2) return

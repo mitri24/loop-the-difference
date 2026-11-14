@@ -720,6 +720,11 @@ summary { cursor:pointer; min-height:32px; padding:5px 0; font-size:13px; }
 .candidate-marks { margin:0; padding:0; list-style:none; font-size:13px; font-variant-numeric:tabular-nums; overflow-wrap:anywhere; }
 .candidate-glyph { color:var(--candidate); font-weight:700; }
 .candidate-state { padding:2px 8px; border:1px solid var(--candidate); border-radius:999px; font-size:13px; }
+.track-check { display:grid; gap:6px; }
+.track-check-summary { font-weight:600; font-size:13px; }
+.track-check-rows { margin:0; padding:0; list-style:none; display:grid; gap:4px; font-size:13px; font-variant-numeric:tabular-nums; overflow-wrap:anywhere; }
+.track-check-rows li { display:flex; flex-wrap:wrap; gap:4px 8px; align-items:baseline; }
+.track-check-rows button { font-size:12px; padding:1px 6px; }
 .track-summary { display:grid; gap:4px; font-size:13px; }
 .track-summary p { margin:0; }
 .track-regime { font-weight:600; }

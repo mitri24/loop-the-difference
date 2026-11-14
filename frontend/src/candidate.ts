@@ -42,15 +42,20 @@ export function sepArcsec(ra1: number, dec1: number, ra2: number, dec2: number):
   return Math.hypot(dRa * Math.cos((dec1 * Math.PI) / 180), dec2 - dec1) * 3600
 }
 
+/** The detection nearest to (ra, dec) within maxArcsec, or null. */
+export function nearestSource(sources: DetectedSource[], ra: number, dec: number, maxArcsec: number) {
+  let best: { source: DetectedSource; sep_arcsec: number } | null = null
+  for (const source of sources) {
+    const sep_arcsec = sepArcsec(ra, dec, source.ra, source.dec)
+    if (sep_arcsec <= (best?.sep_arcsec ?? maxArcsec)) best = { source, sep_arcsec }
+  }
+  return best
+}
+
 /** The nearest detection within two pixels supplies the position; otherwise the click itself. */
 export function snapMark(frame: Frame, ra: number, dec: number, pixelScaleArcsec: number): Mark {
-  let best: DetectedSource | null = null
-  let bestSep = SNAP_PIXELS * pixelScaleArcsec
-  for (const source of frame.sources ?? []) {
-    const sep = sepArcsec(ra, dec, source.ra, source.dec)
-    if (sep <= bestSep) [best, bestSep] = [source, sep]
-  }
-  if (best) return markFromSource(frame, best)
+  const best = nearestSource(frame.sources ?? [], ra, dec, SNAP_PIXELS * pixelScaleArcsec)
+  if (best) return markFromSource(frame, best.source)
   const { obs_id, mjd, date } = frame
   return { obs_id, mjd, date, ra, dec, sigma_arcsec: sigmaFor(null) }
 }
