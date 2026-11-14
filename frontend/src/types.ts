@@ -8,6 +8,7 @@ export interface Observation {
   date: string
   access_url: string
   cloud_url?: string | null // the whole Level-2 file on AWS S3
+  collection?: string | null // IRSA collection, e.g. spherex_qr3
 }
 
 export interface Epoch {
@@ -62,6 +63,7 @@ export interface Frame {
   wavelength_um: number | null
   bandwidth_um: number | null
   sources?: DetectedSource[]
+  release?: string | null // "DR1", "QR3", "DR1 deep", or "DR1 + QR3" for a mixed stack
 }
 
 export type CheckSeverity = 'error' | 'blocker' | 'warning' | 'info'
@@ -85,7 +87,8 @@ export interface Difference {
 }
 
 export interface FrameManifest {
-  collection: string
+  collection: string // comma-separated IRSA collections that were searched
+  release?: string | null // releases of the frames shown, e.g. "DR1 + QR3"
   ra: number
   dec: number
   size_deg: number

@@ -3,8 +3,11 @@ import io
 import json
 import os
 import re
+import time
 from collections import Counter
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
+from xml.etree import ElementTree
 
 import httpx
 import numpy as np
@@ -18,6 +21,11 @@ from app.models import Epoch, Observation, ObservationSummary
 EPOCH_GAP_DAYS = 30.0
 STACK_PER_EPOCH = 8
 _DETECTOR = re.compile(r"D(\d)$")
+# SPHEREx Level-2 image collections (DR1, QR3, their deep fields); not the `_cube` HiPS.
+_SPHEREX_COLLECTION = re.compile(r"^spherex_(dr|qr)\d+(_deep)?$")
+COLLECTIONS_MAX_AGE_S = 86400
+COLLECTIONS_RETRY_S = 3600
+COLLECTIONS_TIMEOUT_S = 15.0
 _REQUIRED = ("obs_id", "energy_bandpassname", "em_min", "em_max", "t_min", "t_max", "access_url")
 
 
@@ -25,25 +33,117 @@ class ArchiveError(RuntimeError):
     pass
 
 
-def search_observations(ra: float, dec: float, settings: Settings) -> list[Observation]:
-    """Search IRSA once per position; the answer stays on disk so warmed targets need no network."""
-    cached = sia_cache_path(settings.cache_dir, settings.spherex_collection, ra, dec)
+def search_observations(
+    ra: float, dec: float, settings: Settings, collections: list[str] | None = None
+) -> tuple[list[Observation], list[str]]:
+    """Search every SPHEREx collection at once: the merged observations and the collections whose
+    search failed. Only when every collection fails is the archive unreachable."""
+    collections = collections or spherex_collections(settings)
+    with ThreadPoolExecutor(max_workers=len(collections)) as pool:
+        futures = [pool.submit(_search_collection, ra, dec, c, settings) for c in collections]
+    found: list[Observation] = []
+    empty: list[tuple[Path, bytes]] = []
+    failed: list[str] = []
+    errors: list[ArchiveError] = []
+    for collection, future in zip(collections, futures, strict=True):
+        try:
+            observations, uncached = future.result()
+        except ArchiveError as exc:
+            failed.append(collection)
+            errors.append(exc)
+            continue
+        found += observations
+        if uncached is not None:
+            empty.append((sia_cache_path(settings.cache_dir, collection, ra, dec), uncached))
+    if errors and len(errors) == len(collections):
+        raise errors[0]
+    if found:  # another release has data here: an empty answer is real, not a hiccup
+        for path, content in empty:
+            _write_cached(path, content)
+    return sorted(found, key=lambda o: o.mjd), failed
+
+
+def _search_collection(
+    ra: float, dec: float, collection: str, settings: Settings
+) -> tuple[list[Observation], bytes | None]:
+    """Search IRSA once per position; the answer stays on disk so warmed targets need no network.
+
+    An empty answer is not cached here but returned, the caller decides.
+    """
+    cached = sia_cache_path(settings.cache_dir, collection, ra, dec)
     if cached.is_file():
-        return parse_sia_votable(cached.read_bytes())
-    params = {
-        "COLLECTION": settings.spherex_collection,
-        "POS": f"CIRCLE {ra} {dec} 0.0005",
-        "MAXREC": "5000",
-    }
+        return parse_sia_votable(cached.read_bytes(), collection), None
+    params = {"COLLECTION": collection, "POS": f"CIRCLE {ra} {dec} 0.0005", "MAXREC": "5000"}
     try:
         response = httpx.get(settings.irsa_sia_url, params=params, timeout=settings.http_timeout_s)
         response.raise_for_status()
     except httpx.HTTPError as exc:
         raise ArchiveError("SPHEREx archive (IRSA) is not reachable") from exc
-    observations = parse_sia_votable(response.content)
-    if observations:  # an empty answer may be a transient archive hiccup: ask again next time
-        _write_cached(cached, response.content)
-    return observations
+    observations = parse_sia_votable(response.content, collection)
+    if not observations:
+        return [], response.content
+    _write_cached(cached, response.content)
+    return observations, None
+
+
+def spherex_collections(settings: Settings) -> list[str]:
+    """Every SPHEREx Level-2 image collection IRSA lists, kept on disk for a day.
+
+    IRSA silent: the last known list, else the configured collection alone.
+    """
+    cached = collections_cache_path(settings.cache_dir)
+    if cached.is_file() and time.time() - cached.stat().st_mtime < COLLECTIONS_MAX_AGE_S:
+        return json.loads(cached.read_text())
+    try:
+        found = _fetch_collections(settings)
+    except (httpx.HTTPError, ElementTree.ParseError):
+        found = []
+    if found:
+        _write_cached(cached, json.dumps(found).encode())
+        return found
+    if not cached.is_file():
+        return [settings.spherex_collection]
+    retry_at = time.time() - COLLECTIONS_MAX_AGE_S + COLLECTIONS_RETRY_S
+    os.utime(cached, (retry_at, retry_at))  # IRSA is silent: keep the old list for an hour
+    return json.loads(cached.read_text())
+
+
+def _fetch_collections(settings: Settings) -> list[str]:
+    response = httpx.get(
+        settings.irsa_sia_url, params={"MAXREC": "0"}, timeout=COLLECTIONS_TIMEOUT_S
+    )
+    response.raise_for_status()
+    return parse_collections(response.content)
+
+
+def parse_collections(content: bytes) -> list[str]:
+    """The SPHEREx image collections among the COLLECTION options of the SIA2 self-description."""
+    options = (
+        option.get("value", "")
+        for param in ElementTree.fromstring(content).iter()
+        if param.tag.endswith("PARAM") and param.get("name") == "COLLECTION"
+        for option in param.iter()
+        if option.tag.endswith("OPTION")
+    )
+    return sorted({value for value in options if _SPHEREX_COLLECTION.match(value)})
+
+
+def collections_cache_path(cache_dir: Path) -> Path:
+    return cache_dir / "collections.json"
+
+
+def collection_key(collections: list[str]) -> str:
+    """The collection set as it enters job keys and the manifest's `collection` field."""
+    return ",".join(sorted(collections))
+
+
+def release_label(collection: str) -> str:
+    """spherex_dr1 → "DR1", spherex_qr3_deep → "QR3 deep"; anything else stays as it is."""
+    match = _SPHEREX_COLLECTION.match(collection)
+    if match is None:
+        return collection
+    name = collection.removeprefix("spherex_").removesuffix("_deep").upper()
+    return f"{name} deep" if match.group(2) else name
 
 
 def sia_cache_path(cache_dir: Path, collection: str, ra: float, dec: float) -> Path:
@@ -77,7 +177,7 @@ def _write_cached(path: Path, content: bytes) -> None:
     partial.replace(path)
 
 
-def parse_sia_votable(content: bytes) -> list[Observation]:
+def parse_sia_votable(content: bytes, collection: str | None = None) -> list[Observation]:
     votable = parse(io.BytesIO(content))
     results = next((r for r in votable.resources if r.type == "results"), None)
     if results is None or not results.tables:
@@ -102,6 +202,7 @@ def parse_sia_votable(content: bytes) -> list[Observation]:
                 date=Time(mjd, format="mjd").isot[:19] + "Z",
                 access_url=str(row["access_url"]),
                 cloud_url=parse_cloud_access(row.get("cloud_access")),
+                collection=collection,
             )
         )
     return sorted(observations, key=lambda o: o.mjd)

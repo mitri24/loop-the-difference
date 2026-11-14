@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="utf-8"?>
+<VOTABLE version="1.3" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns="http://www.ivoa.net/xml/VOTable/v1.3" xmlns:stc="http://www.ivoa.net/xml/STC/v1.30" xsi:schemaLocation="http://www.ivoa.net/xml/VOTable/v1.3 http://www.ivoa.net/xml/VOTable/v1.3 http://www.ivoa.net/xml/STC/v1.30 http://www.ivoa.net/xml/STC/v1.30">
+  <RESOURCE type="meta" utype="adhoc:this">
+    <DESCRIPTION>Self description and list of supported parameters</DESCRIPTION>
+    <GROUP name="inputParams">
+      <PARAM name="COLLECTION" datatype="char" arraysize="*" value="">
+        <DESCRIPTION>Specify collection name</DESCRIPTION>
+        <VALUES type="actual">
+          <OPTION value="akari_allskymaps"/>
+          <OPTION value="euclid_dr1_DpdNirStackedFrame"/>
+          <OPTION value="spherex_dr1"/>
+          <OPTION value="spherex_dr1_cube"/>
+          <OPTION value="spherex_dr1_deep"/>
+          <OPTION value="spherex_qr3"/>
+          <OPTION value="spherex_qr3_deep"/>
+          <OPTION value="wise_allwise"/>
+        </VALUES>
+      </PARAM>
+    </GROUP>
+  </RESOURCE>
+</VOTABLE>

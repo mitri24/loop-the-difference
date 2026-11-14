@@ -7,6 +7,7 @@ from rq import Queue
 from rq.exceptions import NoSuchJobError
 from rq.job import Job, JobStatus
 
+from app.archive import collection_key, spherex_collections
 from app.config import Settings
 from app.models import FrameJob, FrameManifest, Spectrum, SpectrumJob
 from app.tasks import (
@@ -51,7 +52,9 @@ def connect(url: str, socket_timeout: float | None = 5.0) -> Redis:
     return Redis.from_url(url, socket_connect_timeout=2, socket_timeout=socket_timeout)
 
 
-def submit(redis: Redis, settings: Settings, job_id: str, **params: float | int | bool) -> FrameJob:
+def submit(
+    redis: Redis, settings: Settings, job_id: str, **params: float | int | bool | list[str]
+) -> FrameJob:
     current = status(redis, settings, job_id)
     if current.status in ("queued", "started"):
         return current
@@ -82,7 +85,8 @@ def spectrum_job_id(collection: str, ra: float, dec: float) -> str:
 
 def submit_spectrum(redis: Redis, settings: Settings, ra: float, dec: float) -> SpectrumJob:
     """Like `submit`, but the spectrum is small: it lives in the job result, not in the cache."""
-    job_id = spectrum_job_id(settings.spherex_collection, ra, dec)
+    collections = spherex_collections(settings)
+    job_id = spectrum_job_id(collection_key(collections), ra, dec)
     current = spectrum_status(redis, job_id)
     if current.status in ("queued", "started"):
         return current
@@ -95,7 +99,7 @@ def submit_spectrum(redis: Redis, settings: Settings, ra: float, dec: float) -> 
         Job.fetch(job_id, connection=redis).delete()
     queue.enqueue(
         build_spectrum,
-        kwargs={"ra": ra, "dec": dec},
+        kwargs={"ra": ra, "dec": dec, "collections": collections},
         job_id=job_id,
         job_timeout=SPECTRUM_TIMEOUT_S,
         result_ttl=86400,

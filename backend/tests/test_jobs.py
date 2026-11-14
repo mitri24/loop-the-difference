@@ -3,7 +3,7 @@ import re
 import pytest
 from rq.exceptions import NoSuchJobError
 
-from app import jobs, worker
+from app import archive, jobs, worker
 
 ARGS = ("spherex_dr1", 133.795, -7.245, 0.2, 6, 12)
 
@@ -26,13 +26,14 @@ def test_pipeline_version_changes_every_fingerprint(monkeypatch):
 
 class _RecordingQueue:
     names: list[str] = []
+    enqueued: list[dict] = []
     count = 0
 
     def __init__(self, name, **_):
         self.names.append(name)
 
-    def enqueue(self, *_, **__):
-        pass
+    def enqueue(self, *_, **options):
+        self.enqueued.append(options)
 
 
 def test_spectra_wait_on_the_slow_queue_and_frames_on_their_own(monkeypatch, settings):
@@ -44,6 +45,21 @@ def test_spectra_wait_on_the_slow_queue_and_frames_on_their_own(monkeypatch, set
     jobs.submit(None, settings, "0123456789abcdef", ra=133.795, dec=-7.245)
 
     assert _RecordingQueue.names == [jobs.SLOW_QUEUE, jobs.QUEUE_NAME]
+
+
+def test_spectrum_job_follows_the_collection_set(monkeypatch, settings):
+    monkeypatch.setattr(jobs, "Queue", _RecordingQueue)
+    monkeypatch.setattr(jobs.Job, "fetch", lambda *_, **__: (_ for _ in ()).throw(NoSuchJobError))
+    _RecordingQueue.enqueued = []
+    monkeypatch.setattr(
+        archive, "_fetch_collections", lambda settings: ["spherex_dr1", "spherex_qr3"]
+    )
+
+    job = jobs.submit_spectrum(None, settings, 133.795, -7.245)
+
+    assert job.job_id == jobs.spectrum_job_id("spherex_dr1,spherex_qr3", 133.795, -7.245)
+    assert job.job_id != jobs.spectrum_job_id("spherex_dr1", 133.795, -7.245)
+    assert _RecordingQueue.enqueued[0]["kwargs"]["collections"] == ["spherex_dr1", "spherex_qr3"]
 
 
 @pytest.mark.parametrize(

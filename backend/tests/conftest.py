@@ -2,7 +2,7 @@ import httpx
 import pytest
 from fastapi.testclient import TestClient
 
-from app import catalogs, sources
+from app import archive, catalogs, sources
 from app.config import Settings, get_settings
 from app.main import app
 
@@ -38,3 +38,9 @@ def no_allwise(monkeypatch):
         raise httpx.ConnectError("no network in tests")
 
     monkeypatch.setattr(sources, "query_allwise", unreachable)
+
+
+@pytest.fixture(autouse=True)
+def one_collection(monkeypatch):
+    """The SIA2 self-description is never fetched in tests: DR1 is the only collection."""
+    monkeypatch.setattr(archive, "_fetch_collections", lambda settings: ["spherex_dr1"])
