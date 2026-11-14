@@ -138,6 +138,14 @@ declare module 'aladin-lite' {
   }
 }
 
+// Overlay layer names bottom to top (index 0 is the base survey) and their order.
+declare module 'aladin-lite' {
+  export interface AladinInstance {
+    getStackLayers(): string[]
+    view: { swapLayers(a: string, b: string): void }
+  }
+}
+
 // Detected sources refill one catalogue per label whenever the blink moves on.
 declare module 'aladin-lite' {
   export interface Catalog {

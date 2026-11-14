@@ -1,5 +1,6 @@
 import type { AladinInstance } from 'aladin-lite'
 import { TRACK_LABEL } from '../motionTrack'
+import type { PlateState } from '../historicalPlate'
 import { epochFor } from '../smallBodyLayer'
 import type { Frame, SmallBodyEpoch } from '../types'
 import { CatalogLegend } from './CatalogLegend'
@@ -25,11 +26,24 @@ interface Props {
   smallBodyEpochs: SmallBodyEpoch[]
   smallBodiesOnSky: boolean
   onSmallBodiesOnSkyChange: (on: boolean) => void
+  // The 1950 POSS-I plate needs a named star with Gaia DR3 motion.
+  plateAvailable: boolean
+  plateOnSky: boolean
+  onPlateOnSkyChange: (on: boolean) => void
+  plate: PlateState
+}
+
+const PLATE_STATUS: Record<Exclude<PlateState['status'], 'loaded'>, string> = {
+  off: '',
+  loading: 'Loading the plate from STScI…',
+  failed: 'Historical plate not available (STScI)',
+  south: 'No POSS-I plate for this declination',
 }
 
 // Everything the app draws on the Aladin sky: the SPHEREx frames, their detected sources and the catalogue markers.
 export function LayersSection({ aladin, sizeDeg, frame, framesOnSky, onFramesOnSkyChange, sourcesOnSky, onSourcesOnSkyChange, framesBlocked,
-  trackShown, skySlice, onSkySliceChange, cubeActive, smallBodyEpochs, smallBodiesOnSky, onSmallBodiesOnSkyChange }: Props) {
+  trackShown, skySlice, onSkySliceChange, cubeActive, smallBodyEpochs, smallBodiesOnSky, onSmallBodiesOnSkyChange,
+  plateAvailable, plateOnSky, onPlateOnSkyChange, plate }: Props) {
   const blocked = !aladin || !frame || !!framesBlocked
   const answered = smallBodyEpochs.some((epoch) => epoch.error == null)
   const jplEpoch = frame ? epochFor(smallBodyEpochs, frame.mjd) : null
@@ -43,6 +57,18 @@ export function LayersSection({ aladin, sizeDeg, frame, framesOnSky, onFramesOnS
           onChange={(event) => onFramesOnSkyChange(event.target.checked)} />
         SPHEREx frames on the sky
       </label>
+      <label className="layer-toggle">
+        <input type="checkbox" checked={plateOnSky && plateAvailable} disabled={!aladin || !plateAvailable}
+          aria-describedby="plate-status" onChange={(event) => onPlateOnSkyChange(event.target.checked)} />
+        Photographic plate 1950 (POSS-I, STScI DSS) – position check
+      </label>
+      <p className="muted plate-status" id="plate-status" role="status">
+        {!plateAvailable ? 'Needs a star with Gaia DR3 motion (find it by name)'
+          : plate.status === 'loaded'
+            ? <>{plate.header.survey} plate {plate.header.plateId}, observed {plate.header.date}. <span className="plate-key" aria-hidden="true">○</span> Gaia DR3 predicted
+              position on {plate.header.date}. Different telescope and wavelength (photographic red): compare positions, not brightness.</>
+            : PLATE_STATUS[plate.status]}
+      </p>
       <label className="layer-toggle">
         <input type="checkbox" checked={sourcesOnSky} disabled={blocked} aria-describedby="source-key"
           onChange={(event) => onSourcesOnSkyChange(event.target.checked)} />
