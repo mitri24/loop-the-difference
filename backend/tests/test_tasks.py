@@ -275,7 +275,7 @@ def test_every_frame_lists_its_sources_with_png_pixel_positions(monkeypatch, set
 
     manifest = build_frames("job", RA, DEC, SIZE_DEG, 6, 12, stack=False)
 
-    assert manifest["pipeline_version"] == 8
+    assert manifest["pipeline_version"] == 9
     for frame in manifest["frames"]:
         (source,) = frame["sources"]
         assert source["match"] == "none"
