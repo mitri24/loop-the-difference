@@ -10,7 +10,6 @@ from app import sources
 from app.catalogs import position_at
 from app.frames import target_grid
 from app.sources import (
-    BRIGHT_SNR,
     FWHM_PX,
     MATCH_RADIUS_ARCSEC,
     THRESHOLD_SIGMA,
@@ -125,13 +124,50 @@ def test_the_brightest_catalogue_source_within_the_radius_beats_a_closer_faint_o
     stars = [
         CatalogStar("Gaia DR3 1", ra, dec + 1 / 3600, 19.4),
         CatalogStar("Gaia DR3 2", ra, dec - 4 / 3600, 12.3),
-        CatalogStar("Gaia DR3 3", ra, dec + 2 * MATCH_RADIUS_ARCSEC / 3600, 5.0),
+        CatalogStar("Gaia DR3 3", ra, dec + 4 * MATCH_RADIUS_ARCSEC / 3600, 5.0),
     ]
 
     (source,) = label(detections, grid, shape, MJD, stars, [])
 
     assert (source.match, source.catalog_id, source.catalog_mag) == ("gaia", "Gaia DR3 2", 12.3)
     assert source.separation_arcsec == pytest.approx(4.0, abs=0.6)
+
+
+def _labelled_near(stars):
+    """One detection at pixel (14, 14) labelled against Gaia stars (offset ″ north, G)."""
+    grid, shape = target_grid(RA, DEC, SIZE_DEG)
+    detections, _ = detect(_sky(shape, [(14.0, 14.0, 100.0)]))
+    ra, dec = (float(v) for v in grid.pixel_to_world_values(14.0, 14.0))
+    catalogue = [
+        CatalogStar(f"Gaia DR3 {mag}", ra, dec + north / 3600, mag) for north, mag in stars
+    ]
+    (source,) = label(detections, grid, shape, MJD, catalogue, [])
+    return source
+
+
+def test_a_star_brighter_than_g10_claims_a_detection_up_to_3_px_away():
+    source = _labelled_near([(12.0, 8.2)])
+    assert (source.match, source.catalog_id) == ("gaia", "Gaia DR3 8.2")
+    assert source.separation_arcsec == pytest.approx(12.0, abs=0.6)
+
+
+@pytest.mark.parametrize("mag", [15.0, 10.0, None])
+def test_a_star_not_brighter_than_g10_12_arcsec_away_does_not_match(mag):
+    assert _labelled_near([(12.0, mag)]).match == "none"
+
+
+def test_a_bright_star_3_px_away_beats_a_faint_one_close_by():
+    assert _labelled_near([(4.0, 19.0), (-12.0, 8.0)]).catalog_id == "Gaia DR3 8.0"
+
+
+def test_the_bright_radius_applies_to_allwise_below_w1_8():
+    grid, shape = target_grid(RA, DEC, SIZE_DEG)
+    detections, _ = detect(_sky(shape, [(14.0, 14.0, 100.0)]))
+    ra, dec = (float(v) for v in grid.pixel_to_world_values(14.0, 14.0))
+    wise = [CatalogStar("AllWISE 7", ra, dec + 12 / 3600, 7.0)]
+    faint = [CatalogStar("AllWISE 9", ra, dec + 12 / 3600, 9.0)]
+    assert label(detections, grid, shape, MJD, [], wise)[0].catalog_id == "AllWISE 7"
+    assert label(detections, grid, shape, MJD, [], faint)[0].match == "none"
 
 
 def test_a_missing_catalogue_leaves_unmatched_sources_unknown():
@@ -227,11 +263,10 @@ def test_every_listed_detection_stands_five_sigma_above_the_noise():
     assert min(d.snr for d in found) >= THRESHOLD_SIGMA
 
 
-def test_a_bright_saturated_star_matches_its_catalogue_star_a_few_pixels_away():
+def test_a_g8_star_matches_its_detection_2_px_away_a_g12_star_does_not():
     grid, shape = target_grid(RA, DEC, SIZE_DEG)
-    detections, _ = detect(_sky(shape, [(14.0, 14.0, 2 * BRIGHT_SNR), (21.0, 7.0, 50.0)]))
-    bright = next(d for d in detections if d.snr >= BRIGHT_SNR)
-    faint = next(d for d in detections if d.snr < BRIGHT_SNR)
+    detections, _ = detect(_sky(shape, [(14.0, 14.0, 600.0), (21.0, 7.0, 50.0)]))
+    bright, faint = detections
     off = 2.0 * MATCH_RADIUS_ARCSEC / 3600  # inside 3 px, outside 1 px
     ra_b, dec_b = (float(v) for v in grid.pixel_to_world_values(bright.x, bright.y))
     ra_f, dec_f = (float(v) for v in grid.pixel_to_world_values(faint.x, faint.y))
@@ -241,10 +276,10 @@ def test_a_bright_saturated_star_matches_its_catalogue_star_a_few_pixels_away():
         CatalogStar("Gaia DR3 offset", ra_f, dec_f + off, 12.0),
     ]
 
-    labels = {s.snr >= BRIGHT_SNR: s for s in label(detections, grid, shape, MJD, stars, [])}
+    bright_label, faint_label = label(detections, grid, shape, MJD, stars, [])
 
-    assert (labels[True].match, labels[True].catalog_id) == ("gaia", "Gaia DR3 bright")
-    assert labels[False].match == "none"
+    assert (bright_label.match, bright_label.catalog_id) == ("gaia", "Gaia DR3 bright")
+    assert faint_label.match == "none"
 
 
 def test_a_cut_catalogue_leaves_unmatched_sources_unknown(monkeypatch):

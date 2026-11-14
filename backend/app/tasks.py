@@ -41,7 +41,7 @@ MAX_SPECTRUM_POINTS = 100
 SPECTRUM_VERSION = 4
 # Bump whenever the rendered output changes: the job key changes, so cached results are rebuilt,
 # and `warm` removes frame folders whose manifest carries an older version.
-PIPELINE_VERSION = 8
+PIPELINE_VERSION = 9
 
 
 def manifest_path(cache_dir: Path, key: str) -> Path:

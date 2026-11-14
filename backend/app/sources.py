@@ -1,6 +1,7 @@
 """Every point source in the blink frames, labelled by the catalogue that knows a source there.
 
-A label is a positional coincidence within MATCH_RADIUS_ARCSEC, not an identification: "none"
+A label is a positional coincidence within the match radius (wider for very bright stars), not an
+identification: "none"
 means neither Gaia DR3 nor AllWISE lists a source there, so it needs verification.
 """
 
@@ -42,8 +43,11 @@ MATCH_RADIUS_PX = 1.0
 MATCH_RADIUS_ARCSEC = MATCH_RADIUS_PX * SPHEREX_PIXEL_SCALE_ARCSEC
 # A saturated core is filled from its neighbours (frames.fill_with_local_median), which moves the
 # centroid of a very bright star by 1-2 px: Barnard's Star landed 7-14″ from its Gaia DR3 place.
-BRIGHT_SNR = 300.0
-BRIGHT_MATCH_RADIUS_PX = 3.0
+# So stars brighter than these magnitudes claim detections up to 3 px away. Brightness, not S/N:
+# an S/N rule would let faint neighbours absorb bright movers.
+BRIGHT_MAG = {"gaia": 10.0, "allwise": 8.0}
+BRIGHT_RADIUS_PX = 3.0
+BRIGHT_RADIUS_ARCSEC = BRIGHT_RADIUS_PX * SPHEREX_PIXEL_SCALE_ARCSEC
 CATALOG_TIMEOUT_S = 10.0
 # Rows per catalogue and field (Gaia DR3: brightest, AllWISE: nearest); a crowded field is cut.
 MAX_CATALOG_ROWS = 10000
@@ -223,20 +227,21 @@ def field_catalogs(
 
 
 def _brightest_within(
-    position: SkyCoord, stars: list[CatalogStar], places: SkyCoord, radii_arcsec: np.ndarray
+    position: SkyCoord, stars: list[CatalogStar], places: SkyCoord, catalog: str
 ) -> list[tuple[CatalogStar, float] | None]:
     """Per detection the brightest catalogue source within its match radius, and its distance.
 
     At SPHEREx resolution the brightest source dominates a blend; a faint neighbour may lie closer.
+    Stars brighter than BRIGHT_MAG[catalog] match up to BRIGHT_RADIUS_ARCSEC.
     """
     best: list[tuple[CatalogStar, float] | None] = [None] * len(position)
-    near, index, separation, _ = places.search_around_sky(
-        position, float(radii_arcsec.max()) * u.arcsec
-    )
+    near, index, separation, _ = places.search_around_sky(position, BRIGHT_RADIUS_ARCSEC * u.arcsec)
     pairs: dict[int, list[tuple[CatalogStar, float]]] = {}
     for i, j, sep in zip(near, index, separation.to_value(u.arcsec), strict=True):
-        if sep <= radii_arcsec[i]:
-            pairs.setdefault(int(i), []).append((stars[j], float(sep)))
+        star = stars[j]
+        bright = star.mag is not None and star.mag < BRIGHT_MAG[catalog]
+        if sep <= MATCH_RADIUS_ARCSEC or bright:
+            pairs.setdefault(int(i), []).append((star, float(sep)))
     for i, candidates in pairs.items():
         best[i] = min(candidates, key=lambda c: (c[0].mag is None, c[0].mag or 0.0, c[1]))
     return best
@@ -252,6 +257,8 @@ def label(
 ) -> list[DetectedSource]:
     """Sky position of each detection and the catalogue source within the match radius.
 
+    Very bright stars match up to BRIGHT_RADIUS_ARCSEC; see BRIGHT_MAG.
+
     Gaia DR3 wins over AllWISE; "none" needs both catalogues to have answered in full.
     """
     if not detections:
@@ -260,9 +267,6 @@ def label(
     ys = np.array([d.y for d in detections])
     ras, decs = grid.pixel_to_world_values(xs, ys)
     position = SkyCoord(ras * u.deg, decs * u.deg)
-    snrs = np.array([d.snr for d in detections])
-    radii = np.where(snrs >= BRIGHT_SNR, BRIGHT_MATCH_RADIUS_PX, MATCH_RADIUS_PX)
-    radii_arcsec = radii * SPHEREX_PIXEL_SCALE_ARCSEC
     # A cut catalogue may lack the counterpart, so a missing match is no "none" then.
     complete = all(s is not None and len(s) < MAX_CATALOG_ROWS for s in (gaia, allwise))
     hits = {}
@@ -270,8 +274,7 @@ def label(
         if not stars:
             continue
         places = [position_at(s.motion, mjd) if s.motion else (s.ra, s.dec) for s in stars]
-        coords = SkyCoord(*np.array(places).T * u.deg)
-        hits[name] = _brightest_within(position, stars, coords, radii_arcsec)
+        hits[name] = _brightest_within(position, stars, SkyCoord(*np.array(places).T * u.deg), name)
 
     sources = []
     for i, d in enumerate(detections):
@@ -357,12 +360,12 @@ def source_checks(
             f"{counts['gaia']} Gaia DR3 match, {counts['allwise']} AllWISE match, "
             f"{counts['none']} no catalogue match - needs verification, "
             f"{counts['unknown']} unknown. Match radius {MATCH_RADIUS_ARCSEC:.1f}″ "
-            f"({MATCH_RADIUS_PX:g} px; {BRIGHT_MATCH_RADIUS_PX:g} px for S/N ≥ {BRIGHT_SNR:g}, "
-            "whose saturated cores shift the centroid), brightest catalogue source within it; "
-            "a match can be a "
-            "chance alignment. Gaia DR3 positions are moved to each frame's date; AllWISE "
+            f"({MATCH_RADIUS_PX:g} px), for stars brighter than G {BRIGHT_MAG['gaia']:g} / "
+            f"W1 {BRIGHT_MAG['allwise']:g} within {BRIGHT_RADIUS_PX:g} px: saturated cores "
+            "shift the centre. The brightest catalogue source within the radius wins; a match "
+            "can be a chance alignment. Gaia DR3 positions are moved to each frame's date; AllWISE "
             "positions are from about 2010, so a fast-moving source can miss its match. "
-            "Catalogues (chance match = a random position has a source within the radius): "
+            "Catalogues (chance match = a random position has a source within 1 px): "
             f"{status('Gaia DR3', gaia)}, {status('AllWISE', allwise)}",
         )
     ]
