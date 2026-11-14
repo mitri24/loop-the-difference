@@ -1,4 +1,6 @@
 import type {
+  DistantTrack,
+  DistantTrackRequest,
   FrameJob,
   FrameRequest,
   NeossatCoverage,
@@ -75,3 +77,11 @@ export const getSmallBodiesJob = (jobId: string) =>
 
 export const getNeossat = (ra: string, dec: string) =>
   request<NeossatCoverage>(`/api/partners/neossat?${new URLSearchParams({ ra, dec })}`)
+
+// Pure math, answered at once: positions for each assumed distance (not an orbit).
+export const createDistantTrack = (body: DistantTrackRequest) =>
+  request<DistantTrack>('/api/track/distant', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  })

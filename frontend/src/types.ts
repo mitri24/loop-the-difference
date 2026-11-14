@@ -220,3 +220,37 @@ export interface NeossatCoverage {
   search_url: string
   note: string
 }
+
+export interface TrackMark {
+  ra: string
+  dec: string
+  mjd: number
+  sigma_arcsec?: number // default 1.5
+}
+
+export interface DistantTrackRequest {
+  marks: [TrackMark, TrackMark]
+  target_mjds: number[]
+  d_min_au?: number // default 20
+  d_max_au?: number // default 2000
+  steps?: number // default 64, uniform in 1/d
+}
+
+export interface TrackPoint {
+  mjd: number
+  ra: number
+  dec: number
+  radius_arcsec: number // 2σ search radius from the mark uncertainties alone
+}
+
+export interface DistanceHypothesis {
+  distance_au: number
+  points: TrackPoint[]
+}
+
+// Where the marked object would be for each assumed distance; not an orbit.
+export interface DistantTrack {
+  model: string
+  assumptions: string[]
+  hypotheses: DistanceHypothesis[]
+}
