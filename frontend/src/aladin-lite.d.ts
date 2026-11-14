@@ -120,9 +120,21 @@ declare module 'aladin-lite' {
       onError: () => void,
       useProxy: false,
     ): void
+    polyline(coords: SkyCoords[], options?: { color?: string; lineWidth?: number }): OverlayItem
   }
 
   export default A
+
+  export interface CatalogOptions {
+    displayLabel?: boolean
+    labelColumn?: string
+    labelColor?: string
+    labelFont?: string
+  }
+
+  export interface AladinInstance {
+    removeOverlay(overlay: GraphicOverlay): void
+  }
 }
 
 // Detected sources refill one catalogue per label whenever the blink moves on.

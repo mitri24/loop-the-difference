@@ -1,6 +1,8 @@
 import type { AladinInstance } from 'aladin-lite'
+import { TRACK_LABEL } from '../motionTrack'
 import type { Frame } from '../types'
 import { CatalogLegend } from './CatalogLegend'
+import { SkySlider } from './SkySlider'
 
 interface Props {
   aladin: AladinInstance | null
@@ -15,10 +17,16 @@ interface Props {
   onSourcesOnSkyChange: (on: boolean) => void
   // Why the frames cannot go on the sky right now.
   framesBlocked?: string
+  // The Gaia DR3 track of a named star is drawn on the sky.
+  trackShown: boolean
+  skySlice: number
+  onSkySliceChange: (slice: number) => void
+  cubeActive: boolean
 }
 
 // Everything the app draws on the Aladin sky: the SPHEREx frames, their detected sources and the catalogue markers.
-export function LayersSection({ aladin, ra, dec, sizeDeg, frame, framesOnSky, onFramesOnSkyChange, sourcesOnSky, onSourcesOnSkyChange, framesBlocked }: Props) {
+export function LayersSection({ aladin, ra, dec, sizeDeg, frame, framesOnSky, onFramesOnSkyChange, sourcesOnSky, onSourcesOnSkyChange, framesBlocked,
+  trackShown, skySlice, onSkySliceChange, cubeActive }: Props) {
   const blocked = !aladin || !frame || !!framesBlocked
   return (
     <section className="layers-section" aria-labelledby="layers-heading">
@@ -38,7 +46,9 @@ export function LayersSection({ aladin, ra, dec, sizeDeg, frame, framesOnSky, on
         match, needs verification · <span className="src-unknown" aria-hidden="true">×</span> in grey: catalogue unavailable
       </p>
       {(!frame || framesBlocked) && <p className="muted">{framesBlocked ?? 'Load a comparison to place its frames and their detected sources on the sky. Gaia DR3 and SkyBoT follow the date of the shown frame, so they wait for frames too.'}</p>}
+      {trackShown && <p className="track-key"><span aria-hidden="true">─●─</span> Path {TRACK_LABEL}, a dot per frame date</p>}
       <CatalogLegend aladin={aladin} ra={ra} dec={dec} sizeDeg={sizeDeg} frameMjd={frame?.mjd ?? null} />
+      <SkySlider value={skySlice} onChange={onSkySliceChange} active={cubeActive} />
     </section>
   )
 }
