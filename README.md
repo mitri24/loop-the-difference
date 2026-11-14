@@ -39,6 +39,32 @@ Scale the heavy part with more workers: `docker compose up --scale worker=4`. A 
 - Frontend with hot reload: `cd frontend && npm ci && npm run dev` → http://localhost:5173
 - Checks: see `CLAUDE.md`, they also run in CI on every push and pull request.
 
+## Deploy
+
+Production runs the same stack behind [Caddy](https://caddyserver.com/), which gets and renews the HTTPS certificate by itself.
+
+Prerequisites on the server: Docker with the Compose plugin (≥ 2.24), ports 80 and 443 open, and a DNS A record for your domain pointing at the server **before** the first start. While the repository is private, clone it with a read-only deploy key that lives only on the server – never in the repository.
+
+First start:
+
+```sh
+git clone <repository-url> loop-the-difference && cd loop-the-difference
+cp .env.example .env            # set DOMAIN=your.domain
+docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d --build
+```
+
+Redeploy after a change, then warm the cache for the demo targets (`app.warm` arrives with the cache-warming step; skip that part until it exists):
+
+```sh
+git pull && docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d --build && docker compose -f docker-compose.yml -f docker-compose.prod.yml run --rm worker python -m app.warm
+```
+
+Logs:
+
+```sh
+docker compose -f docker-compose.yml -f docker-compose.prod.yml logs -f caddy api worker
+```
+
 ## Data and credits
 
 SPHEREx data: NASA/IPAC Infrared Science Archive (IRSA), Caltech/IPAC. Sky context: Aladin Lite, CDS Strasbourg. Target names: Sesame, CDS. Loop the Difference is a discovery aid – every change it shows needs checking before it counts as a candidate.
