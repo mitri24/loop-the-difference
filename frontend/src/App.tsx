@@ -6,7 +6,7 @@ import { EvidencePanel, hasBlocker, manifestChecks } from './components/Evidence
 import { DifferenceView } from './components/DifferenceView'
 import { ModeSwitch } from './components/ModeSwitch'
 import { ObservationInfo } from './components/ObservationInfo'
-import { SkyContext } from './components/SkyContext'
+import { SkyView } from './components/SkyView'
 import { TargetForm } from './components/TargetForm'
 import type { FrameJob, ObservationSummary } from './types'
 import { POLARIS, readEmbed, readQuery, toSearch, type TargetQuery, type ViewMode } from './url'
@@ -32,6 +32,8 @@ export default function App() {
   const [error, setError] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
   const [about, setAbout] = useState(false)
+  const [skyLayer, setSkyLayer] = useState('AllWISE')
+  const [skyUnavailable, setSkyUnavailable] = useState(false)
   const latestRun = useRef(0)
 
   const show = useCallback(async (next: TargetQuery) => {
@@ -117,6 +119,58 @@ export default function App() {
   const showDifference =
     query.mode === 'difference' && !differenceBlocked && (manifest?.differences.length ?? 0) > 0
 
+  // Notices, progress and the blink player: beside the sky, or alone without it.
+  const player = (
+    <>
+      {!EMBED && (
+        <ModeSwitch
+          value={query.mode}
+          onChange={selectMode}
+          differenceBlocked={differenceBlocked}
+        />
+      )}
+      {error && <p className="notice error">{error}</p>}
+      {manifest && <EvidencePanel checks={checks} />}
+      {busy && (
+        <p className="progress">
+          {job?.status === 'started' && job.total > 0
+            ? `Fetching SPHEREx cutouts… ${job.progress}/${job.total}`
+            : 'Searching the SPHEREx archive…'}
+        </p>
+      )}
+      {manifest && manifest.frames.length > 0 && query.mode === 'difference' && (
+        <>
+          {differenceBlocked && (
+            <p className="notice">Cannot compare epochs: only one epoch covers this position.</p>
+          )}
+          {!differenceBlocked && !showDifference && (
+            <p className="notice">
+              The difference image is still being built – meanwhile the epoch stacks play below.
+            </p>
+          )}
+        </>
+      )}
+      {manifest && manifest.frames.length > 0 && showDifference && (
+        <DifferenceView key={job.job_id} manifest={manifest} />
+      )}
+      {manifest && manifest.frames.length > 0 && !showDifference && (
+        <BlinkPlayer key={job.job_id} frames={manifest.frames} checks={checks} />
+      )}
+      {!busy && !job && !error && (
+        <p className="hint">
+          {EMBED
+            ? 'Add ra and dec to the URL, e.g. ?ra=02:31:49.09&dec=+89:15:50.8&embed=1'
+            : 'Enter a sky position, or pick one of the challenge targets.'}
+        </p>
+      )}
+      <p className="caveat">
+        Loop the Difference is a discovery aid, not a detection pipeline: check every change against
+        catalogues before calling it a candidate. SPHEREx observes through linear variable
+        filters, so the exact wavelength differs from frame to frame.
+      </p>
+    </>
+  )
+
   return (
     <div className="app">
       {!EMBED && (
@@ -148,65 +202,30 @@ export default function App() {
 
         <section className="stage">
           {!EMBED && (
-            <ModeSwitch
-              value={query.mode}
-              onChange={selectMode}
-              differenceBlocked={differenceBlocked}
-            />
-          )}
-          {error && <p className="notice error">{error}</p>}
-          {manifest && <EvidencePanel checks={checks} />}
-          {busy && (
-            <p className="progress">
-              {job?.status === 'started' && job.total > 0
-                ? `Fetching SPHEREx cutouts… ${job.progress}/${job.total}`
-                : 'Searching the SPHEREx archive…'}
-            </p>
-          )}
-          {manifest && manifest.frames.length > 0 && query.mode === 'difference' && (
             <>
-              {differenceBlocked && (
-                <p className="notice">Cannot compare epochs: only one epoch covers this position.</p>
-              )}
-              {!differenceBlocked && !showDifference && (
-                <p className="notice">
-                  The difference image is still being built – meanwhile the epoch stacks play below.
-                </p>
-              )}
+              {!skyUnavailable && <h2>Sky · {skyLayer}</h2>}
+              <SkyView
+                ra={center.ra}
+                dec={center.dec}
+                fov={query.fov}
+                detector={query.band}
+                onLayerChange={setSkyLayer}
+                onUnavailable={() => setSkyUnavailable(true)}
+              />
             </>
           )}
-          {manifest && manifest.frames.length > 0 && showDifference && (
-            <DifferenceView key={job.job_id} manifest={manifest} />
-          )}
-          {manifest && manifest.frames.length > 0 && !showDifference && (
-            <BlinkPlayer key={job.job_id} frames={manifest.frames} checks={checks} />
-          )}
-          {!busy && !job && !error && (
-            <p className="hint">
-              {EMBED
-                ? 'Add ra and dec to the URL, e.g. ?ra=02:31:49.09&dec=+89:15:50.8&embed=1'
-                : 'Enter a sky position, or pick one of the challenge targets.'}
-            </p>
-          )}
-          <p className="caveat">
-            Loop the Difference is a discovery aid, not a detection pipeline: check every change against
-            catalogues before calling it a candidate. SPHEREx observes through linear variable
-            filters, so the exact wavelength differs from frame to frame.
-          </p>
+          {(EMBED || skyUnavailable) && player}
         </section>
 
-        {!EMBED && (
-          <section className="context">
-            <h2>Sky context · AllWISE</h2>
-            <SkyContext ra={center.ra} dec={center.dec} fov={query.fov} />
-          </section>
-        )}
+        {!EMBED && !skyUnavailable && <section className="context">{player}</section>}
       </main>
 
       <footer className="footer">
         Data: SPHEREx ({summary?.collection ?? 'spherex_dr1'}), NASA/IPAC Infrared Science Archive
-        (IRSA) · {!EMBED && 'Sky context: Aladin Lite, CDS Strasbourg · '}Built for NASA Space Apps
-        2026
+        (IRSA) ·{' '}
+        {!EMBED &&
+          'Sky: SPHEREx DR1 (NASA/SPHEREx, Caltech/IPAC) · AllWISE (NASA/IPAC) via ESA ESDC HiPS mirrors · Aladin Lite (CDS, LGPL-3) · '}
+        Built for NASA Space Apps 2026
       </footer>
     </div>
   )
