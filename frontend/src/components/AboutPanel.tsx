@@ -119,6 +119,11 @@ export function AboutPanel({ open, onClose }: Props) {
             SkyBoT (IMCCE, Observatoire de Paris; Berthier et al. 2006).
           </li>
           <li>
+            <strong>Detected sources</strong> – found in the SPHEREx frames with Photutils, an
+            Astropy package for detection and photometry of astronomical sources (Bradley et al.),
+            and compared with ESA Gaia DR3 and with AllWISE from NASA/IPAC IRSA.
+          </li>
+          <li>
             <strong>Code</strong> – free software under the GNU General Public License v3.0, written
             with Claude Code (Anthropic) under human review. Built for NASA Space Apps 2026.{' '}
             <a href={REPO_URL} target="_blank" rel="noreferrer">
