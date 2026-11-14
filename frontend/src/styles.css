@@ -8,6 +8,10 @@
   --accent: #6ea8fe;
   --warning: #e2b340;
   --danger: #ef6b6b;
+  /* Difference PNG colours of the backend (NAS-13). */
+  --diff-earlier: rgb(214, 64, 48);
+  --diff-none: rgb(128, 128, 128);
+  --diff-later: rgb(52, 112, 219);
   color-scheme: dark;
   font-family: system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
   line-height: 1.5;
@@ -237,7 +241,8 @@ select {
   padding: 0;
 }
 
-.speed {
+.speed,
+.epoch-pick {
   display: flex;
   align-items: center;
   gap: 0.4rem;
@@ -336,4 +341,35 @@ select {
   display: flex;
   flex-direction: column;
   gap: 0.6rem;
+}
+
+.diff-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem 1.25rem;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  font-size: 0.9rem;
+}
+
+.diff-legend .swatch {
+  display: inline-block;
+  width: 0.9rem;
+  height: 0.9rem;
+  margin-right: 0.3rem;
+  vertical-align: -0.1rem;
+  border: 1px solid var(--border);
+}
+
+.swatch.earlier {
+  background: var(--diff-earlier);
+}
+
+.swatch.none {
+  background: var(--diff-none);
+}
+
+.swatch.later {
+  background: var(--diff-later);
 }
