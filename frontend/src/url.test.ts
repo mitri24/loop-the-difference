@@ -13,6 +13,7 @@ describe('target in the URL', () => {
       dec: '-7d14m42.53s',
       fov: 0.2,
       band: 6,
+      mode: 'exposures',
     })
   })
 
@@ -27,6 +28,22 @@ describe('target in the URL', () => {
 
   it('round-trips through the URL', () => {
     expect(readQuery(toSearch(POLARIS))).toEqual(POLARIS)
+  })
+
+  it('reads the view mode and falls back to exposures for unknown values', () => {
+    expect(readQuery('?ra=1&dec=2&mode=stacks')?.mode).toBe('stacks')
+    expect(readQuery('?ra=1&dec=2&mode=difference')?.mode).toBe('difference')
+    expect(readQuery('?ra=1&dec=2&mode=Stacks')?.mode).toBe('exposures')
+    expect(readQuery('?ra=1&dec=2&mode=')?.mode).toBe('exposures')
+    expect(readQuery('?ra=1&dec=2')?.mode).toBe('exposures')
+  })
+
+  it('writes the view mode only when it is not the default', () => {
+    expect(toSearch(POLARIS)).not.toContain('mode=')
+    const stacks = { ...POLARIS, mode: 'stacks' as const }
+    expect(toSearch(stacks)).toContain('mode=stacks')
+    expect(readQuery(toSearch(stacks))).toEqual(stacks)
+    expect(readQuery(toSearch(stacks, true))).toEqual(stacks)
   })
 
   it('reads embed mode only from embed=1', () => {

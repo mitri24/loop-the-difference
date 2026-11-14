@@ -372,6 +372,40 @@ select {
 
 .swatch.later {
   background: var(--diff-later);
+
+.mode-switch {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+  font-size: 0.9rem;
+}
+
+.mode-switch [role='radiogroup'] {
+  display: inline-flex;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  overflow: hidden;
+}
+
+.mode-switch [role='radio'] {
+  border: 0;
+  border-radius: 0;
+}
+
+.mode-switch [role='radio'] + [role='radio'] {
+  border-left: 1px solid var(--border);
+}
+
+.mode-switch [role='radio'][aria-checked='true'] {
+  background: var(--accent);
+  color: #0d1117;
+  font-weight: 600;
+}
+
+.mode-switch [role='radio']:focus-visible {
+  outline: 2px solid var(--text);
+  outline-offset: -2px;
 }
 
 .evidence {

@@ -1,13 +1,23 @@
 // The target lives in the URL, so every view can be shared or embedded:
-// /?ra=08h55m10.831s&dec=-7d14m42.53s&fov=0.2&band=6
+// /?ra=08h55m10.831s&dec=-7d14m42.53s&fov=0.2&band=6 (&mode=stacks|difference; default exposures)
+export const VIEW_MODES = ['exposures', 'stacks', 'difference'] as const
+export type ViewMode = (typeof VIEW_MODES)[number]
+
 export interface TargetQuery {
   ra: string
   dec: string
   fov: number
   band: number
+  mode: ViewMode
 }
 
-export const POLARIS: TargetQuery = { ra: '02:31:49.09', dec: '+89:15:50.8', fov: 0.2, band: 6 }
+export const POLARIS: TargetQuery = {
+  ra: '02:31:49.09',
+  dec: '+89:15:50.8',
+  fov: 0.2,
+  band: 6,
+  mode: 'exposures',
+}
 
 export function readQuery(search: string): TargetQuery | null {
   const params = new URLSearchParams(search)
@@ -20,6 +30,7 @@ export function readQuery(search: string): TargetQuery | null {
     dec,
     fov: numberParam(params.get('fov'), 0.02, 1, POLARIS.fov),
     band: Math.round(numberParam(params.get('band'), 1, 6, POLARIS.band)),
+    mode: modeParam(params.get('mode')),
   }
 }
 
@@ -35,8 +46,13 @@ export function toSearch(query: TargetQuery, embed = false): string {
     fov: String(query.fov),
     band: String(query.band),
   })
+  if (query.mode !== POLARIS.mode) params.set('mode', query.mode)
   if (embed) params.set('embed', '1')
   return `?${params}`
+}
+
+function modeParam(raw: string | null): ViewMode {
+  return VIEW_MODES.find((mode) => mode === raw) ?? POLARIS.mode
 }
 
 function numberParam(raw: string | null, min: number, max: number, fallback: number): number {

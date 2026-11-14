@@ -2,12 +2,14 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { createFrames, getFrameJob, getObservations, resolveName } from './api'
 import { AboutPanel } from './components/AboutPanel'
 import { BlinkPlayer } from './components/BlinkPlayer'
-import { EvidencePanel, manifestChecks } from './components/EvidencePanel'
+import { EvidencePanel, hasBlocker, manifestChecks } from './components/EvidencePanel'
+import { DifferenceView } from './components/DifferenceView'
+import { ModeSwitch } from './components/ModeSwitch'
 import { ObservationInfo } from './components/ObservationInfo'
 import { SkyContext } from './components/SkyContext'
 import { TargetForm } from './components/TargetForm'
 import type { FrameJob, ObservationSummary } from './types'
-import { POLARIS, readEmbed, readQuery, toSearch, type TargetQuery } from './url'
+import { POLARIS, readEmbed, readQuery, toSearch, type TargetQuery, type ViewMode } from './url'
 
 const INITIAL = readQuery(window.location.search)
 const EMBED = readEmbed(window.location.search)
@@ -17,6 +19,10 @@ const POLL_MS = 1500
 
 const wait = (ms: number) => new Promise((resolve) => window.setTimeout(resolve, ms))
 const message = (error: unknown) => (error instanceof Error ? error.message : String(error))
+const remember = (query: TargetQuery) =>
+  window.history.replaceState(null, '', toSearch(query, EMBED))
+// Stacks and the difference image are built from the same stacked job.
+const usesStacks = (mode: ViewMode) => mode !== 'exposures'
 
 export default function App() {
   const [query, setQuery] = useState<TargetQuery>(INITIAL ?? POLARIS)
@@ -36,7 +42,7 @@ export default function App() {
     setJob(null)
     setError(null)
     setBusy(true)
-    window.history.replaceState(null, '', toSearch(next, EMBED))
+    remember(next)
     try {
       const [found, started] = await Promise.all([
         getObservations(next.ra, next.dec),
@@ -46,6 +52,7 @@ export default function App() {
           size_deg: next.fov,
           detector: next.band,
           max_frames: MAX_FRAMES,
+          stack: usesStacks(next.mode),
         }),
       ])
       if (stale()) return
@@ -81,6 +88,18 @@ export default function App() {
     [show],
   )
 
+  // Switching between stacks and difference reuses the frames already shown; only a change
+  // of the stack flag needs a new job.
+  const selectMode = useCallback(
+    (mode: ViewMode) => {
+      const next = { ...query, mode }
+      if (usesStacks(mode) !== usesStacks(query.mode) && (job || busy)) return void show(next)
+      setQuery(next)
+      remember(next)
+    },
+    [query, job, busy, show],
+  )
+
   // Coordinates in the URL (shared or embedded link): start right away.
   useEffect(() => {
     if (!INITIAL) return
@@ -90,6 +109,13 @@ export default function App() {
 
   const manifest = job?.manifest
   const checks = manifest ? manifestChecks(manifest) : []
+  const differenceBlocked =
+    manifest && (manifest.epochs < 2 || hasBlocker(checks, 'difference'))
+      ? 'Cannot compare epochs'
+      : undefined
+  // Until the worker delivers difference images (NAS-13) the stacks play with a note instead.
+  const showDifference =
+    query.mode === 'difference' && !differenceBlocked && (manifest?.differences.length ?? 0) > 0
 
   return (
     <div className="app">
@@ -121,6 +147,13 @@ export default function App() {
         )}
 
         <section className="stage">
+          {!EMBED && (
+            <ModeSwitch
+              value={query.mode}
+              onChange={selectMode}
+              differenceBlocked={differenceBlocked}
+            />
+          )}
           {error && <p className="notice error">{error}</p>}
           {manifest && <EvidencePanel checks={checks} />}
           {busy && (
@@ -130,7 +163,22 @@ export default function App() {
                 : 'Searching the SPHEREx archive…'}
             </p>
           )}
-          {manifest && manifest.frames.length > 0 && (
+          {manifest && manifest.frames.length > 0 && query.mode === 'difference' && (
+            <>
+              {differenceBlocked && (
+                <p className="notice">Cannot compare epochs: only one epoch covers this position.</p>
+              )}
+              {!differenceBlocked && !showDifference && (
+                <p className="notice">
+                  The difference image is still being built – meanwhile the epoch stacks play below.
+                </p>
+              )}
+            </>
+          )}
+          {manifest && manifest.frames.length > 0 && showDifference && (
+            <DifferenceView key={job.job_id} manifest={manifest} />
+          )}
+          {manifest && manifest.frames.length > 0 && !showDifference && (
             <BlinkPlayer key={job.job_id} frames={manifest.frames} checks={checks} />
           )}
           {!busy && !job && !error && (
