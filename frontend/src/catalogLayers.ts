@@ -2,24 +2,30 @@
 import type { AladinInstance, Catalog, CatalogOptions } from 'aladin-lite'
 import { useCallback, useEffect, useRef, useState } from 'react'
 
-const VIZIER = 'https://vizier.cfa.harvard.edu/viz-bin/votable'
+// Second mirror for timeouts and "database not reachable" answers; same query syntax, CORS *.
+export const VIZIER_MIRRORS = ['https://vizier.cfa.harvard.edu', 'https://vizier.idia.ac.za']
 const MJD_UNIX_EPOCH = 40587
 const MJD_J2000 = 51544.5
 const GAIA_EPOCH_YR = 2016.0
 // Per layer; VizieR cuts in table order, so the queries sort by brightness first.
 export const MAX_SOURCES = 500
+// Gaia (sorted by magnitude) and SIMBAD get slow beyond this radius around the view centre.
+export const NEAR_DEG = 0.6
 
 // Space must become %20: URLSearchParams would write "+", which the services read literally.
 const cone = (ra: number, dec: number) => encodeURIComponent(`${ra} ${dec}`)
 
-export const gaiaUrl = (ra: number, dec: number, rDeg: number) =>
-  `${VIZIER}?-source=I/355/gaiadr3&-c=${cone(ra, dec)}&-c.rd=${rDeg}&-out.max=${MAX_SOURCES}&-sort=Gmag&-out=Source,RA_ICRS,DE_ICRS,Plx,pmRA,pmDE,Gmag`
+export const gaiaUrl = (ra: number, dec: number, rDeg: number, mirror = VIZIER_MIRRORS[0]) =>
+  `${mirror}/viz-bin/votable?-source=I/355/gaiadr3&-c=${cone(ra, dec)}&-c.rd=${rDeg}&-out.max=${MAX_SOURCES}&-sort=Gmag&-out=Source,RA_ICRS,DE_ICRS,Plx,pmRA,pmDE,Gmag`
 
-export const wiseUrl = (ra: number, dec: number, rDeg: number) =>
-  `${VIZIER}?-source=II/328/allwise&-c=${cone(ra, dec)}&-c.rd=${rDeg}&-out.max=${MAX_SOURCES}&-sort=W1mag&-out=AllWISE,RAJ2000,DEJ2000,W1mag,W2mag`
+export const wiseUrl = (ra: number, dec: number, rDeg: number, mirror = VIZIER_MIRRORS[0]) =>
+  `${mirror}/viz-bin/votable?-source=II/328/allwise&-c=${cone(ra, dec)}&-c.rd=${rDeg}&-out.max=${MAX_SOURCES}&-sort=W1mag&-out=AllWISE,RAJ2000,DEJ2000,W1mag,W2mag`
 
+// TAP always answers with a table, also for an empty field; votable/td keeps the rows readable.
 export const simbadUrl = (ra: number, dec: number, rDeg: number) =>
-  `https://simbad.cfa.harvard.edu/simbad/sim-coo?Coord=${cone(ra, dec)}&Radius=${rDeg * 60}&Radius.unit=arcmin&output.format=votable`
+  `https://simbad.cfa.harvard.edu/simbad/sim-tap/sync?request=doQuery&lang=adql&format=votable/td&query=${encodeURIComponent(
+    `SELECT TOP ${MAX_SOURCES} main_id, ra, dec, otype FROM basic WHERE CONTAINS(POINT('ICRS', ra, dec), CIRCLE('ICRS', ${ra}, ${dec}, ${rDeg})) = 1`,
+  )}`
 
 // Asteroids move: the epoch is the shown frame's time, passed as Julian Date.
 export const skybotUrl = (ra: number, dec: number, rDeg: number, mjd: number) =>
@@ -52,16 +58,22 @@ export function propagateGaia(row: GaiaRow, mjd: number, refEpochYr = GAIA_EPOCH
   return { ra, dec }
 }
 
-/** Rows of a VOTable TABLEDATA block, cells in FIELD order. Throws on an error answer. */
+/**
+ * Rows of a VOTable TABLEDATA block (tags may carry a namespace prefix, as SkyBoT's do), cells in
+ * FIELD order. Throws on an error answer; SkyBoT's "no object found" error is an empty field.
+ */
 export function parseVotableRows(xml: string): string[][] {
-  if (!/<VOTABLE/i.test(xml) || /name="QUERY_STATUS"\s+value="ERROR"/i.test(xml)) {
+  if (/No solar system object was found/.test(xml)) return []
+  if (!/<(\w+:)?VOTABLE/i.test(xml) || /name="QUERY_STATUS"\s+value="ERROR"/i.test(xml)) {
     throw new Error('not a VOTable')
   }
   return xml
-    .split(/<TR>/i)
+    .split(/<(?:\w+:)?TR>/i)
     .slice(1)
     .map((row) =>
-      [...row.matchAll(/<TD\s*\/>|<TD>([^<]*)<\/TD>/gi)].map((m) => (m[1] ?? '').trim()),
+      [...row.matchAll(/<(?:\w+:)?TD\s*\/>|<(?:\w+:)?TD>([^<]*)<\/(?:\w+:)?TD>/gi)].map((m) =>
+        (m[1] ?? '').trim(),
+      ),
     )
 }
 
@@ -89,7 +101,12 @@ export function gaiaSources(rows: string[][], mjd: number) {
 }
 
 export type LayerKey = 'gaia' | 'wise' | 'simbad' | 'skybot'
-export type LayerStatus = 'off' | 'loading' | 'ready' | 'unavailable'
+export type LayerStatus = 'off' | 'loading' | 'ready' | 'none' | 'unavailable'
+/** A loaded catalogue, 'none' for a field without objects, null when the service failed. */
+export type LayerResult<T> = T | 'none' | null
+
+export const layerStatus = (result: LayerResult<unknown>): LayerStatus =>
+  result === 'none' ? 'none' : result ? 'ready' : 'unavailable'
 export interface View {
   ra: number
   dec: number
@@ -103,19 +120,53 @@ const LAYERS: Record<LayerKey, Pick<CatalogOptions, 'name' | 'shape'>> = {
   simbad: { name: 'SIMBAD', shape: 'triangle' },
   skybot: { name: 'SkyBoT', shape: 'rhomb' },
 }
-const TIMEOUT_MS = 10_000
+// Measured: Gaia sorted at 0.6° up to 8 s, SkyBoT in ecliptic fields up to 15 s.
+const TIMEOUT_MS: Record<LayerKey, number> = {
+  gaia: 25_000,
+  wise: 10_000,
+  simbad: 10_000,
+  skybot: 25_000,
+}
 // A failed epoch empties the layer but keeps it, so the open table of another marker stays.
 const NO_SOURCES: unknown[] = []
 const DEBOUNCE_MS = 500
 
+/**
+ * The answer of the first URL that works, as VOTable text and rows. One request at a time: an
+ * attempt is aborted when its time is up, before the next one starts; `cancel` stops them all.
+ */
+export async function fetchVotable(urls: string[], timeoutMs: number, cancel?: AbortSignal) {
+  for (const [i, url] of urls.entries()) {
+    cancel?.throwIfAborted()
+    try {
+      const timeout = AbortSignal.timeout(timeoutMs)
+      const signal = cancel ? AbortSignal.any([timeout, cancel]) : timeout
+      const res = await fetch(url, { signal })
+      if (!res.ok) throw new Error(`HTTP ${res.status}`)
+      const xml = await res.text()
+      return { xml, rows: parseVotableRows(xml) }
+    } catch (error) {
+      if (i === urls.length - 1) throw error
+    }
+  }
+  throw new Error('no URL')
+}
+
+/** VizieR catalogues try the second mirror; the other services are asked twice. */
+function attempts(key: LayerKey, { ra, dec, r }: View, mjd: number) {
+  const near = Math.min(r, NEAR_DEG)
+  if (key === 'gaia') return VIZIER_MIRRORS.map((mirror) => gaiaUrl(ra, dec, near, mirror))
+  if (key === 'wise') return VIZIER_MIRRORS.map((mirror) => wiseUrl(ra, dec, r, mirror))
+  const url = key === 'simbad' ? simbadUrl(ra, dec, near) : skybotUrl(ra, dec, r, mjd)
+  return [url, url]
+}
+
 // The Gaia answer does not depend on the epoch: one download per view, moved locally per epoch.
 let gaiaAnswer: { url: string; rows: Promise<string[][]> } | null = null
-function gaiaRows(url: string) {
+function gaiaRows(urls: string[], cancel: AbortSignal) {
+  const url = urls[0]
   if (gaiaAnswer?.url !== url) {
-    const rows = fetch(url, { signal: AbortSignal.timeout(TIMEOUT_MS) }).then(async (res) => {
-      if (!res.ok) throw new Error(`HTTP ${res.status}`)
-      return parseVotableRows(await res.text())
-    })
+    const rows = fetchVotable(urls, TIMEOUT_MS.gaia, cancel).then((answer) => answer.rows)
     rows.catch(() => {
       if (gaiaAnswer?.rows === rows) gaiaAnswer = null
     })
@@ -132,43 +183,55 @@ const catalogOptions = (key: LayerKey): CatalogOptions => ({
   onClick: 'showTable',
 })
 
-async function loadSources(key: LayerKey, { ra, dec, r }: View, mjd: number): Promise<unknown[]> {
-  const A = (await import('aladin-lite')).default
+async function loadSources(
+  key: LayerKey,
+  view: View,
+  mjd: number,
+  cancel: AbortSignal,
+): Promise<unknown[] | 'none'> {
+  const urls = attempts(key, view, mjd)
   if (key === 'gaia') {
-    return gaiaSources(await gaiaRows(gaiaUrl(ra, dec, r)), mjd).map((s) =>
-      A.source(s.ra, s.dec, s.data),
-    )
+    const sources = gaiaSources(await gaiaRows(urls, cancel), mjd)
+    if (sources.length === 0) return 'none'
+    const A = (await import('aladin-lite')).default
+    return sources.map((s) => A.source(s.ra, s.dec, s.data))
   }
-  const url =
-    key === 'wise'
-      ? wiseUrl(ra, dec, r)
-      : key === 'simbad'
-        ? simbadUrl(ra, dec, r)
-        : skybotUrl(ra, dec, r, mjd)
+  const { xml, rows } = await fetchVotable(urls, TIMEOUT_MS[key], cancel)
+  if (rows.length === 0) return 'none'
+  // Aladin parses the answer already downloaded, so a slow service is never asked twice at once.
+  const A = (await import('aladin-lite')).default
+  const blobUrl = URL.createObjectURL(new Blob([xml], { type: 'text/xml' }))
   return new Promise((resolve, reject) => {
-    const timer = window.setTimeout(() => reject(new Error('timeout')), TIMEOUT_MS)
+    const timer = window.setTimeout(() => done(), TIMEOUT_MS[key])
     const done = (catalog?: Catalog) => {
       window.clearTimeout(timer)
+      URL.revokeObjectURL(blobUrl)
       if (catalog) resolve(catalog.getSources())
       else reject(new Error('failed'))
     }
-    A.catalogFromURL(url, catalogOptions(key), done, () => done(), false)
+    A.catalogFromURL(blobUrl, catalogOptions(key), done, () => done(), false)
   })
 }
 
 /**
  * Sources per (view, epoch): each pair is asked for once, failures included, so a blink between
  * epochs switches between loaded catalogues instead of querying again. A new view empties the
- * cache; requests run one at a time and those for an older view are skipped.
+ * cache; requests run one at a time, a running one for an older view is aborted and queued ones
+ * are skipped.
  */
-export function catalogCache<T>(load: (view: View, epoch: number) => Promise<T | null>) {
+export function catalogCache<T>(
+  load: (view: View, epoch: number, cancel: AbortSignal) => Promise<T | null>,
+) {
   let current: View | null = null
   let tail: Promise<unknown> = Promise.resolve()
+  let cancel = new AbortController()
   const done = new Map<number, T | null>()
   const pending = new Map<number, Promise<T | null>>()
   const enter = (view: View) => {
     if (view === current) return
     current = view
+    cancel.abort()
+    cancel = new AbortController()
     done.clear()
     pending.clear()
   }
@@ -185,7 +248,7 @@ export function catalogCache<T>(load: (view: View, epoch: number) => Promise<T |
       if (!request) {
         request = tail.then(async () => {
           if (view !== current) return null
-          const catalog = await load(view, epoch)
+          const catalog = await load(view, epoch, cancel.signal)
           if (view === current) {
             pending.delete(epoch)
             done.set(epoch, catalog)
@@ -198,12 +261,6 @@ export function catalogCache<T>(load: (view: View, epoch: number) => Promise<T |
       return request
     },
   }
-}
-
-async function loadWithRetry(key: LayerKey, view: View, epoch: number) {
-  return loadSources(key, view, epoch)
-    .catch(() => loadSources(key, view, epoch))
-    .catch(() => null)
 }
 
 function useLayer(
@@ -219,7 +276,9 @@ function useLayer(
   const added = useRef(false)
   const shown = useRef<unknown[] | null>(null)
   const [cache] = useState(() =>
-    catalogCache((v: View, epoch: number) => loadWithRetry(key, v, epoch)),
+    catalogCache((v: View, epoch: number, cancel: AbortSignal) =>
+      loadSources(key, v, epoch, cancel).catch(() => null),
+    ),
   )
   const epoch = key === 'gaia' || key === 'skybot' ? mjd : 0
   useEffect(() => {
@@ -246,9 +305,9 @@ function useLayer(
       show(null)
       return
     }
-    const settle = (sources: unknown[] | null) => {
-      show(sources ?? NO_SOURCES)
-      report(key, sources ? 'ready' : 'unavailable')
+    const settle = (result: LayerResult<unknown[]>) => {
+      show(result === 'none' || !result ? NO_SOURCES : result)
+      report(key, layerStatus(result))
     }
     const hit = cache.peek(view, epoch)
     if (hit !== undefined) {
