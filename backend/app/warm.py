@@ -35,6 +35,7 @@ TARGETS: list[tuple[str, str, str] | tuple[str, str]] = [
     ("Epsilon Indi B", "eps Ind B"),
     ("RW Aurigae", "RW Aur"),
     ("R Draconis", "R Dra"),
+    ("Pluto · known dwarf planet (2026)", "308.5364", "-22.9153"),
 ]
 # D6 plus one short-wavelength detector; view defaults from frontend/src/url.ts and App.tsx.
 DETECTORS = (6, 1)
