@@ -4,6 +4,7 @@ import pytest
 
 from app.archive import (
     group_epochs,
+    parse_cloud_access,
     parse_sia_votable,
     resolve_cache_path,
     resolve_position,
@@ -41,6 +42,26 @@ def test_parse_real_sia_answer():
     assert first.wavelength_min_um < first.wavelength_max_um
     assert first.access_url.startswith("https://irsa.ipac.caltech.edu/")
     assert first.date.startswith("2025-")
+    # Every row also lists the same Level-2 file in IRSA's public AWS bucket.
+    for obs in observations:
+        assert obs.cloud_url == obs.access_url.replace(
+            "https://irsa.ipac.caltech.edu/ibe/data/spherex/",
+            "https://nasa-irsa-spherex.s3.amazonaws.com/",
+        )
+
+
+@pytest.mark.parametrize("value", [None, "", "--", "null", '{"aws": {"key": "a.fits"}}'])
+def test_unusable_cloud_access_gives_no_cloud_url(value):
+    assert parse_cloud_access(value) is None
+
+
+def test_answer_without_cloud_access_column_still_parses():
+    content = FIXTURE.read_bytes().replace(b'name="cloud_access"', b'name="other"')
+
+    observations = parse_sia_votable(content)
+
+    assert len(observations) == 6
+    assert all(obs.cloud_url is None for obs in observations)
 
 
 def test_epochs_split_on_gaps_longer_than_a_month():

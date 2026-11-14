@@ -605,3 +605,43 @@ summary { cursor:pointer; min-height:32px; padding:5px 0; font-size:13px; }
   color: var(--accent);
   font-weight: 700;
 }
+
+/* NAS-54: data and cross-check links (tokens shared with the sidebar UI) */
+.data-links h3 {
+  margin: 1rem 0 0.25rem;
+  font-size: 0.95rem;
+}
+
+.data-links h3:first-child {
+  margin-top: 0;
+}
+
+.data-links p {
+  margin: 0 0 0.4rem;
+  font-size: 0.85rem;
+}
+
+.data-links-list {
+  display: grid;
+  gap: 0.15rem;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.data-links-list a,
+.check-docs a {
+  display: inline-block;
+  min-height: 24px;
+  padding: 2px 0;
+  overflow-wrap: anywhere;
+}
+
+.link-site {
+  color: var(--muted);
+}
+
+.check-docs {
+  display: block;
+  margin-top: 2px;
+}

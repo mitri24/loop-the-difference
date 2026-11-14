@@ -1,4 +1,5 @@
 import type { Check, CheckSeverity, Frame, FrameManifest } from '../types'
+import { CheckDocsLink } from './DataLinks'
 
 // Status is always icon + word, never colour alone.
 export const SEVERITY: Record<CheckSeverity, { icon: string; word: string }> = {
@@ -73,6 +74,7 @@ export function EvidencePanel({ checks }: { checks: Check[] }) {
               <span>
                 {check.message}
                 {check.detail && <small className="muted"> {check.detail}</small>}
+                <CheckDocsLink code={check.code} />
               </span>
             </li>
           ))}

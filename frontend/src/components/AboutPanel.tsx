@@ -1,4 +1,5 @@
 import { useEffect, useRef } from 'react'
+import { LearnLinks } from './DataLinks'
 
 const REPO_URL = 'https://github.com/mitri24/loop-the-difference'
 
@@ -59,6 +60,9 @@ export function AboutPanel({ open, onClose }: Props) {
           Loop the Difference is a discovery aid – every change it shows is a candidate that needs
           checking against the catalogues before it counts as anything. It never claims a discovery.
         </p>
+
+        <h3>Learn and reproduce</h3>
+        <LearnLinks />
 
         <h3>Data and credits</h3>
         <ul className="credits">

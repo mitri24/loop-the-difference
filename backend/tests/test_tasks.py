@@ -53,6 +53,7 @@ def _observation(mjd: float) -> Observation:
         mjd=mjd,
         date=f"mjd-{mjd}",
         access_url=f"https://irsa.invalid/{mjd:.0f}.fits",
+        cloud_url=f"https://s3.invalid/{mjd:.0f}.fits",
     )
 
 
@@ -107,6 +108,12 @@ def test_stacked_job_yields_one_median_frame_per_epoch(monkeypatch, settings, tm
     assert all(
         (settings.cache_dir / "frames" / "job" / f"frame_0{i}.png").exists() for i in range(3)
     )
+    # A stack's provenance is its first exposure: obs_id, cutout and full file belong together.
+    assert (frames[1]["obs_id"], frames[1]["cloud_url"]) == (
+        "obs-290",
+        "https://s3.invalid/290.fits",
+    )
+    assert frames[1]["source_url"].startswith("https://irsa.invalid/290.fits?")
     # The cosmic ray in exposure 100 is gone from the first stack: the frames are all alike.
     pixels = [_png(settings, f) for f in frames]
     assert (pixels[0] == pixels[1]).all()
@@ -257,7 +264,7 @@ def test_every_frame_lists_its_sources_with_png_pixel_positions(monkeypatch, set
 
     manifest = build_frames("job", RA, DEC, SIZE_DEG, 6, 12, stack=False)
 
-    assert manifest["pipeline_version"] == 7
+    assert manifest["pipeline_version"] == 8
     for frame in manifest["frames"]:
         (source,) = frame["sources"]
         assert source["match"] == "none"

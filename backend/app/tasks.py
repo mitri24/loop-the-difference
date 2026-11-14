@@ -40,7 +40,7 @@ MAX_SPECTRUM_POINTS = 100
 SPECTRUM_VERSION = 3
 # Bump whenever the rendered output changes: the job key changes, so cached results are rebuilt,
 # and `warm` removes frame folders whose manifest carries an older version.
-PIPELINE_VERSION = 7
+PIPELINE_VERSION = 8
 
 
 def manifest_path(cache_dir: Path, key: str) -> Path:
@@ -390,6 +390,7 @@ def _frame(index: int, url: str, epoch: int, members: list[KeptFrame]) -> Frame:
         wavelength_max_um=max(obs.wavelength_max_um for obs in observations),
         coverage=round(float(np.mean([coverage for _, _, coverage, *_ in members])), 3),
         source_url=members[0][1],
+        cloud_url=first.cloud_url,
         epoch=epoch,
         n_combined=len(members),
         date_end=last.date if len(members) > 1 else None,

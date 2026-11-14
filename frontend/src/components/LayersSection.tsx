@@ -6,8 +6,6 @@ import { SkySlider } from './SkySlider'
 
 interface Props {
   aladin: AladinInstance | null
-  ra: number
-  dec: number
   sizeDeg: number
   // The frame the player has selected; null until a comparison has frames.
   frame: Frame | null
@@ -25,7 +23,7 @@ interface Props {
 }
 
 // Everything the app draws on the Aladin sky: the SPHEREx frames, their detected sources and the catalogue markers.
-export function LayersSection({ aladin, ra, dec, sizeDeg, frame, framesOnSky, onFramesOnSkyChange, sourcesOnSky, onSourcesOnSkyChange, framesBlocked,
+export function LayersSection({ aladin, sizeDeg, frame, framesOnSky, onFramesOnSkyChange, sourcesOnSky, onSourcesOnSkyChange, framesBlocked,
   trackShown, skySlice, onSkySliceChange, cubeActive }: Props) {
   const blocked = !aladin || !frame || !!framesBlocked
   return (
@@ -47,7 +45,7 @@ export function LayersSection({ aladin, ra, dec, sizeDeg, frame, framesOnSky, on
       </p>
       {(!frame || framesBlocked) && <p className="muted">{framesBlocked ?? 'Load a comparison to place its frames and their detected sources on the sky. Gaia DR3 and SkyBoT follow the date of the shown frame, so they wait for frames too.'}</p>}
       {trackShown && <p className="track-key"><span aria-hidden="true">─●─</span> Path {TRACK_LABEL}, a dot per frame date</p>}
-      <CatalogLegend aladin={aladin} ra={ra} dec={dec} sizeDeg={sizeDeg} frameMjd={frame?.mjd ?? null} />
+      <CatalogLegend aladin={aladin} sizeDeg={sizeDeg} frameMjd={frame?.mjd ?? null} />
       <SkySlider value={skySlice} onChange={onSkySliceChange} active={cubeActive} />
     </section>
   )

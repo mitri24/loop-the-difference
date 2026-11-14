@@ -4,8 +4,6 @@ import { type LayerKey, MAX_SOURCES, useCatalogLayers } from '../catalogLayers'
 
 interface Props {
   aladin: AladinInstance | null
-  ra: number
-  dec: number
   sizeDeg: number
   frameMjd: number | null
 }
@@ -19,7 +17,7 @@ const LABELS: Record<LayerKey, { name: string; shape: string; what: string }> = 
 const KEYS = Object.keys(LABELS) as LayerKey[]
 
 // Catalogue overlays, all off by default: every marker is a known source, nothing more.
-export function CatalogLegend({ aladin, ra, dec, sizeDeg, frameMjd }: Props) {
+export function CatalogLegend({ aladin, sizeDeg, frameMjd }: Props) {
   const [enabled, setEnabled] = useState({ gaia: false, wise: false, simbad: false, skybot: false })
   const { status, skybotDate } = useCatalogLayers(aladin, enabled, sizeDeg, frameMjd)
   return (
@@ -51,10 +49,7 @@ export function CatalogLegend({ aladin, ra, dec, sizeDeg, frameMjd }: Props) {
       })}
       <p className="hint">
         A blinking source without a marker needs verification — it is not a discovery. Each
-        catalogue shows its {MAX_SOURCES} brightest sources at most.{' '}
-        <a href={`http://byw.tools/wiseview#ra=${ra}&dec=${dec}`} target="_blank" rel="noreferrer">
-          Check in WiseView
-        </a>
+        catalogue shows its {MAX_SOURCES} brightest sources at most.
       </p>
     </div>
   )
