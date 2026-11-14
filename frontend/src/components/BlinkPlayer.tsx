@@ -1,4 +1,18 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
+import {
+  REDUCED_DELAY_MS,
+  REDUCED_MAX_SWAPS,
+  defaultBlinkPair,
+  lambdaText,
+  letterOf,
+  nextIndex,
+  prefersReducedMotion,
+  releaseLabel,
+  stampText,
+  utcMinute,
+  type BlinkLetter,
+  type BlinkPair,
+} from '../blink'
 import { markerPosition } from '../motion'
 import type { Check, Frame, FrameManifest, ProperMotion } from '../types'
 import { CheckBadge, checksForFrame } from './EvidencePanel'
@@ -7,9 +21,9 @@ import { ObservationImage } from './ObservationImage'
 interface Props {
   frames: Frame[]
   checks?: Check[]
-  grid: Pick<FrameManifest, 'ra' | 'dec' | 'size_deg'>
+  grid: Pick<FrameManifest, 'ra' | 'dec' | 'size_deg' | 'collection'>
   motion: ProperMotion | null
-  onIndexChange?: (index: number) => void
+  onIndexChange?: (index: number, letter: BlinkLetter | null) => void
   // Playback and shortcuts pause while the player and the sky are covered by another panel.
   active?: boolean
   showShare?: boolean
@@ -25,19 +39,53 @@ export function BlinkPlayer({
   active = true,
   showShare = true,
 }: Props) {
-  const [index, setIndex] = useState(0)
+  const [reduced] = useState(prefersReducedMotion)
+  const [pair, setPair] = useState<BlinkPair | null>(() => defaultBlinkPair(frames))
+  const [mode, setMode] = useState<'ab' | 'all'>(pair ? 'ab' : 'all')
+  const [index, setIndex] = useState(pair?.a ?? 0)
   const [playing, setPlaying] = useState(false)
-  const [delayMs, setDelayMs] = useState(500)
+  const [delayMs, setDelayMs] = useState(reduced ? REDUCED_DELAY_MS : 500)
+  const [autoPaused, setAutoPaused] = useState(false)
   const [copyState, setCopyState] = useState<'idle' | 'copied' | 'failed'>('idle')
+  const playerRef = useRef<HTMLDivElement>(null)
+  const swaps = useRef(0)
   const count = frames.length
+  const blinkPair = mode === 'ab' ? pair : null
+  const letter = letterOf(index, blinkPair)
 
-  useEffect(() => onIndexChange?.(index), [index, onIndexChange])
+  useEffect(() => onIndexChange?.(index, letter), [index, letter, onIndexChange])
 
   useEffect(() => {
     if (!active || !playing || count < 2) return
-    const timer = window.setInterval(() => setIndex((i) => (i + 1) % count), delayMs)
+    const timer = window.setInterval(() => {
+      swaps.current += 1
+      if (reduced && swaps.current >= REDUCED_MAX_SWAPS) {
+        setPlaying(false)
+        setAutoPaused(true)
+      }
+      setIndex((i) => nextIndex(i, count, blinkPair))
+    }, delayMs)
     return () => window.clearInterval(timer)
-  }, [active, playing, delayMs, count])
+  }, [active, playing, delayMs, count, blinkPair, reduced])
+
+  const togglePlay = () => {
+    swaps.current = 0
+    setAutoPaused(false)
+    setPlaying((p) => !p)
+  }
+  const show = (target: number) => {
+    setPlaying(false)
+    setIndex(target)
+  }
+  const step = (delta: number) => {
+    setPlaying(false)
+    setIndex((i) => nextIndex(i, count, blinkPair, delta))
+  }
+  const choose = (which: 'a' | 'b', value: number) => {
+    if (!pair) return
+    setPair({ ...pair, [which]: value })
+    show(value)
+  }
 
   // Space plays/pauses, arrows step – unless the key already means something where focus is.
   useEffect(() => {
@@ -47,27 +95,24 @@ export function BlinkPlayer({
       if (target?.closest('input, textarea, select, [contenteditable="true"]')) return
       if (event.key === ' ') {
         if (target?.closest('button, a')) return
-        if (!event.repeat) setPlaying((p) => !p)
+        if (!event.repeat) togglePlay()
       } else if (event.key === 'ArrowLeft' || event.key === 'ArrowRight') {
-        setPlaying(false)
-        setIndex((i) => (i + (event.key === 'ArrowLeft' ? -1 : 1) + count) % count)
+        step(event.key === 'ArrowLeft' ? -1 : 1)
+      } else if (pair && (event.key.toLowerCase() === 'a' || event.key.toLowerCase() === 'b')) {
+        setMode('ab')
+        show(pair[event.key.toLowerCase() as 'a' | 'b'])
       } else return
       event.preventDefault()
     }
     // Map arrows/Space belong to Aladin. Player shortcuts apply only inside this player.
-    if (!active) return
-    const player = document.querySelector('.player')
-    const scopedKey = (event: Event) => onKey(event as KeyboardEvent)
-    player?.addEventListener('keydown', scopedKey)
-    return () => player?.removeEventListener('keydown', scopedKey)
-  }, [active, count])
+    const player = playerRef.current
+    if (!active || !player) return
+    player.addEventListener('keydown', onKey)
+    return () => player.removeEventListener('keydown', onKey)
+  })
 
   const frame = frames[index]
   const marker = motion && markerPosition(motion, frame.mjd, grid.ra, grid.dec, grid.size_deg)
-  const step = (delta: number) => {
-    setPlaying(false)
-    setIndex((i) => (i + delta + count) % count)
-  }
   const copyLink = async () => {
     try {
       await navigator.clipboard.writeText(window.location.href)
@@ -78,7 +123,22 @@ export function BlinkPlayer({
   }
 
   return (
-    <div className="player" role="group" tabIndex={0} aria-label="Observation player. Space to play, arrow keys to step.">
+    <div
+      ref={playerRef}
+      className="player"
+      role="group"
+      tabIndex={0}
+      aria-label="Observation player. Space to play, arrow keys to step, A and B show those frames."
+    >
+      {pair && (
+        <div className="blink-mode" role="group" aria-label="Comparison">
+          {(['ab', 'all'] as const).map((m) => (
+            <button key={m} type="button" aria-pressed={mode === m} onClick={() => setMode(m)}>
+              {m === 'ab' ? 'Blink A↔B' : 'Step through all'}
+            </button>
+          ))}
+        </div>
+      )}
       <div className="viewport">
         {/* All frames stay mounted, so they load once and switching is instant. */}
         {frames.map((f, i) => (
@@ -97,7 +157,7 @@ export function BlinkPlayer({
             title="Predicted position from Gaia DR3 proper motion"
           />
         )}
-        <span className="stamp">{frame.date.slice(0, 10)}</span>
+        <span className="stamp">{stampText(frame, letter)}</span>
         <CheckBadge checks={checksForFrame(checks, frame)} />
       </div>
 
@@ -105,7 +165,7 @@ export function BlinkPlayer({
         <button type="button" onClick={() => step(-1)} aria-label="Previous frame">
           ‹
         </button>
-        <button type="button" className="primary" disabled={count < 2} onClick={() => setPlaying((p) => !p)}>
+        <button type="button" className="primary" disabled={count < 2} onClick={togglePlay}>
           {playing ? 'Pause' : 'Play'}
         </button>
         <button type="button" onClick={() => step(1)} aria-label="Next frame">
@@ -116,10 +176,7 @@ export function BlinkPlayer({
           min={0}
           max={count - 1}
           value={index}
-          onChange={(event) => {
-            setPlaying(false)
-            setIndex(Number(event.target.value))
-          }}
+          onChange={(event) => show(Number(event.target.value))}
           aria-label="Frame"
         />
         <span className="muted">
@@ -144,6 +201,46 @@ export function BlinkPlayer({
               : 'Copy link'}
         </button>}
       </div>
+
+      {autoPaused && <p className="notice">Paused after 20 swaps (reduced motion) – press Play to continue</p>}
+
+      {pair && mode === 'ab' && (
+        <div className="blink-pair">
+          {(['a', 'b'] as const).map((which) => {
+            const f = frames[pair[which]]
+            const other = pair[which === 'a' ? 'b' : 'a']
+            const name = which.toUpperCase()
+            return (
+              <div key={which} className={`blink-chip${index === pair[which] ? ' current' : ''}`}>
+                <button type="button" onClick={() => show(pair[which])} aria-label={`Show frame ${name}`}>
+                  {name}
+                </button>
+                <span>{utcMinute(f.date)}</span>
+                <span>
+                  D{f.detector} · {lambdaText(f)}
+                </span>
+                <span>{releaseLabel(grid.collection)}</span>
+                <a href={f.source_url} target="_blank" rel="noreferrer">
+                  {f.obs_id}
+                </a>
+                <label className="epoch-pick">
+                  Frame {name}
+                  <select value={pair[which]} onChange={(event) => choose(which, Number(event.target.value))}>
+                    {frames.map((option, i) => (
+                      <option key={option.url} value={i} disabled={i === other}>
+                        {utcMinute(option.date)} · epoch {option.epoch + 1}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+              </div>
+            )
+          })}
+          <p className="muted">
+            Field centre RA {grid.ra.toFixed(5)}° · Dec {grid.dec.toFixed(5)}° · region {Number(grid.size_deg.toFixed(4))}°
+          </p>
+        </div>
+      )}
 
       <dl className="meta">
         <dt>Observed</dt>

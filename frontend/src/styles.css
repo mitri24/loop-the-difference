@@ -110,7 +110,7 @@ summary { cursor:pointer; min-height:32px; padding:5px 0; font-size:13px; }
 .mode-switch { display:flex; flex-direction:column; align-items:flex-start; gap:8px; font-size:12px; }
 .mode-switch [role='radiogroup'] { display:flex; width:100%; border:1px solid var(--border); border-radius:4px; }
 .mode-switch [role='radio'] { flex:1; min-width:0; border:0; border-radius:3px; background:transparent; padding:10px 6px; font-size:12px; }
-.mode-switch [role='radio'][aria-checked='true'] { color:var(--accent); background:#313c28; font-weight:650; }
+.mode-switch [role='radio'][aria-checked='true'],.blink-mode [aria-pressed='true'] { color:var(--accent); background:#313c28; font-weight:650; }
 .player { display:flex; flex-direction:column; gap:14px; min-width:0; }
 .viewport { position:relative; width:100%; aspect-ratio:1; background:#000; border:1px solid var(--border); }
 .viewport img { position:absolute; inset:0; width:100%; height:100%; image-rendering:pixelated; }
@@ -719,3 +719,11 @@ summary { cursor:pointer; min-height:32px; padding:5px 0; font-size:13px; }
 .source-rows li:last-child { border-bottom:0; }
 .source-rows li > button { flex:1; min-width:0; border-bottom:0; }
 .source-rows .source-mark { width:auto; flex:none; display:inline-flex; border-left:1px solid var(--border); color:var(--candidate); }
+.blink-mode { display:flex; border:1px solid var(--border); border-radius:4px; }
+.blink-mode button { flex:1; min-width:0; border:0; border-radius:3px; background:transparent; padding:8px 6px; font-size:12px; }
+.blink-pair { display:grid; grid-template-columns:repeat(auto-fit,minmax(140px,1fr)); gap:8px; font-size:12px; }
+.blink-pair > p { grid-column:1/-1; margin:0; }
+.blink-chip { display:flex; flex-direction:column; gap:3px; min-width:0; padding:8px; border:1px solid var(--border); border-radius:4px; overflow-wrap:anywhere; }
+.blink-chip.current { border-color:var(--accent); }
+.blink-chip > button { align-self:flex-start; min-width:32px; font-weight:650; }
+.blink-chip select { width:100%; min-width:0; }
