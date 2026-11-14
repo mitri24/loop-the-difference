@@ -13,6 +13,8 @@ from app.tasks import build_frames, manifest_path
 
 QUEUE_NAME = "frames"
 JOB_TIMEOUT_S = 900
+# Bump whenever the rendered output changes: cached results are then rebuilt, not served stale.
+PIPELINE_VERSION = 2
 
 
 class QueueFull(Exception):
@@ -20,10 +22,19 @@ class QueueFull(Exception):
 
 
 def job_id_for(
-    collection: str, ra: float, dec: float, size_deg: float, detector: int, max_frames: int
+    collection: str,
+    ra: float,
+    dec: float,
+    size_deg: float,
+    detector: int,
+    max_frames: int,
+    stack: bool = False,
 ) -> str:
     """Same request → same job id, so repeated requests share one job and one cache entry."""
     key = f"{collection}|{ra:.5f}|{dec:.5f}|{size_deg:.4f}|{detector}|{max_frames}"
+    if stack:
+        key += "|stack"
+    key += f"|v{PIPELINE_VERSION}"
     return hashlib.sha256(key.encode()).hexdigest()[:16]
 
 
@@ -32,7 +43,7 @@ def connect(url: str, socket_timeout: float | None = 5.0) -> Redis:
     return Redis.from_url(url, socket_connect_timeout=2, socket_timeout=socket_timeout)
 
 
-def submit(redis: Redis, settings: Settings, job_id: str, **params: float | int) -> FrameJob:
+def submit(redis: Redis, settings: Settings, job_id: str, **params: float | int | bool) -> FrameJob:
     current = status(redis, settings, job_id)
     if current.status in ("queued", "started"):
         return current

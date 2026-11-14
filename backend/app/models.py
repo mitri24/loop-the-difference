@@ -41,6 +41,7 @@ class FrameRequest(BaseModel):
     size_deg: float = Field(default=0.2, gt=0, le=1.0)
     detector: int = Field(default=6, ge=1, le=6)
     max_frames: int = Field(default=12, ge=2, le=24)
+    stack: bool = False
 
 
 class Frame(BaseModel):
@@ -54,6 +55,28 @@ class Frame(BaseModel):
     wavelength_max_um: float
     coverage: float
     source_url: str
+    epoch: int = 0
+    n_combined: int = 1
+    date_end: str | None = None
+    masked_fraction: float | None = None
+    wavelength_um: float | None = None
+    bandwidth_um: float | None = None
+
+
+class Check(BaseModel):
+    code: str
+    severity: Literal["error", "blocker", "warning", "info"]
+    message: str
+    detail: str = ""
+    affects: list[str] = []
+
+
+class Difference(BaseModel):
+    a: int
+    b: int
+    url: str
+    comparable: bool
+    delta_lambda_pct: float | None = None
 
 
 class FrameManifest(BaseModel):
@@ -66,8 +89,12 @@ class FrameManifest(BaseModel):
     epochs: int
     # False when the archive did not deliver every frame: the next request retries.
     complete: bool = True
+    stacked: bool = False
     frames: list[Frame]
+    # Human-readable copy of the checks' details, kept for older clients.
     warnings: list[str]
+    checks: list[Check] = []
+    differences: list[Difference] = []
 
 
 class FrameJob(BaseModel):
