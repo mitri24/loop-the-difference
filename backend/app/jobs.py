@@ -18,6 +18,8 @@ from app.tasks import (
 )
 
 QUEUE_NAME = "frames"
+# Jobs that take minutes (spectra) run on a worker of their own, so they never delay a frame job.
+SLOW_QUEUE = "slow"
 JOB_TIMEOUT_S = 900
 # A cold spectrum downloads up to MAX_SPECTRUM_POINTS cutouts; IRSA alone took ~30 min for 200.
 SPECTRUM_TIMEOUT_S = 1800
@@ -86,7 +88,7 @@ def submit_spectrum(redis: Redis, settings: Settings, ra: float, dec: float) -> 
         return current
     if current.status == "finished" and current.spectrum and current.spectrum.complete:
         return current
-    queue = Queue(QUEUE_NAME, connection=redis)
+    queue = Queue(SLOW_QUEUE, connection=redis)
     if queue.count > settings.max_queued:
         raise QueueFull()
     with suppress(NoSuchJobError):

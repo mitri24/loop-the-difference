@@ -15,3 +15,8 @@ services:
     volumes:
       - ./backend:/app
       - cache:/data/cache
+
+  worker-slow:
+    volumes:
+      - ./backend:/app
+      - cache:/data/cache

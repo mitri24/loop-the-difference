@@ -31,7 +31,7 @@ browser ──► web (nginx + React, Aladin Lite)
 2. A worker downloads small cutouts, spread over all epochs, and resamples them onto one north-up grid.
 3. All frames get one shared brightness stretch and are cached, so a target is prepared only once.
 
-Scale the heavy part with more workers: `docker compose up --scale worker=4`. A new SPHEREx data release is one setting: `SKYSHIFT_SPHEREX_COLLECTION` (see `.env.example`).
+Scale the heavy part with more workers: `docker compose up --scale worker=4`. Spectra run on a worker of their own (`worker-slow`, queue `slow`), so they never delay a frame job. A new SPHEREx data release is one setting: `SKYSHIFT_SPHEREX_COLLECTION` (see `.env.example`).
 
 ## Warm the cache for the demo
 
@@ -82,7 +82,7 @@ git pull && docker compose -f docker-compose.yml -f docker-compose.prod.yml up -
 Logs:
 
 ```sh
-docker compose -f docker-compose.yml -f docker-compose.prod.yml logs -f caddy api worker
+docker compose -f docker-compose.yml -f docker-compose.prod.yml logs -f caddy api worker worker-slow
 ```
 
 ## Data and credits
