@@ -373,3 +373,77 @@ select {
 .swatch.later {
   background: var(--diff-later);
 }
+
+.evidence {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  font-size: 0.9rem;
+}
+
+.evidence p {
+  margin: 0;
+  font-size: 0.85rem;
+}
+
+.checks {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  border-left: 3px solid var(--muted);
+  background: var(--surface);
+}
+
+.checks.error,
+.checks.blocker {
+  border-left-color: var(--danger);
+}
+
+.checks.warning {
+  border-left-color: var(--warning);
+}
+
+.checks li {
+  display: flex;
+  gap: 0.75rem;
+  padding: 0.4rem 0.75rem;
+}
+
+.check-label {
+  flex: none;
+  min-width: 5.5rem;
+  font-weight: 600;
+}
+
+.checks.error .check-label,
+.checks.blocker .check-label {
+  color: var(--danger);
+}
+
+.checks.warning .check-label {
+  color: var(--warning);
+}
+
+.checks.info .check-label {
+  color: var(--muted);
+}
+
+.badge {
+  position: absolute;
+  right: 0.5rem;
+  top: 0.4rem;
+  padding: 0.1rem 0.5rem;
+  border-radius: 999px;
+  background: rgba(0, 0, 0, 0.7);
+  color: var(--text);
+  font-size: 0.8rem;
+}
+
+.badge.warning {
+  color: var(--warning);
+}
+
+.badge.error,
+.badge.blocker {
+  color: var(--danger);
+}
