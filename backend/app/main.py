@@ -9,6 +9,7 @@ from redis.exceptions import RedisError
 
 from app import jobs, names
 from app.archive import ArchiveError, resolve_position, search_observations, summarize
+from app.catalogs import find_proper_motion
 from app.config import Settings, get_settings
 from app.coords import CoordinateError, parse_dec, parse_ra
 from app.models import FrameJob, FrameRequest, ObservationSummary, ResolvedTarget
@@ -57,7 +58,8 @@ def health(settings: SettingsDep) -> dict[str, str]:
     return {"status": "ok", "redis": queue, "collection": settings.spherex_collection}
 
 
-@app.get("/api/resolve")
+# No Gaia match: proper_motion is left out of the answer.
+@app.get("/api/resolve", response_model_exclude_none=True)
 def resolve(
     settings: SettingsDep, name: str = Query(min_length=1, max_length=100)
 ) -> ResolvedTarget:
@@ -69,7 +71,7 @@ def resolve(
         raise HTTPException(
             status_code=504, detail="Name lookup timed out – try coordinates"
         ) from None
-    return ResolvedTarget(name=name, ra=ra, dec=dec)
+    return ResolvedTarget(name=name, ra=ra, dec=dec, proper_motion=find_proper_motion(ra, dec))
 
 
 @app.get("/api/observations")

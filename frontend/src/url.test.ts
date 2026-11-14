@@ -58,4 +58,11 @@ describe('target in the URL', () => {
     expect(readEmbed(toSearch(POLARIS))).toBe(false)
     expect(readQuery(toSearch(POLARIS, true))).toEqual(POLARIS)
   })
+
+  it('keeps the target name, and leaves it out when there is none', () => {
+    const barnard = { ...POLARIS, name: "Barnard's Star" }
+    expect(readQuery(toSearch(barnard))).toEqual(barnard)
+    expect(readQuery('?ra=1&dec=2&name=%20')).not.toHaveProperty('name')
+    expect(toSearch(POLARIS)).not.toContain('name=')
+  })
 })

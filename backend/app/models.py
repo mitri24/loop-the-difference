@@ -29,10 +29,23 @@ class ObservationSummary(BaseModel):
     observations: list[Observation]
 
 
+class ProperMotion(BaseModel):
+    """Gaia DR3 astrometry: position at ref_epoch (Julian year), pmra includes cos(dec)."""
+
+    source_id: str
+    ra: float
+    dec: float
+    ref_epoch: float
+    pmra_mas_yr: float
+    pmdec_mas_yr: float
+    parallax_mas: float | None
+
+
 class ResolvedTarget(BaseModel):
     name: str
     ra: float
     dec: float
+    proper_motion: ProperMotion | None = None
 
 
 class FrameRequest(BaseModel):

@@ -25,10 +25,21 @@ export interface ObservationSummary {
   observations: Observation[]
 }
 
+export interface ProperMotion {
+  source_id: string
+  ra: number
+  dec: number
+  ref_epoch: number
+  pmra_mas_yr: number
+  pmdec_mas_yr: number
+  parallax_mas: number | null
+}
+
 export interface ResolvedTarget {
   name: string
   ra: number
   dec: number
+  proper_motion?: ProperMotion // left out when Gaia DR3 has no match
 }
 
 export interface Frame {

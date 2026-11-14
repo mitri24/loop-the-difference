@@ -219,6 +219,15 @@ select {
   pointer-events: none;
 }
 
+.marker {
+  position: absolute;
+  width: 4%;
+  aspect-ratio: 1;
+  transform: translate(-50%, -50%) rotate(45deg);
+  border: 2px solid var(--warning);
+  pointer-events: none;
+}
+
 .stamp {
   position: absolute;
   left: 0.5rem;

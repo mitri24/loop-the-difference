@@ -1,9 +1,17 @@
 import { useEffect, useState } from 'react'
-import type { Check, Frame } from '../types'
+import { markerPosition } from '../motion'
+import type { Check, Frame, FrameManifest, ProperMotion } from '../types'
 import { CheckBadge, checksForFrame } from './EvidencePanel'
 
+interface Props {
+  frames: Frame[]
+  checks?: Check[]
+  grid: Pick<FrameManifest, 'ra' | 'dec' | 'size_deg'>
+  motion: ProperMotion | null
+}
+
 // Remount with a new key for new frames: playback state then starts fresh.
-export function BlinkPlayer({ frames, checks = [] }: { frames: Frame[]; checks?: Check[] }) {
+export function BlinkPlayer({ frames, checks = [], grid, motion }: Props) {
   const [index, setIndex] = useState(0)
   const [playing, setPlaying] = useState(true)
   const [delayMs, setDelayMs] = useState(500)
@@ -36,6 +44,7 @@ export function BlinkPlayer({ frames, checks = [] }: { frames: Frame[]; checks?:
   }, [count])
 
   const frame = frames[index]
+  const marker = motion && markerPosition(motion, frame.mjd, grid.ra, grid.dec, grid.size_deg)
   const step = (delta: number) => {
     setPlaying(false)
     setIndex((i) => (i + delta + count) % count)
@@ -62,6 +71,13 @@ export function BlinkPlayer({ frames, checks = [] }: { frames: Frame[]; checks?:
           />
         ))}
         <div className="reticle" aria-hidden="true" />
+        {marker && (
+          <div
+            className="marker"
+            style={{ left: `${marker.x * 100}%`, top: `${marker.y * 100}%` }}
+            title="Predicted position from Gaia DR3 proper motion"
+          />
+        )}
         <span className="stamp">{frame.date.slice(0, 10)}</span>
         <CheckBadge checks={checksForFrame(checks, frame)} />
       </div>
@@ -120,6 +136,17 @@ export function BlinkPlayer({ frames, checks = [] }: { frames: Frame[]; checks?:
         </dd>
         <dt>Coverage</dt>
         <dd>{Math.round(frame.coverage * 100)} %</dd>
+        {motion && (
+          <>
+            <dt>Gaia DR3</dt>
+            <dd>
+              {motion.source_id} · µ {motion.pmra_mas_yr.toFixed(0)},{' '}
+              {motion.pmdec_mas_yr.toFixed(0)} mas/yr
+              {motion.parallax_mas !== null && ` · ϖ ${motion.parallax_mas.toFixed(1)} mas`} ·{' '}
+              {marker ? '◇ predicted position' : 'predicted position outside this frame'}
+            </dd>
+          </>
+        )}
         <dt>Source</dt>
         <dd>
           <a href={frame.source_url} target="_blank" rel="noreferrer">
