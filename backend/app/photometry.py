@@ -14,6 +14,10 @@ ANNULUS_PX = (4.0, 7.0)
 _MJY_SR_TO_UJY_PER_DEG2 = 1e12 * (np.pi / 180) ** 2
 # Sub-pixel sampling of the aperture edge: the PSF is undersampled, so whole pixels would jitter.
 _SUBSAMPLE = 5
+SKIP_EDGE = "target at the cutout edge"
+SKIP_NAN = "NaN pixels in the aperture"
+SKIP_SKY = "too few usable sky pixels"
+SKIP_VARIANCE = "invalid VARIANCE"
 
 
 def forced_photometry(
@@ -22,8 +26,10 @@ def forced_photometry(
     dec: float,
     radius_px: float = APERTURE_RADIUS_PX,
     annulus_px: tuple[float, float] = ANNULUS_PX,
-) -> tuple[float, float, bool] | tuple[None, None, bool]:
+) -> tuple[float, float, bool] | str:
     """Background-subtracted aperture flux (µJy), its 1σ error and a flag, quick-look only.
+
+    Without a flux it returns why, as words for the skip check: one of the SKIP_* reasons.
 
     No aperture correction: the flux is the PSF core, comparable between visits, not a total flux.
     The flag says that the aperture holds pixels the archive marks unusable (e.g. saturation):
@@ -52,8 +58,12 @@ def forced_photometry(
         radius_px - 0.5 <= y <= height - 0.5 - radius_px
     )
     # A clipped or masked aperture biases the flux low: no number is better than a wrong one.
-    if not inside or not finite[aperture].all() or sky.sum() < 2:
-        return None, None, False
+    if not inside:
+        return SKIP_EDGE
+    if not finite[aperture].all():
+        return SKIP_NAN
+    if sky.sum() < 2:
+        return SKIP_SKY
 
     background = np.median(image[sky])
     w = weight[aperture]
@@ -62,7 +72,7 @@ def forced_photometry(
     sky_error = np.sqrt(np.pi / 2) * np.std(image[sky], ddof=1) / np.sqrt(sky.sum())
     error_squared = np.sum(w**2 * variance[aperture]) + (w.sum() * sky_error) ** 2
     if not error_squared >= 0:
-        return None, None, False
+        return SKIP_VARIANCE
     error = np.sqrt(error_squared)
     to_ujy = proj_plane_pixel_area(wcs) * _MJY_SR_TO_UJY_PER_DEG2
     return float(flux * to_ujy), float(error * to_ujy), bool(unusable[aperture].any())

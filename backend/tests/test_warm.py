@@ -1,5 +1,7 @@
 import json
 
+import pytest
+
 from app import warm
 from app.archive import sia_cache_path
 from app.coords import parse_dec, parse_ra
@@ -10,6 +12,19 @@ from app.tasks import PIPELINE_VERSION, manifest_path
 POLARIS_D6 = job_id_for(
     "spherex_dr1", parse_ra("02:31:49.09"), parse_dec("+89:15:50.8"), 0.2, 6, 12
 )
+
+
+@pytest.fixture(autouse=True)
+def spectra(monkeypatch):
+    """Every run also builds one spectrum per target: record it instead of downloading."""
+    calls = []
+
+    def build_spectrum(ra, dec):
+        calls.append((ra, dec))
+        return {"points": [1, 2], "checks": [], "complete": True}
+
+    monkeypatch.setattr(warm, "build_spectrum", build_spectrum)
+    return calls
 
 
 def _fail_resolver(name):
@@ -57,8 +72,8 @@ def test_dry_run_lists_every_target_and_detector_without_network(settings, capsy
 
     lines = capsys.readouterr().out.splitlines()
     assert code == 0
-    assert len(lines) == 6 * 2
-    assert lines[0] == f"{POLARIS_D6} · Polaris · D6"
+    assert len(lines) == 6 * 3
+    assert lines[:2] == [f"{POLARIS_D6} · Polaris · D6", "spectrum · Polaris"]
     assert "resolve:R Dra · R Draconis · D1" in lines
 
 
@@ -191,3 +206,52 @@ def test_dry_run_and_missing_frames_dir_do_not_prune(settings, capsys):
     warm.run(["--dry-run"], settings, resolver=_fail_resolver, build=_fail_build)
     assert old.is_file()
     assert warm.prune_stale_frames(settings.cache_dir / "nowhere") == []
+
+
+def test_spectrum_is_built_once_per_target_at_the_position_the_ui_sends(settings, spectra, capsys):
+    def build(**kwargs):
+        return {"frames": [], "warnings": [], "complete": True}
+
+    warm.run(
+        ["--targets", "r-draconis"], settings, resolver=lambda n: (1.23456789, 2.0), build=build
+    )
+
+    assert spectra == [(1.234568, 2.0)]
+    assert "spectrum · R Draconis · 2 points ·" in capsys.readouterr().out
+
+
+def test_failed_or_incomplete_spectrum_fails_the_run_but_warms_the_frames(
+    settings, monkeypatch, capsys
+):
+    calls = []
+
+    def build(**kwargs):
+        calls.append(kwargs["detector"])
+        return {"frames": [], "warnings": [], "complete": True}
+
+    def broken(ra, dec):
+        raise RuntimeError("archive did not answer")
+
+    monkeypatch.setattr(warm, "build_spectrum", broken)
+    assert warm.run(["--targets", "polaris"], settings, resolver=_fail_resolver, build=build) == 1
+    assert calls == [6, 1]
+    assert "FAILED · spectrum · Polaris" in capsys.readouterr().err
+
+    skipped = {"code": "SPECTRUM_POINTS_SKIPPED", "detail": "3 visits skipped: 3 NaN"}
+    monkeypatch.setattr(
+        warm,
+        "build_spectrum",
+        lambda ra, dec: {"points": [], "checks": [skipped], "complete": False},
+    )
+    assert warm.run(["--targets", "polaris"], settings, resolver=_fail_resolver, build=build) == 1
+    assert "0 points · " in (out := capsys.readouterr().out)
+    assert "3 visits skipped: 3 NaN · INCOMPLETE" in out
+
+
+def test_no_spectrum_warms_the_frames_only(settings, spectra):
+    def build(**kwargs):
+        return {"frames": [], "warnings": [], "complete": True}
+
+    args = ["--targets", "polaris", "--no-spectrum"]
+    assert warm.run(args, settings, resolver=_fail_resolver, build=build) == 0
+    assert spectra == []

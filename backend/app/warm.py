@@ -4,6 +4,8 @@ Run inside the worker image, where astropy and the cache volume exist:
     docker compose run --rm worker python -m app.warm [--dry-run] [--force] [--targets polaris]
 --force also refreshes the cached search and name-resolution answers.
 Every job writes the same manifest the UI would request, so a demo click is served from the cache.
+Each target's spectrum is built once too (--no-spectrum skips it): that downloads its cutouts, so
+the spectrum click only measures them. The spectrum itself lives in the RQ job, not on disk.
 """
 
 import argparse
@@ -23,7 +25,7 @@ from app.config import Settings, get_settings
 from app.coords import parse_dec, parse_ra
 from app.jobs import job_id_for
 from app.models import FrameManifest
-from app.tasks import PIPELINE_VERSION, build_frames, manifest_path
+from app.tasks import PIPELINE_VERSION, build_frames, build_spectrum, manifest_path
 
 # Mirrors frontend/src/targets.ts (CHALLENGE_TARGETS): same strings, so demo clicks hit warmed keys.
 TARGETS: list[tuple[str, str, str] | tuple[str, str]] = [
@@ -99,14 +101,17 @@ def run(
     settings: Settings | None = None,
     resolver: Resolver | None = None,
     build: Callable[..., dict] = build_frames,
+    spectrum: Callable[[float, float], dict] | None = None,
 ) -> int:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("--dry-run", action="store_true", help="list the jobs, no network")
     parser.add_argument("--force", action="store_true", help="rebuild cached frames")
     parser.add_argument("--targets", help="comma-separated labels, e.g. polaris,wise0855")
+    parser.add_argument("--no-spectrum", action="store_true", help="warm the frames only")
     args = parser.parse_args(argv)
     settings = settings or get_settings()
     resolver = resolver or partial(resolve_position, settings=settings)
+    spectrum = spectrum or build_spectrum
     only = {_slug(t) for t in args.targets.split(",")} if args.targets else None
     jobs = plan(only)
     if not jobs:
@@ -120,10 +125,14 @@ def run(
 
     failed = 0
     resolved: dict[str, tuple[float, float]] = {}
+    spectra: set[str] = set()
     for job in jobs:
         if args.dry_run:
             key = job.key(settings.spherex_collection) or f"resolve:{job.name}"
             print(f"{key} · {job.target} · D{job.detector}")
+            if not args.no_spectrum and job.target not in spectra:
+                spectra.add(job.target)
+                print(f"spectrum · {job.target}")
             continue
         started = time.monotonic()
         try:
@@ -143,7 +152,10 @@ def run(
                 sia_cache_path(
                     settings.cache_dir, settings.spherex_collection, job.ra, job.dec
                 ).unlink(missing_ok=True)
-            elif cached.is_file():
+            if not args.no_spectrum and job.target not in spectra:
+                spectra.add(job.target)
+                failed += not _warm_spectrum(spectrum, job)
+            if not args.force and cached.is_file():
                 manifest = FrameManifest.model_validate_json(cached.read_text())
                 if manifest.complete:
                     print(f"{key} · {job.target} · D{job.detector} · cached")
@@ -168,6 +180,23 @@ def run(
             f"{seconds:.1f} s · {len(result['warnings'])} warnings{state}"
         )
     return 1 if failed else 0
+
+
+def _warm_spectrum(spectrum: Callable[[float, float], dict], job: WarmJob) -> bool:
+    """Build the target's spectrum once, at the position the UI sends; a failure stays local."""
+    started = time.monotonic()
+    try:
+        result = spectrum(job.ra, job.dec)
+    except Exception as exc:  # the frames of this target are still worth warming
+        print(f"FAILED · spectrum · {job.target} · {exc}", file=sys.stderr)
+        return False
+    skipped = [c["detail"] for c in result["checks"] if c["code"] == "SPECTRUM_POINTS_SKIPPED"]
+    state = "" if result["complete"] else " · INCOMPLETE (re-run to retry)"
+    print(
+        f"spectrum · {job.target} · {len(result['points'])} points · "
+        f"{time.monotonic() - started:.1f} s{''.join(f' · {s}' for s in skipped)}{state}"
+    )
+    return result["complete"]
 
 
 def _slug(label: str) -> str:

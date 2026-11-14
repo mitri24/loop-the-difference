@@ -3,7 +3,7 @@ import pytest
 from astropy.io import fits
 from astropy.wcs import WCS
 
-from app.photometry import forced_photometry
+from app.photometry import SKIP_EDGE, SKIP_NAN, SKIP_SKY, SKIP_VARIANCE, forced_photometry
 
 RA, DEC = 133.795, -7.245
 SIZE = 41
@@ -93,15 +93,24 @@ def test_noisy_sky_error_matches_the_scatter_of_measurements(tmp_path):
     assert np.std(fluxes) == pytest.approx(np.median(errors), rel=0.2)
 
 
-@pytest.mark.parametrize("ra_offset_px", [0, SIZE // 2])
-def test_masked_or_clipped_aperture_gives_no_flux(tmp_path, ra_offset_px):
+@pytest.mark.parametrize(("ra_offset_px", "reason"), [(0, SKIP_NAN), (SIZE // 2, SKIP_EDGE)])
+def test_masked_or_clipped_aperture_gives_no_flux_but_the_reason(tmp_path, ra_offset_px, reason):
     image = _star(90.0)
     if ra_offset_px == 0:
         image[SIZE // 2, SIZE // 2] = np.nan
     path = _cutout(tmp_path, image, np.full((SIZE, SIZE), 0.04))
 
     ra = RA - ra_offset_px * SCALE_DEG / np.cos(np.radians(DEC))
-    assert forced_photometry(path, ra, DEC) == (None, None, False)
+    assert forced_photometry(path, ra, DEC) == reason
+
+
+def test_sky_ring_without_data_gives_no_flux_but_the_reason(tmp_path):
+    image = _star(90.0)
+    yy, xx = np.indices(image.shape)
+    image[np.hypot(xx - SIZE // 2, yy - SIZE // 2) >= 3.5] = np.nan
+    path = _cutout(tmp_path, image, np.full((SIZE, SIZE), 0.04))
+
+    assert forced_photometry(path, RA, DEC) == SKIP_SKY
 
 
 @pytest.mark.parametrize(("bit", "flagged"), [(1, False), (2, True)])
@@ -129,4 +138,4 @@ def test_flagged_pixel_in_the_sky_ring_does_not_change_the_flux(tmp_path):
 def test_negative_variance_gives_no_flux(tmp_path):
     path = _cutout(tmp_path, _star(90.0), np.full((SIZE, SIZE), -1e6))
 
-    assert forced_photometry(path, RA, DEC) == (None, None, False)
+    assert forced_photometry(path, RA, DEC) == SKIP_VARIANCE
