@@ -99,6 +99,11 @@ declare module 'aladin-lite' {
     customizeShareURLFunction(fn: () => string): void
     on(event: 'stackChanged', callback: (change: StackChange) => void): void
     on(event: 'click', callback: (click: { ra: number; dec: number; isDragging: boolean }) => void): void
+    on(
+      event: 'objectHovered' | 'objectHoveredStop',
+      callback: (source: { data?: Record<string, string> }) => void,
+    ): void
+    aladinDiv: HTMLElement
   }
 
   const A: {

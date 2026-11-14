@@ -24,7 +24,7 @@ export const wiseUrl = (ra: number, dec: number, rDeg: number, mirror = VIZIER_M
 // TAP always answers with a table, also for an empty field; votable/td keeps the rows readable.
 export const simbadUrl = (ra: number, dec: number, rDeg: number) =>
   `https://simbad.cfa.harvard.edu/simbad/sim-tap/sync?request=doQuery&lang=adql&format=votable/td&query=${encodeURIComponent(
-    `SELECT TOP ${MAX_SOURCES} main_id, ra, dec, otype FROM basic WHERE CONTAINS(POINT('ICRS', ra, dec), CIRCLE('ICRS', ${ra}, ${dec}, ${rDeg})) = 1`,
+    `SELECT TOP ${MAX_SOURCES} main_id, ra, dec, otype, pmra, pmdec FROM basic WHERE CONTAINS(POINT('ICRS', ra, dec), CIRCLE('ICRS', ${ra}, ${dec}, ${rDeg})) = 1`,
   )}`
 
 // Asteroids move: the epoch is the shown frame's time, passed as Julian Date.
@@ -100,6 +100,33 @@ export function gaiaSources(rows: string[][], mjd: number) {
     .filter((s) => Number.isFinite(s.ra) && Number.isFinite(s.dec))
 }
 
+/** SIMBAD rows (columns as in simbadUrl) moved from J2000 to the frame epoch; no proper motion → J2000. */
+export function simbadSources(rows: string[][], mjd: number) {
+  return rows
+    .filter(([, ra, dec]) => ra !== '' && dec !== '')
+    .map(([name, ra, dec, otype, pmRa, pmDec]) => {
+      const pos = propagateGaia(
+        { ra: +ra, dec: +dec, pmRa: Number(pmRa) || 0, pmDec: Number(pmDec) || 0 },
+        mjd,
+        2000,
+      )
+      const data = {
+        main_id: name,
+        ra: pos.ra.toFixed(6),
+        dec: pos.dec.toFixed(6),
+        otype,
+        pmra: pmRa,
+        pmdec: pmDec,
+      }
+      return { ...pos, data }
+    })
+    .filter((s) => Number.isFinite(s.ra) && Number.isFinite(s.dec))
+}
+
+/** The name column of a marker: SIMBAD, SkyBoT, AllWISE, Gaia DR3, then our own layers. */
+export const sourceName = (data: Record<string, string> = {}) =>
+  data.main_id || data.Name || data.AllWISE || data.Source || data.label || ''
+
 export type LayerKey = 'gaia' | 'wise' | 'simbad' | 'skybot'
 export type LayerStatus = 'off' | 'loading' | 'ready' | 'none' | 'unavailable'
 /** A loaded catalogue, 'none' for a field without objects, null when the service failed. */
@@ -161,18 +188,19 @@ function attempts(key: LayerKey, { ra, dec, r }: View, mjd: number) {
   return [url, url]
 }
 
-// The Gaia answer does not depend on the epoch: one download per view, moved locally per epoch.
-let gaiaAnswer: { url: string; rows: Promise<string[][]> } | null = null
-function gaiaRows(urls: string[], cancel: AbortSignal) {
+// Gaia and SIMBAD answers do not depend on the epoch: one download per view, moved locally per epoch.
+const answers: Partial<Record<LayerKey, { url: string; rows: Promise<string[][]> }>> = {}
+function viewRows(key: LayerKey, urls: string[], cancel: AbortSignal) {
   const url = urls[0]
-  if (gaiaAnswer?.url !== url) {
-    const rows = fetchVotable(urls, TIMEOUT_MS.gaia, cancel).then((answer) => answer.rows)
+  let answer = answers[key]
+  if (answer?.url !== url) {
+    const rows = fetchVotable(urls, TIMEOUT_MS[key], cancel).then((a) => a.rows)
     rows.catch(() => {
-      if (gaiaAnswer?.rows === rows) gaiaAnswer = null
+      if (answers[key]?.rows === rows) delete answers[key]
     })
-    gaiaAnswer = { url, rows }
+    answer = answers[key] = { url, rows }
   }
-  return gaiaAnswer.rows
+  return answer.rows
 }
 
 const catalogOptions = (key: LayerKey): CatalogOptions => ({
@@ -190,8 +218,9 @@ async function loadSources(
   cancel: AbortSignal,
 ): Promise<unknown[] | 'none'> {
   const urls = attempts(key, view, mjd)
-  if (key === 'gaia') {
-    const sources = gaiaSources(await gaiaRows(urls, cancel), mjd)
+  if (key === 'gaia' || key === 'simbad') {
+    const rows = await viewRows(key, urls, cancel)
+    const sources = key === 'gaia' ? gaiaSources(rows, mjd) : simbadSources(rows, mjd)
     if (sources.length === 0) return 'none'
     const A = (await import('aladin-lite')).default
     return sources.map((s) => A.source(s.ra, s.dec, s.data))
@@ -280,7 +309,8 @@ function useLayer(
       loadSources(key, v, epoch, cancel).catch(() => null),
     ),
   )
-  const epoch = key === 'gaia' || key === 'skybot' ? mjd : 0
+  // SIMBAD without frames stays at J2000.
+  const epoch = key === 'wise' ? 0 : key === 'simbad' ? (mjd ?? MJD_J2000) : mjd
   useEffect(() => {
     if (!aladin) return
     const show = (sources: unknown[] | null) => {
@@ -326,8 +356,8 @@ function useLayer(
 }
 
 /**
- * Catalogue overlays around the current Aladin view. Gaia and SkyBoT follow the shown frame's
- * epoch; frames within a day of each other share one epoch.
+ * Catalogue overlays around the current Aladin view. Gaia, SIMBAD and SkyBoT follow the shown
+ * frame's epoch; frames within a day of each other share one epoch.
  */
 export function useCatalogLayers(
   aladin: AladinInstance | null,
@@ -355,7 +385,7 @@ export function useCatalogLayers(
     if (!aladin) return
     let alive = true
     let timer = 0
-    // Aladin has no way to remove a listener, so old ones are silenced instead.
+    // Aladin keeps one callback per event and a new one replaces it; old ones are silenced anyway.
     const read = () => {
       const [ra, dec] = aladin.getRaDec()
       if (alive) setView({ ra, dec, r: catalogRadius(aladin.getFov()[0], size.current) })
@@ -366,6 +396,20 @@ export function useCatalogLayers(
     }
     aladin.on('positionChanged', later)
     aladin.on('zoomChanged', later)
+    // Aladin only highlights a hovered marker; the browser tooltip names it. Aladin reports newly
+    // hovered markers before the ones left, so overlapping markers are tracked as a set.
+    const hovered = new Set<{ data?: Record<string, string> }>()
+    const name = () => {
+      if (alive) aladin.aladinDiv.title = sourceName([...hovered].at(-1)?.data)
+    }
+    aladin.on('objectHovered', (source) => {
+      hovered.add(source)
+      name()
+    })
+    aladin.on('objectHoveredStop', (source) => {
+      hovered.delete(source)
+      name()
+    })
     later()
     return () => {
       alive = false
