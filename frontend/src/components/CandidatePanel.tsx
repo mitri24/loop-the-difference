@@ -1,5 +1,6 @@
-import { CANDIDATE_STATES, MARK_LETTERS, candidateState, markText, type Candidate } from '../candidate'
+import { MARK_LETTERS, markText, type Candidate } from '../candidate'
 import { trackEvidence, type PossibleTrack } from '../track'
+import { KnownObjectCheck, type KnownContext } from './KnownObjectCheck'
 import { TrackSummary } from './TrackSummary'
 
 interface Props {
@@ -7,11 +8,11 @@ interface Props {
   // Why marking on the sky is off right now; null when it is possible.
   blocked: string | null
   track: PossibleTrack | null
+  known: KnownContext
 }
 
 // Directly under the blink: what to do next, the marks so far and what they still need.
-export function CandidatePanel({ candidate: { marks, notice, armed, setArmed, clear }, blocked, track }: Props) {
-  const state = CANDIDATE_STATES[candidateState(trackEvidence(track))]
+export function CandidatePanel({ candidate: { marks, notice, armed, setArmed, clear }, blocked, track, known }: Props) {
   return (
     <section className="candidate-check" aria-labelledby="candidate-heading">
       <h3 id="candidate-heading">Candidate check</h3>
@@ -38,10 +39,10 @@ export function CandidatePanel({ candidate: { marks, notice, armed, setArmed, cl
               </li>
             ))}
           </ol>
-          <p className="candidate-state">
-            <span aria-hidden="true">{state.icon}</span> {state.word}
-          </p>
-          {track && <TrackSummary track={track} />}
+          <KnownObjectCheck key={marks.map((m) => `${m.obs_id}:${m.ra}:${m.dec}`).join()} marks={marks} {...known}
+            evidence={trackEvidence(track)}>
+            {track && <TrackSummary track={track} />}
+          </KnownObjectCheck>
           <button type="button" onClick={clear}>Clear marks</button>
         </>
       )}

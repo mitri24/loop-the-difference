@@ -318,7 +318,8 @@ export default function App() {
       {manifest && hasFrames && showDifference && <DifferenceView key={job.job_id} manifest={manifest} />}
       {manifest && hasFrames && !showDifference && <BlinkPlayer key={job.job_id} frames={manifest.frames} checks={checks} grid={manifest} motion={motion} predictions={predictions}
         onIndexChange={showFrame} active={EMBED || panel === 'compare' || !panel} showShare={EMBED} />}
-      {!EMBED && manifest && hasFrames && <CandidatePanel candidate={candidate} blocked={markBlocked} track={possible && { ...possible, predictions }} />}
+      {!EMBED && manifest && hasFrames && <CandidatePanel candidate={candidate} blocked={markBlocked} track={possible && { ...possible, predictions }}
+        known={{ epochs: smallBodies.epochs, motion, detector: manifest.detector, target: targetLabel }} />}
       {!EMBED && manifest && hasFrames && <details className="disclosure"><summary>Data & cross-check links</summary>
         <DataLinks manifest={manifest} frame={showDifference ? null : frame} /></details>}
       {!EMBED && manifest && frame && !showDifference && <WavelengthStrip detector={manifest.detector} frame={frame} />}
