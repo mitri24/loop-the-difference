@@ -2,7 +2,7 @@ import numpy as np
 import pytest
 from PIL import Image
 
-from app import tasks
+from app import sources, tasks
 from app.catalogs import position_at
 from app.frames import target_grid
 from app.models import Observation, ProperMotion
@@ -238,3 +238,32 @@ def test_spectrum_without_gaia_says_so_and_stays_incomplete(monkeypatch, setting
     assert "SPECTRUM_GAIA_UNAVAILABLE" in [c["code"] for c in spectrum["checks"]]
     assert spectrum["complete"] is False
     assert len(spectrum["points"]) == 1
+
+
+def test_every_frame_lists_its_sources_with_png_pixel_positions(monkeypatch, settings, tmp_path):
+    observations = [_observation(start + i) for start in (100, 290) for i in range(2)]
+    _offline_archive(monkeypatch, settings, tmp_path, observations)
+    target, shape = target_grid(RA, DEC, SIZE_DEG)
+    y, x = np.mgrid[: shape[0], : shape[1]]
+    star = 300.0 * np.exp(-((x - 8.0) ** 2 + (y - 5.0) ** 2) / (2 * 0.68**2))
+
+    def read_image(path):
+        noise = np.random.default_rng(int(path.stem)).normal(0.0, 1.0, shape)
+        return noise + star, target, np.zeros(shape, dtype=bool)
+
+    monkeypatch.setattr(tasks, "read_image", read_image)
+    monkeypatch.setattr(sources, "query_gaia", lambda *_: [])
+    monkeypatch.setattr(sources, "query_allwise", lambda *_: [])
+
+    manifest = build_frames("job", RA, DEC, SIZE_DEG, 6, 12, stack=False)
+
+    assert manifest["pipeline_version"] == 7
+    for frame in manifest["frames"]:
+        (source,) = frame["sources"]
+        assert source["match"] == "none"
+        # x/y address the PNG: the star sits at array row 5, i.e. near the bottom of the image.
+        assert (round(source["x"]), round(source["y"])) == (8, shape[0] - 1 - 5)
+        assert _png(settings, frame)[round(source["y"]), round(source["x"])] > 200
+    (check,) = [c for c in manifest["checks"] if c["code"] == "SOURCES"]
+    assert check["severity"] == "info"
+    assert "4 detections in 4 frames" in check["detail"]

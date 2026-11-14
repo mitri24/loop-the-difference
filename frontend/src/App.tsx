@@ -9,8 +9,10 @@ import { DifferenceView } from './components/DifferenceView'
 import { LayersSection } from './components/LayersSection'
 import { ModeSwitch } from './components/ModeSwitch'
 import { SkyView } from './components/SkyView'
+import { SourceList } from './components/SourceList'
 import { TargetForm } from './components/TargetForm'
 import { useFrameLayers } from './frameLayers'
+import { countSources, useSourceLayer } from './sourceLayer'
 import type { FrameJob, ObservationSummary, ProperMotion } from './types'
 import { POLARIS, readEmbed, readQuery, toSearch, type TargetQuery, type ViewMode } from './url'
 
@@ -41,6 +43,7 @@ export default function App() {
   const [sky, setSky] = useState<AladinInstance | null>(null)
   const [frameIndex, setFrameIndex] = useState(0)
   const [framesOnSky, setFramesOnSky] = useState(true)
+  const [sourcesOnSky, setSourcesOnSky] = useState(true)
   const [viewRevision, setViewRevision] = useState(0)
   const [panel, setPanel] = useState<Panel | null>(INITIAL ? 'compare' : 'locate')
   const [name, setName] = useState('')
@@ -213,7 +216,10 @@ export default function App() {
   const hasFrames = (manifest?.frames.length ?? 0) > 0
   // The player's frame blinks on the sky; the difference image stays in the panel.
   useFrameLayers(sky, manifest, frameIndex, framesOnSky && !showDifference)
+  useSourceLayer(sky, manifest?.frames, frameIndex, sourcesOnSky && hasFrames && !showDifference)
   const frame = (hasFrames && manifest?.frames[frameIndex]) || null
+  const counts = frame?.sources ? countSources(frame.sources) : null
+  const sourceSummary = counts ? ` · ${counts.detected} in this frame · ${counts.none} ${counts.none === 1 ? 'needs' : 'need'} verification${counts.unknown ? ` · ${counts.unknown} unknown` : ''}` : ''
   const frameOnSky = frame && sky && framesOnSky && !showDifference ? frame : null
 
   const comparison = (
@@ -255,8 +261,12 @@ export default function App() {
       {manifest && hasFrames && !showDifference && <BlinkPlayer key={job.job_id} frames={manifest.frames} checks={checks} grid={manifest} motion={motion}
         onIndexChange={setFrameIndex} active={EMBED || panel === 'compare'} showShare={EMBED} />}
       {!EMBED && !skyUnavailable && <LayersSection aladin={sky} ra={center.ra} dec={center.dec} sizeDeg={query.fov} frame={frame}
-        framesOnSky={framesOnSky} onFramesOnSkyChange={setFramesOnSky}
-        framesBlocked={showDifference ? 'The difference image is shown in this panel. Frames go back on the sky in the other modes.' : undefined} />}
+        framesOnSky={framesOnSky} onFramesOnSkyChange={setFramesOnSky} sourcesOnSky={sourcesOnSky} onSourcesOnSkyChange={setSourcesOnSky}
+        framesBlocked={showDifference ? 'The difference image is shown in this panel. Frames and their detected sources go back on the sky in the other modes.' : undefined} />}
+      {!EMBED && !skyUnavailable && frame && !showDifference && <details className="disclosure">
+        <summary>Detected sources{sourceSummary}</summary>
+        <SourceList frame={frame} onSelect={(ra, dec) => sky?.gotoRaDec(ra, dec)} />
+      </details>}
       {manifest && checks.length > 0 && <details className="disclosure" open={hasBlocker(checks, 'difference')}><summary>Quality checks · {checks.length}</summary><EvidencePanel checks={checks} /></details>}
       <p className="science-note">Changes are unverified. Wavelength, coverage and image artifacts can affect a comparison.</p>
     </>

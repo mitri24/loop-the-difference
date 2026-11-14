@@ -295,3 +295,123 @@ summary { cursor:pointer; min-height:32px; padding:5px 0; font-size:13px; }
 .spectrum-section button { width:100%; }
 .map-caption { flex-wrap:wrap; row-gap:4px; }
 .frame-caption { color:var(--text); font-variant-numeric:tabular-nums; }
+
+/* Detected sources (NAS-52): marker colours on the dark sky, always paired with shape and word. */
+:root {
+  --src-gaia: #7fd4ff;
+  --src-allwise: #ff8a65;
+  --src-none: #ff79c6;
+  --src-unknown: #cfd8dc;
+}
+
+.source-list h3 {
+  margin-bottom: 0.25rem;
+}
+
+.source-provenance,
+.source-hint,
+.source-empty {
+  color: var(--muted);
+  font-size: 0.8rem;
+}
+
+.source-legend,
+.source-rows {
+  margin: 0 0 0.5rem;
+  padding: 0;
+  list-style: none;
+}
+
+.source-legend {
+  display: grid;
+  gap: 0.125rem;
+  font-size: 0.85rem;
+}
+
+.source-glyph {
+  display: inline-block;
+  width: 1.25em;
+  text-align: center;
+  font-weight: 700;
+}
+
+.src-gaia .source-glyph {
+  color: var(--src-gaia);
+}
+
+.src-allwise .source-glyph {
+  color: var(--src-allwise);
+}
+
+.src-none .source-glyph {
+  color: var(--src-none);
+}
+
+.src-unknown .source-glyph {
+  color: var(--src-unknown);
+}
+
+.source-rows {
+  max-height: 16rem;
+  overflow-y: auto;
+  border: 1px solid var(--border);
+  border-radius: 5px;
+}
+
+.source-rows button {
+  display: grid;
+  grid-template-columns: 1.25em minmax(0, 1fr);
+  gap: 0 0.5rem;
+  width: 100%;
+  min-height: 40px;
+  padding: 0.375rem 0.5rem;
+  text-align: left;
+  background: transparent;
+  border: 0;
+  border-bottom: 1px solid var(--border);
+  border-radius: 0;
+  font-size: 0.8rem;
+  cursor: pointer;
+}
+
+.source-rows li:last-child button {
+  border-bottom: 0;
+}
+
+.source-rows button:hover {
+  background: var(--surface-raised);
+}
+
+.source-evidence,
+.source-numbers {
+  grid-column: 2;
+  overflow-wrap: anywhere;
+}
+
+.source-numbers {
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
+
+/* Under its toggle in the Layers section; outranks .layers-section > p. */
+.layers-section > .source-key {
+  margin: -6px 0 0 26px;
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.source-key span {
+  font-weight: 700;
+}
+
+.source-key .src-gaia {
+  color: var(--src-gaia);
+}
+
+.source-key .src-none {
+  color: var(--src-none);
+}
+
+.source-key .src-unknown {
+  color: var(--src-unknown);
+}

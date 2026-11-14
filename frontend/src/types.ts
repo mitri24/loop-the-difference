@@ -59,6 +59,7 @@ export interface Frame {
   masked_fraction: number | null
   wavelength_um: number | null
   bandwidth_um: number | null
+  sources?: DetectedSource[]
 }
 
 export type CheckSeverity = 'error' | 'blocker' | 'warning' | 'info'
@@ -151,4 +152,22 @@ export interface SpectrumJob {
   total: number
   spectrum: Spectrum | null
   error: string | null
+}
+
+// Sources detected in one frame (backend/app/sources.py); a match is a positional coincidence.
+export type SourceMatch = 'gaia' | 'allwise' | 'none' | 'unknown'
+
+export interface DetectedSource {
+  ra: number
+  dec: number
+  // 0-based pixel centre in the frame PNG: x to the right, y down from the top row (north).
+  x: number
+  y: number
+  peak_mjy_sr: number
+  snr: number
+  match: SourceMatch
+  catalog_id: string | null
+  separation_arcsec: number | null
+  catalog_mag: number | null
+  catalog_band: 'G' | 'W1' | null
 }
