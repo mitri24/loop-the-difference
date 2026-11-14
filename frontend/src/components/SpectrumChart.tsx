@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { createSpectrum, getSpectrumJob } from '../api'
 import type { Check, SpectrumJob, SpectrumPoint } from '../types'
+import { BrightnessChart } from './BrightnessChart'
 
 const EPOCH_COLOURS = ['#6ea8fe', '#e2b340', '#ef6b6b', '#7bd389', '#c792ea', '#5ad1d1']
 const W = 640
@@ -44,8 +45,19 @@ export function summarize(checks: Check[]) {
   }
 }
 
-// Key by target: the spectrum belongs to one position and starts on request.
-export function SpectrumChart({ ra, dec }: { ra: string; dec: string }) {
+// Key by target: the spectrum belongs to one position and starts on request. centerUm and detector
+// pick the visits for the brightness-over-time chart, which reuses the same points.
+export function SpectrumChart({
+  ra,
+  dec,
+  centerUm,
+  detector,
+}: {
+  ra: string
+  dec: string
+  centerUm?: number | null
+  detector?: number
+}) {
   const [job, setJob] = useState<SpectrumJob | null>(null)
   const [error, setError] = useState<string | null>(null)
   const running = job?.status === 'queued' || job?.status === 'started'
@@ -106,6 +118,7 @@ export function SpectrumChart({ ra, dec }: { ra: string; dec: string }) {
           need checking. {notes.join(' · ')}
         </p>
       )}
+      {points.length > 0 && <BrightnessChart points={points} centerUm={centerUm} detector={detector} />}
     </section>
   )
 }

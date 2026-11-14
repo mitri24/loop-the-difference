@@ -415,3 +415,193 @@ summary { cursor:pointer; min-height:32px; padding:5px 0; font-size:13px; }
 .source-key .src-unknown {
   color: var(--src-unknown);
 }
+
+/* Evidence visuals (NAS-53): timeline, wavelength strip, brightness chart, background channel. */
+.viz {
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 0;
+}
+
+.viz-title {
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.viz svg {
+  display: block;
+  overflow: visible;
+  font-size: 11px;
+}
+
+.viz text {
+  fill: var(--muted);
+  stroke: none;
+}
+
+.viz-note,
+.viz-legend {
+  margin: 0;
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.viz-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 2px 14px;
+  padding: 0;
+  list-style: none;
+}
+
+.viz-axis line,
+.viz-row line,
+.viz-grid {
+  stroke: var(--border);
+  stroke-width: 1;
+}
+
+.viz-zero {
+  stroke: var(--muted);
+}
+
+.viz-epoch rect {
+  fill: var(--surface-raised);
+}
+
+.viz-row.selected rect {
+  fill: none;
+  stroke: var(--accent);
+}
+
+.viz-row.selected text {
+  fill: var(--text);
+  font-weight: 650;
+}
+
+.viz-dots circle {
+  fill: var(--muted);
+}
+
+.viz-frame circle,
+.viz-frame line {
+  fill: var(--bg);
+  stroke: var(--accent);
+  stroke-width: 2;
+}
+
+.viz-frame.shown circle {
+  fill: var(--accent);
+}
+
+.viz-current line {
+  stroke: var(--accent);
+  stroke-dasharray: 3 3;
+}
+
+.viz-band rect {
+  fill: var(--surface-raised);
+  stroke: var(--border);
+}
+
+.viz-band.selected rect {
+  stroke: var(--accent);
+  stroke-width: 2;
+}
+
+.viz-band.selected text {
+  fill: var(--text);
+  font-weight: 650;
+}
+
+.viz-marker rect {
+  fill: none;
+  stroke: var(--warning);
+  stroke-width: 2;
+}
+
+.viz-marker text {
+  fill: var(--text);
+}
+
+.viz-point line {
+  stroke: var(--accent);
+}
+
+.viz-point circle {
+  fill: var(--accent);
+  stroke: var(--bg);
+  stroke-width: 2;
+}
+
+.viz-point.flagged circle {
+  fill: var(--bg);
+  stroke: var(--accent);
+}
+
+.viz-table {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+  border: 0;
+}
+
+.spectrum-section .brightness-chart {
+  margin-top: 16px;
+}
+
+.sky-slider {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  font-size: 12px;
+}
+
+.sky-slider label {
+  font-weight: 600;
+}
+
+.sky-slider input[type='range'] {
+  width: 100%;
+  padding: 0;
+  accent-color: var(--accent);
+}
+
+.sky-slider-scale {
+  display: grid;
+  grid-template-columns: repeat(102, minmax(0, 1fr));
+  color: var(--muted);
+  font-size: 11px;
+}
+
+.sky-slider-scale > * {
+  grid-row: 1;
+  text-align: center;
+  border-left: 1px solid var(--border);
+}
+
+.sky-slider-scale > i {
+  font-style: normal;
+  color: var(--warning);
+  border: 0;
+}
+
+.sky-slider output {
+  font-variant-numeric: tabular-nums;
+}
+
+.track-key {
+  color: var(--muted);
+}
+
+.track-key span {
+  color: var(--accent);
+  font-weight: 700;
+}

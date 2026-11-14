@@ -11,7 +11,11 @@ import { ModeSwitch } from './components/ModeSwitch'
 import { SkyView } from './components/SkyView'
 import { SourceList } from './components/SourceList'
 import { TargetForm } from './components/TargetForm'
+import { WavelengthStrip } from './components/WavelengthStrip'
 import { useFrameLayers } from './frameLayers'
+import { useMotionTrack } from './motionTrack'
+import { sliceForDetector } from './sky'
+import { sliceText, useCubeWavelengths, useSkySlice } from './skyCube'
 import { countSources, useSourceLayer } from './sourceLayer'
 import type { FrameJob, ObservationSummary, ProperMotion } from './types'
 import { POLARIS, readEmbed, readQuery, toSearch, type TargetQuery, type ViewMode } from './url'
@@ -44,6 +48,8 @@ export default function App() {
   const [frameIndex, setFrameIndex] = useState(0)
   const [framesOnSky, setFramesOnSky] = useState(true)
   const [sourcesOnSky, setSourcesOnSky] = useState(true)
+  const [skySlice, setSkySlice] = useState(() => sliceForDetector((INITIAL ?? POLARIS).band))
+  const [sliceBand, setSliceBand] = useState((INITIAL ?? POLARIS).band)
   const [viewRevision, setViewRevision] = useState(0)
   const [panel, setPanel] = useState<Panel | null>(INITIAL ? 'compare' : 'locate')
   const [name, setName] = useState('')
@@ -207,6 +213,16 @@ export default function App() {
     }
   }
 
+  // SkyView jumps to the new detector's slice on a band change; the slider follows it.
+  if (sliceBand !== query.band) {
+    setSliceBand(query.band)
+    setSkySlice(sliceForDetector(query.band))
+  }
+  const cubeActive = useSkySlice(sky, skySlice)
+  const { wavelengths } = useCubeWavelengths()
+  const skyCaption = cubeActive && skySlice !== sliceForDetector(query.band)
+    ? `SPHEREx DR1 · ${sliceText(skySlice, wavelengths)}` : skyLayer
+
   const manifest = job?.manifest
   const checks = manifest ? manifestChecks(manifest) : []
   const differenceBlocked = manifest && (manifest.epochs < 2 || hasBlocker(checks, 'difference'))
@@ -217,6 +233,7 @@ export default function App() {
   // The player's frame blinks on the sky; the difference image stays in the panel.
   useFrameLayers(sky, manifest, frameIndex, framesOnSky && !showDifference)
   useSourceLayer(sky, manifest?.frames, frameIndex, sourcesOnSky && hasFrames && !showDifference)
+  const track = useMotionTrack(sky, motion, manifest?.frames)
   const frame = (hasFrames && manifest?.frames[frameIndex]) || null
   const counts = frame?.sources ? countSources(frame.sources) : null
   const sourceSummary = counts ? ` · ${counts.detected} in this frame · ${counts.none} ${counts.none === 1 ? 'needs' : 'need'} verification${counts.unknown ? ` · ${counts.unknown} unknown` : ''}` : ''
@@ -260,8 +277,10 @@ export default function App() {
       {manifest && hasFrames && showDifference && <DifferenceView key={job.job_id} manifest={manifest} />}
       {manifest && hasFrames && !showDifference && <BlinkPlayer key={job.job_id} frames={manifest.frames} checks={checks} grid={manifest} motion={motion}
         onIndexChange={setFrameIndex} active={EMBED || panel === 'compare'} showShare={EMBED} />}
+      {!EMBED && manifest && frame && !showDifference && <WavelengthStrip detector={manifest.detector} frame={frame} />}
       {!EMBED && !skyUnavailable && <LayersSection aladin={sky} ra={center.ra} dec={center.dec} sizeDeg={query.fov} frame={frame}
         framesOnSky={framesOnSky} onFramesOnSkyChange={setFramesOnSky} sourcesOnSky={sourcesOnSky} onSourcesOnSkyChange={setSourcesOnSky}
+        trackShown={track.length > 0} skySlice={skySlice} onSkySliceChange={setSkySlice} cubeActive={cubeActive}
         framesBlocked={showDifference ? 'The difference image is shown in this panel. Frames and their detected sources go back on the sky in the other modes.' : undefined} />}
       {!EMBED && !skyUnavailable && frame && !showDifference && <details className="disclosure">
         <summary>Detected sources{sourceSummary}</summary>
@@ -332,7 +351,8 @@ export default function App() {
               {comparison}
             </section>
             <section id="details-panel" hidden={panel !== 'details'}>
-              <DataPanel query={query} targetLabel={targetLabel} summary={summary} manifest={manifest} checks={checks} onAbout={() => setAbout(true)} />
+              <DataPanel query={query} targetLabel={targetLabel} summary={summary} manifest={manifest} checks={checks}
+                frameIndex={showDifference ? undefined : frameIndex} onAbout={() => setAbout(true)} />
             </section>
           </div>
           {panel === 'locate' && <div className="sheet-actions">
@@ -343,7 +363,7 @@ export default function App() {
       </div>
 
       <footer className="map-caption">
-        <div className="layer-caption"><span className="status-dot" aria-hidden="true" /><span>Sky context · {skyUnavailable ? 'WebGL2 unavailable' : skyLayer}</span></div>
+        <div className="layer-caption"><span className="status-dot" aria-hidden="true" /><span>Sky context · {skyUnavailable ? 'WebGL2 unavailable' : skyCaption}</span></div>
         {frameOnSky && <span className="frame-caption">SPHEREx frame on the sky · {frameOnSky.date.slice(0, 10)} · D{frameOnSky.detector} · {frameIndex + 1}/{manifest!.frames.length}</span>}
         <span className="map-hint">Drag to explore · scroll to zoom · map tools at left</span>
       </footer>
