@@ -22,6 +22,9 @@ from app.frames import (
 from app.models import Check, Difference, Frame, FrameManifest, Observation
 
 MIN_COVERAGE = 0.5
+# Bump whenever the rendered output changes: the job key changes, so cached results are rebuilt,
+# and `warm` removes frame folders whose manifest carries an older version.
+PIPELINE_VERSION = 4
 
 
 def manifest_path(cache_dir: Path, key: str) -> Path:
@@ -162,6 +165,7 @@ def build_frames(
         epochs=len(epochs),
         complete=len(downloaded) == len(selected),
         stacked=stack,
+        pipeline_version=PIPELINE_VERSION,
         frames=[
             _frame(index, f"/api/frames/{key}/{name}", epoch, [kept[i] for i in group])
             for index, ((epoch, group), name) in enumerate(zip(members, names, strict=True))

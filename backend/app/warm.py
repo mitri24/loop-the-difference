@@ -8,18 +8,22 @@ Every job writes the same manifest the UI would request, so a demo click is serv
 
 import argparse
 import re
+import shutil
 import sys
 import time
 from collections.abc import Callable
 from dataclasses import dataclass
 from functools import partial
+from pathlib import Path
+
+from pydantic import ValidationError
 
 from app.archive import resolve_cache_path, resolve_position, sia_cache_path
 from app.config import Settings, get_settings
 from app.coords import parse_dec, parse_ra
 from app.jobs import job_id_for
 from app.models import FrameManifest
-from app.tasks import build_frames, manifest_path
+from app.tasks import PIPELINE_VERSION, build_frames, manifest_path
 
 # Mirrors frontend/src/targets.ts (CHALLENGE_TARGETS): same strings, so demo clicks hit warmed keys.
 TARGETS: list[tuple[str, str, str] | tuple[str, str]] = [
@@ -67,6 +71,29 @@ def plan(only: set[str] | None = None) -> list[WarmJob]:
     return jobs
 
 
+def prune_stale_frames(cache_dir: Path) -> list[str]:
+    """Delete frame folders built by an older pipeline version: their job ids are never requested.
+
+    Folders without a manifest are left alone: a worker may be writing them right now.
+    Cutouts live elsewhere and stay, they belong to the archive URL, not to the version.
+    """
+    removed = []
+    frames_dir = cache_dir / "frames"
+    for folder in list(frames_dir.iterdir()) if frames_dir.is_dir() else ():
+        manifest = manifest_path(cache_dir, folder.name)
+        if not manifest.is_file():
+            continue
+        try:
+            version = FrameManifest.model_validate_json(manifest.read_text()).pipeline_version
+        except ValidationError as exc:  # one unreadable folder must not stop the warm run
+            print(f"SKIPPED · frames/{folder.name} · unreadable manifest: {exc}", file=sys.stderr)
+            continue
+        if version != PIPELINE_VERSION:
+            shutil.rmtree(folder)
+            removed.append(folder.name)
+    return removed
+
+
 def run(
     argv: list[str] | None = None,
     settings: Settings | None = None,
@@ -85,6 +112,11 @@ def run(
     if not jobs:
         print(f"No target matches {args.targets!r}; known: {', '.join(t[0] for t in TARGETS)}")
         return 2
+
+    if not args.dry_run:
+        stale = prune_stale_frames(settings.cache_dir)
+        if stale:
+            print(f"removed {len(stale)} frame folders from older pipeline versions")
 
     failed = 0
     resolved: dict[str, tuple[float, float]] = {}
