@@ -1,9 +1,11 @@
+import json
+
 from app import warm
 from app.archive import sia_cache_path
 from app.coords import parse_dec, parse_ra
 from app.jobs import job_id_for
 from app.models import Frame, FrameManifest
-from app.tasks import manifest_path
+from app.tasks import PIPELINE_VERSION, manifest_path
 
 POLARIS_D6 = job_id_for(
     "spherex_dr1", parse_ra("02:31:49.09"), parse_dec("+89:15:50.8"), 0.2, 6, 12
@@ -16,6 +18,38 @@ def _fail_resolver(name):
 
 def _fail_build(**kwargs):
     raise AssertionError(f"network use: build {kwargs}")
+
+
+def _write_manifest(cache_dir, key, **overrides):
+    frame = Frame(
+        index=0,
+        url="/api/frames/x/frame_00.png",
+        obs_id="o",
+        date="2025-05-05T00:00:00Z",
+        mjd=60800.0,
+        detector=6,
+        wavelength_min_um=4.4,
+        wavelength_max_um=5.0,
+        coverage=1.0,
+        source_url="https://irsa.ipac.caltech.edu/x.fits",
+    )
+    manifest = FrameManifest(
+        collection="spherex_dr1",
+        ra=1,
+        dec=2,
+        size_deg=0.2,
+        detector=6,
+        pixel_scale_arcsec=6.15,
+        epochs=1,
+        complete=True,
+        pipeline_version=PIPELINE_VERSION,
+        frames=[frame],
+        warnings=[],
+    )
+    path = manifest_path(cache_dir, key)
+    path.parent.mkdir(parents=True)
+    path.write_text(json.dumps({**manifest.model_dump(), **overrides}))
+    return path
 
 
 def test_dry_run_lists_every_target_and_detector_without_network(settings, capsys):
@@ -61,33 +95,7 @@ def test_named_targets_are_resolved_like_the_ui(settings):
 
 
 def test_complete_cached_manifest_is_skipped_unless_forced(settings, capsys):
-    path = manifest_path(settings.cache_dir, POLARIS_D6)
-    path.parent.mkdir(parents=True)
-    frame = Frame(
-        index=0,
-        url="/api/frames/x/frame_00.png",
-        obs_id="o",
-        date="2025-05-05T00:00:00Z",
-        mjd=60800.0,
-        detector=6,
-        wavelength_min_um=4.4,
-        wavelength_max_um=5.0,
-        coverage=1.0,
-        source_url="https://irsa.ipac.caltech.edu/x.fits",
-    )
-    manifest = FrameManifest(
-        collection="spherex_dr1",
-        ra=1,
-        dec=2,
-        size_deg=0.2,
-        detector=6,
-        pixel_scale_arcsec=6.15,
-        epochs=1,
-        complete=True,
-        frames=[frame],
-        warnings=[],
-    )
-    path.write_text(manifest.model_dump_json())
+    _write_manifest(settings.cache_dir, POLARIS_D6)
     calls = []
 
     def build(**kwargs):
@@ -142,3 +150,44 @@ def test_unknown_target_filter_is_reported(settings, capsys):
         warm.run(["--targets", "pluto"], settings, resolver=_fail_resolver, build=_fail_build) == 2
     )
     assert "Polaris" in capsys.readouterr().out
+
+
+def test_frame_folders_of_older_pipeline_versions_are_removed(settings, capsys):
+    v1_manifest = _write_manifest(settings.cache_dir, "0000000000000001")
+    del_field = json.loads(v1_manifest.read_text())
+    del del_field["pipeline_version"]  # written before the marker existed
+    v1_manifest.write_text(json.dumps(del_field))
+    (v1_manifest.parent / "frame_00.png").write_bytes(b"png")
+    old = _write_manifest(
+        settings.cache_dir, "0000000000000002", pipeline_version=PIPELINE_VERSION - 1
+    )
+    current = _write_manifest(settings.cache_dir, POLARIS_D6)
+    building = settings.cache_dir / "frames" / "0000000000000003"
+    building.mkdir()
+    (building / "manifest.json.part").write_text("{")
+    broken = manifest_path(settings.cache_dir, "0000000000000004")
+    broken.parent.mkdir()
+    broken.write_text("{not json")
+    cutout = settings.cache_dir / "cutouts" / "abc.fits"
+    cutout.parent.mkdir()
+    cutout.write_bytes(b"fits")
+
+    def build(**kwargs):
+        return {"frames": [], "warnings": [], "complete": True}
+
+    code = warm.run(["--targets", "polaris"], settings, resolver=_fail_resolver, build=build)
+
+    assert code == 0
+    assert not v1_manifest.parent.exists() and not old.parent.exists()
+    assert current.is_file() and building.is_dir() and broken.is_file() and cutout.is_file()
+    out, err = capsys.readouterr()
+    assert "removed 2 frame folders" in out
+    assert "SKIPPED · frames/0000000000000004" in err
+
+
+def test_dry_run_and_missing_frames_dir_do_not_prune(settings, capsys):
+    old = _write_manifest(settings.cache_dir, "0000000000000002", pipeline_version=1)
+
+    warm.run(["--dry-run"], settings, resolver=_fail_resolver, build=_fail_build)
+    assert old.is_file()
+    assert warm.prune_stale_frames(settings.cache_dir / "nowhere") == []

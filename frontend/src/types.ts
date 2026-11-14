@@ -80,6 +80,7 @@ export interface FrameManifest {
   epochs: number
   complete: boolean
   stacked: boolean
+  pipeline_version?: number
   frames: Frame[]
   warnings: string[]
   checks: Check[]

@@ -9,12 +9,10 @@ from rq.job import Job, JobStatus
 
 from app.config import Settings
 from app.models import FrameJob, FrameManifest
-from app.tasks import build_frames, manifest_path
+from app.tasks import PIPELINE_VERSION, build_frames, manifest_path
 
 QUEUE_NAME = "frames"
 JOB_TIMEOUT_S = 900
-# Bump whenever the rendered output changes: cached results are then rebuilt, not served stale.
-PIPELINE_VERSION = 4
 
 
 class QueueFull(Exception):
