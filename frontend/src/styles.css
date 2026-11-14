@@ -12,6 +12,11 @@
   --diff-earlier: rgb(214, 64, 48);
   --diff-none: rgb(128, 128, 128);
   --diff-later: rgb(52, 112, 219);
+  /* Catalogue markers on the sky (NAS-39), bright enough for a dark background. */
+  --cat-gaia: #7fd4ff;
+  --cat-wise: #ff8a65;
+  --cat-simbad: #ffd54f;
+  --cat-skybot: #c5a3ff;
   color-scheme: dark;
   font-family: system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
   line-height: 1.5;
@@ -279,6 +284,23 @@ select {
   border: 1px solid var(--border);
   /* Aladin's hidden tooltips sit outside the box and would widen the page on phones. */
   overflow: hidden;
+}
+
+.catalog-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.25rem 1rem;
+  margin-bottom: 0.5rem;
+  font-size: 0.85rem;
+}
+
+.catalog-legend .unavailable {
+  color: var(--muted);
+}
+
+.catalog-legend .hint {
+  flex-basis: 100%;
+  margin: 0;
 }
 
 .context .viewport {

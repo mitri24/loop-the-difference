@@ -1,4 +1,5 @@
 // Field catalogues for the sky view. Mirrors, CORS and epochs: see NAS-22 "Service status and CORS".
+import type { AladinInstance, Catalog, CatalogOptions } from 'aladin-lite'
 import { useCallback, useEffect, useRef, useState } from 'react'
 
 const VIZIER = 'https://vizier.cfa.harvard.edu/viz-bin/votable'
@@ -81,37 +82,6 @@ export function gaiaSources(rows: string[][], mjd: number) {
     .filter((s) => Number.isFinite(s.ra) && Number.isFinite(s.dec))
 }
 
-// Aladin Lite 3.9 catalogue API as found in the bundle; the package ships no types.
-interface Catalog {
-  addSources(sources: unknown[]): void
-}
-interface CatalogOptions {
-  name: string
-  shape: 'circle' | 'square' | 'triangle' | 'rhomb'
-  color: string
-  sourceSize: number
-  onClick: 'showTable'
-}
-interface CatalogApi {
-  catalog(options: CatalogOptions): Catalog
-  source(ra: number, dec: number, data: Record<string, string>): unknown
-  catalogFromURL(
-    url: string,
-    o: CatalogOptions,
-    ok: (c: Catalog) => void,
-    err: () => void,
-    proxy: false,
-  ): void
-}
-export interface CatalogHost {
-  getRaDec(): [number, number]
-  getFov(): [number, number]
-  addCatalog(catalog: Catalog): void
-  removeOverlay(catalog: Catalog): void
-  on(event: 'positionChanged', callback: () => void): void
-  on(event: 'zoomChanged', callback: () => void): void
-}
-
 export type LayerKey = 'gaia' | 'wise' | 'simbad' | 'skybot'
 export type LayerStatus = 'off' | 'loading' | 'ready' | 'unavailable'
 interface View {
@@ -120,21 +90,21 @@ interface View {
   r: number
 }
 
-const LAYERS: Record<LayerKey, Pick<CatalogOptions, 'name' | 'shape' | 'color'>> = {
-  gaia: { name: 'Gaia DR3', shape: 'circle', color: '#7fd4ff' },
-  wise: { name: 'AllWISE', shape: 'square', color: '#ff8a65' },
-  simbad: { name: 'SIMBAD', shape: 'triangle', color: '#ffd54f' },
-  skybot: { name: 'SkyBoT', shape: 'rhomb', color: '#b39ddb' },
+// Stable names: a refreshed catalogue replaces the old one under the same name in the layer box.
+const LAYERS: Record<LayerKey, Pick<CatalogOptions, 'name' | 'shape'>> = {
+  gaia: { name: 'Gaia DR3', shape: 'circle' },
+  wise: { name: 'AllWISE', shape: 'square' },
+  simbad: { name: 'SIMBAD', shape: 'triangle' },
+  skybot: { name: 'SkyBoT', shape: 'rhomb' },
 }
 const TIMEOUT_MS = 10_000
 const DEBOUNCE_MS = 500
 
 async function loadCatalog(key: LayerKey, { ra, dec, r }: View, mjd: number): Promise<Catalog> {
-  const A = (await import('aladin-lite')).default as unknown as CatalogApi
-  const token = getComputedStyle(document.documentElement).getPropertyValue(`--cat-${key}`).trim()
+  const A = (await import('aladin-lite')).default
   const options: CatalogOptions = {
     ...LAYERS[key],
-    color: token || LAYERS[key].color,
+    color: getComputedStyle(document.documentElement).getPropertyValue(`--cat-${key}`).trim(),
     sourceSize: 10,
     onClick: 'showTable',
   }
@@ -169,7 +139,7 @@ async function loadCatalog(key: LayerKey, { ra, dec, r }: View, mjd: number): Pr
 // One request in flight per layer; a newer view waits and replaces any older queued one.
 function useLayer(
   key: LayerKey,
-  aladin: CatalogHost | null,
+  aladin: AladinInstance | null,
   on: boolean,
   view: View | null,
   mjd: number | null,
@@ -224,7 +194,7 @@ function useLayer(
  * epoch, re-queried only when it moves by more than a day, so blinking does not refetch.
  */
 export function useCatalogLayers(
-  aladin: CatalogHost | null,
+  aladin: AladinInstance | null,
   enabled: Record<LayerKey, boolean>,
   sizeDeg: number,
   frameMjd: number | null,
