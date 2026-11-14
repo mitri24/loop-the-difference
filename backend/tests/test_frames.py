@@ -1,13 +1,26 @@
+from pathlib import Path
+
 import httpx
 import numpy as np
 import pytest
+from astropy.io import fits
 from astropy.wcs import WCS
 from PIL import Image
 
 from app import frames
-from app.frames import align, render_diff, render_png, target_grid
+from app.frames import (
+    align,
+    comparable_wavelengths,
+    render_diff,
+    render_png,
+    target_grid,
+    wavelength_at,
+)
 
 RA, DEC = 133.795, -7.245
+# Real D6 cutout header plus its WCS-WAVE table, pixel data removed; this is its centre pixel.
+CUTOUT_HEADER = Path(__file__).parent / "fixtures" / "spherex_cutout_d6_wcs.fits"
+CUTOUT_RA, CUTOUT_DEC = 269.451467, 4.693033
 
 
 def _rotated_image_with_star(rotation_deg: float, size: int = 100) -> tuple[np.ndarray, WCS]:
@@ -79,6 +92,34 @@ def test_identical_epochs_give_a_plain_grey_difference(tmp_path):
     render_diff(np.ones((8, 8)), np.ones((8, 8)), tmp_path, "diff.png")
 
     assert (np.asarray(Image.open(tmp_path / "diff.png")) == 128).all()
+
+
+def test_wavelength_at_the_target_comes_from_the_lookup_table():
+    wavelength, bandwidth = wavelength_at(CUTOUT_HEADER, CUTOUT_RA, CUTOUT_DEC)
+
+    # Bilinear interpolation of the WCS-WAVE control points around raw pixel (770.5, 1684.5).
+    assert wavelength == pytest.approx(4.5022, abs=5e-4)
+    assert bandwidth == pytest.approx(0.0355, abs=5e-4)
+
+
+@pytest.mark.parametrize("missing", ["table", "header"])
+def test_cutout_without_spectral_wcs_has_no_wavelength(tmp_path, missing):
+    with fits.open(CUTOUT_HEADER) as hdul:
+        if missing == "table":
+            hdul = hdul[:2]
+        else:
+            del hdul["IMAGE"].header["CTYPE1W"]
+        hdul.writeto(tmp_path / "plain.fits")
+
+    assert wavelength_at(tmp_path / "plain.fits", CUTOUT_RA, CUTOUT_DEC) == (None, None)
+
+
+@pytest.mark.parametrize("detector", [1, 4, 6])
+def test_frames_compare_within_one_resolution_element(detector):
+    step = 1 / frames.R_BY_DETECTOR[detector]
+
+    assert comparable_wavelengths(2.0, 2.0 * (1 + 0.9 * step), detector)
+    assert not comparable_wavelengths(2.0, 2.0 * (1 + 1.1 * step), detector)
 
 
 def _client(responses: list[httpx.Response], calls: list[int]) -> httpx.Client:

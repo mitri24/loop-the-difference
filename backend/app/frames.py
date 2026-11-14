@@ -1,6 +1,7 @@
 import hashlib
 import os
 import random
+import re
 import threading
 import time
 import warnings
@@ -20,6 +21,9 @@ DOWNLOAD_ATTEMPTS = 5
 RETRY_BASE_S = 2.0
 # IRSA answers "503 Server busy, retry later" under load.
 _RETRY_STATUS = {429, 500, 502, 503, 504}
+# Spectral resolving power per detector (SPHEREx instrument design): one resolution element is λ/R.
+R_BY_DETECTOR = {1: 41, 2: 41, 3: 41, 4: 35, 5: 110, 6: 130}
+_SIP_CARD = re.compile(r"(A|B|AP|BP)_(ORDER|\d+_\d+)")
 
 
 def cutout_url(access_url: str, ra: float, dec: float, size_deg: float) -> str:
@@ -61,6 +65,38 @@ def read_image(path: Path) -> tuple[np.ndarray, WCS]:
         with fits.open(path) as hdul:
             hdu = hdul["IMAGE"]
             return hdu.data.astype(np.float64), WCS(hdu.header)
+
+
+def wavelength_at(path: Path, ra: float, dec: float) -> tuple[float, float] | tuple[None, None]:
+    """Wavelength and bandwidth (µm) seen at the target, from the cutout's WCS-WAVE lookup table.
+
+    SPHEREx filters vary across the detector, so every visit sees the target at its own wavelength.
+    """
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore", FITSFixedWarning)
+        with fits.open(path) as hdul:
+            header = hdul["IMAGE"].header
+            if "WCS-WAVE" not in hdul or header.get("CTYPE1W") != "WAVE-TAB":
+                return None, None
+            x, y = WCS(header).world_to_pixel_values(ra, dec)
+            # The table is indexed by raw detector pixels: the sky distortion (SIP) must not apply.
+            spectral = header.copy()
+            for key in [key for key in spectral if _SIP_CARD.fullmatch(key)]:
+                del spectral[key]
+            wavelength, bandwidth = WCS(spectral, fobj=hdul, key="W").pixel_to_world_values(x, y)
+    if not (np.isfinite(wavelength) and np.isfinite(bandwidth)):
+        return None, None
+    return float(wavelength), float(bandwidth)
+
+
+def delta_lambda_pct(a_um: float, b_um: float) -> float:
+    """Wavelength difference between two frames in percent of their mean wavelength."""
+    return 200 * abs(a_um - b_um) / (a_um + b_um)
+
+
+def comparable_wavelengths(a_um: float, b_um: float, detector: int) -> bool:
+    """Frames compare directly only within one resolution element: |Δλ|/λ ≤ 1/R."""
+    return delta_lambda_pct(a_um, b_um) <= 100 / R_BY_DETECTOR[detector]
 
 
 def target_grid(

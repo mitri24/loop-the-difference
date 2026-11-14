@@ -9,6 +9,7 @@ __pycache__/
 # local config and data
 .env
 *.fits
+!backend/tests/fixtures/*.fits
 *.part
 
 # OS / editor files

@@ -5,7 +5,7 @@ from PIL import Image
 from app import tasks
 from app.frames import target_grid
 from app.models import Observation
-from app.tasks import build_frames, epoch_checks, stack_images
+from app.tasks import build_frames, epoch_checks, stack_images, wavelength_checks
 
 RA, DEC, SIZE_DEG = 133.795, -7.245, 0.1
 
@@ -78,6 +78,10 @@ def _offline_archive(monkeypatch, settings, tmp_path, observations):
         return data, target
 
     monkeypatch.setattr(tasks, "read_image", read_image)
+    # Each visit sees the target through another part of the filter: λ grows with the MJD.
+    monkeypatch.setattr(
+        tasks, "wavelength_at", lambda path, ra, dec: (4.5 + int(path.stem) / 1000, 0.035)
+    )
 
 
 def test_stacked_job_yields_one_median_frame_per_epoch(monkeypatch, settings, tmp_path):
@@ -110,7 +114,12 @@ def test_stacked_job_yields_one_median_frame_per_epoch(monkeypatch, settings, tm
     assert first["obs_ids_a"] == ["obs-100", "obs-101", "obs-102"]
     assert first["obs_ids_b"] == ["obs-290", "obs-291", "obs-292"]
     assert (settings.cache_dir / "frames" / "job" / "diff_01_02.png").exists()
-    assert "WAVELENGTH_UNKNOWN" in [c["code"] for c in manifest["checks"]]
+    # Median wavelength of the three stacked exposures; epochs 190 days apart saw another λ.
+    assert (frames[0]["wavelength_um"], frames[0]["bandwidth_um"]) == (4.601, 0.035)
+    assert first["comparable"] is False
+    assert first["delta_lambda_pct"] == pytest.approx(4.05, abs=0.01)
+    assert "WAVELENGTH_MISMATCH" in [c["code"] for c in manifest["checks"]]
+    assert "WAVELENGTH_UNKNOWN" not in [c["code"] for c in manifest["checks"]]
 
 
 def test_one_epoch_gives_no_difference_and_blocks_it(monkeypatch, settings, tmp_path):
@@ -143,3 +152,16 @@ def test_exposure_job_numbers_the_epoch_of_every_frame(monkeypatch, settings, tm
     pixels = [_png(settings, f) for f in frames]
     assert (pixels[0] != pixels[1]).any()
     assert manifest["differences"] == []
+
+
+def test_wavelength_spread_beyond_one_resolution_element_blocks_the_difference():
+    (check,) = wavelength_checks([4.50, None, 4.60], detector=6)
+
+    assert (check.code, check.severity) == ("WAVELENGTH_MISMATCH", "blocker")
+    assert check.affects == ["difference"]
+    assert "4.500" in check.detail and "4.600" in check.detail
+
+
+def test_matching_wavelengths_pass_without_a_check():
+    assert wavelength_checks([4.50, 4.51, None], detector=6) == []
+    assert wavelength_checks([4.50], detector=6) == []
