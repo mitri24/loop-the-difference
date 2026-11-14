@@ -8,7 +8,6 @@ export const PLATE_ARCMIN = 20
 // POSS-I covers the sky north of about −30°; DSS answers further south with other surveys.
 export const POSS_I_MIN_DEC = -30
 const PLATE_LAYER = 'POSS-I plate'
-const MARKER_COLOUR = '#ffb454'
 const TIMEOUT_MS = 20_000
 // Aladin registers an image layer only once every layer added before it has loaded.
 const REGISTER_POLL_MS = 200
@@ -117,10 +116,11 @@ export function usePlateLayer(
         successCallback: () => {
           if (done) return
           const at = predictedOnPlate(star, header.date)
+          const colour = getComputedStyle(document.documentElement).getPropertyValue('--overlay-plate').trim()
           marker = A.catalog({
-            name: `Gaia DR3 predicted position on ${header.date}`, shape: 'circle', color: MARKER_COLOUR,
+            name: `Gaia DR3 predicted position on ${header.date}`, shape: 'circle', color: colour,
             sourceSize: 14, limit: 1, onClick: 'showTable', displayLabel: true, labelColumn: 'label',
-            labelColor: MARKER_COLOUR, labelFont: '12px system-ui, sans-serif',
+            labelColor: colour, labelFont: '12px system-ui, sans-serif',
           })
           marker.addSources([A.source(at.ra, at.dec, {
             label: `Gaia DR3 predicted position on ${header.date}`, gaia_dr3: star.source_id,

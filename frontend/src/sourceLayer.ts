@@ -8,7 +8,7 @@ export const MATCHES: SourceMatch[] = ['gaia', 'allwise', 'none', 'unknown']
 
 // A SPHEREx detection is + with a catalogue match and × without one, so it never looks like a
 // catalogue-layer marker (circle, square, triangle, rhomb). The word names the catalogue or says
-// why there is none; "unknown" is a muted × (colours: --src-* in styles.css).
+// why there is none; "unknown" is a muted × (colours: --src-* in styles/tokens.css).
 export const MATCH_STYLE: Record<
   SourceMatch,
   { shape: CatalogOptions['shape']; glyph: string; word: string }

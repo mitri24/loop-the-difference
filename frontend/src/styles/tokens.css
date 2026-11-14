@@ -1,0 +1,55 @@
+/* Design tokens (NAS-9 design-system.md). The only file with raw colours; everything else uses these variables.
+   Dark-first: there is no light theme. Text tokens pass WCAG AA on --surface-0…3, band colours pass the
+   dataviz validator on --surface-1 (dark, contrast ≥ 3:1). */
+:root {
+  /* Surfaces: elevation by number. Glass is opaque enough to skip backdrop-filter over the WebGL sky. */
+  --surface-0:#0b0e10; --surface-1:#14191c; --surface-2:#1d2428; --surface-3:#283136;
+  --surface-glass:rgb(20 25 28 / .94); --sky-bg:#000;
+  --border:#333d42; --border-strong:#56636a;
+  --text-primary:#eef1f0; --text-secondary:#c3cbcd; --text-muted:#9aa5a9; --text-on-accent:#1f1405;
+
+  /* One accent: IR amber. */
+  --accent:#f2a93b; --accent-hover:#f6bb5f; --accent-subtle:rgb(242 169 59 / .16); --focus-ring:var(--accent-hover);
+
+  /* Status: only for checks and alerts, always with icon + word. */
+  --status-ok:#6fcf8f; --status-info:#9aa5a9; --status-warn:#e8c25a; --status-fail:#ff8a80;
+
+  /* SPHEREx detectors D1–D6: fixed order, never cycled, never reused for other series. */
+  --band-d1:#468de5; --band-d2:#dd6f23; --band-d3:#07a4a4; --band-d4:#ab9017; --band-d5:#c454b0; --band-d6:#409d48;
+
+  /* Images: the backend renders the difference colours into the PNGs (backend/app/frames.py). */
+  --img-nodata:#3b3346; --div-pos:rgb(214,64,48); --div-mid:rgb(128,128,128); --div-neg:rgb(52,112,219);
+
+  /* Overlays on images and the sky. */
+  --overlay-target:#5ad1e6; --overlay-gaia:#7fd4ff; --overlay-footprint:#6ea8fe;
+  --overlay-track:#d5e7a0; --overlay-plate:#ffb454;
+  --img-label-bg:rgb(0 0 0 / .87);
+  --shadow-color:rgb(0 0 0 / .33); --scrim:rgb(0 0 0 / .6);
+  --grid-line:var(--border); --axis-line:var(--border-strong);
+
+  /* Catalogue, detection and candidate markers: always paired with a shape and a word. */
+  --cat-gaia:var(--overlay-gaia); --cat-wise:#ff8a65; --cat-simbad:#ffd54f; --cat-skybot:#c5a3ff; --cat-sbident:#8fd694;
+  --src-gaia:var(--overlay-gaia); --src-allwise:#ff8a65; --src-none:#ff79c6; --src-unknown:#cfd8dc;
+  --candidate:#ffb454; --possible-track:#4dffd2;
+
+  /* Type: numbers and coordinates in mono. */
+  --font-sans:system-ui,-apple-system,'Segoe UI',Roboto,sans-serif;
+  --font-mono:ui-monospace,'SF Mono',Menlo,Consolas,monospace;
+  --text-xs:12px; --text-sm:13px; --text-md:14px; --text-lg:16px; --text-xl:20px;
+  --weight-regular:400; --weight-medium:500; --weight-semibold:600; --weight-bold:650;
+
+  /* Space (4 px base), radius, motion. */
+  --space-1:4px; --space-2:8px; --space-3:12px; --space-4:16px; --space-5:24px; --space-6:32px;
+  --radius-sm:4px; --radius-md:8px; --radius-lg:12px;
+  --dur-fast:120ms; --dur-med:200ms; --ease:cubic-bezier(.2,0,0,1);
+
+  /* Names used before NAS-72, mapped onto the tokens above (--muted is body-copy grey, so text-secondary). */
+  --bg:var(--surface-0); --surface:var(--surface-1); --surface-raised:var(--surface-2);
+  --text:var(--text-primary); --muted:var(--text-secondary);
+  --warning:var(--status-warn); --danger:var(--status-fail);
+  --diff-earlier:var(--div-pos); --diff-none:var(--div-mid); --diff-later:var(--div-neg);
+}
+
+@media (prefers-reduced-motion:reduce) {
+  :root { --dur-fast:0ms; --dur-med:0ms; }
+}

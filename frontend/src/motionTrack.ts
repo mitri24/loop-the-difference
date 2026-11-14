@@ -6,7 +6,6 @@ import { groupEpochs } from './timeAxis'
 import type { Frame, ProperMotion } from './types'
 
 export const TRACK_LABEL = 'predicted from Gaia DR3 proper motion'
-const TRACK_COLOUR = '#d5e7a0'
 
 export interface TrackPoint {
   mjd: number
@@ -49,19 +48,20 @@ export function useMotionTrack(
     let ticks: Catalog | null = null
     void import('aladin-lite').then(({ default: A }) => {
       if (disposed) return
-      line = A.graphicOverlay({ name: `Track, ${TRACK_LABEL}`, color: TRACK_COLOUR, lineWidth: 2 })
+      const colour = getComputedStyle(document.documentElement).getPropertyValue('--overlay-track').trim()
+      line = A.graphicOverlay({ name: `Track, ${TRACK_LABEL}`, color: colour, lineWidth: 2 })
       aladin.addOverlay(line)
       if (points.length > 1) line.add(A.polyline(points.map((p) => [p.ra, p.dec])))
       ticks = A.catalog({
         name: `Dates, ${TRACK_LABEL}`,
         shape: 'circle',
-        color: TRACK_COLOUR,
+        color: colour,
         sourceSize: 8,
         limit: points.length,
         onClick: 'showTable',
         displayLabel: true,
         labelColumn: 'label',
-        labelColor: TRACK_COLOUR,
+        labelColor: colour,
         labelFont: '12px system-ui, sans-serif',
       })
       ticks.addSources(
