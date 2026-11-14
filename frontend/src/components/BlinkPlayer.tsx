@@ -6,6 +6,7 @@ export function BlinkPlayer({ frames }: { frames: Frame[] }) {
   const [index, setIndex] = useState(0)
   const [playing, setPlaying] = useState(true)
   const [delayMs, setDelayMs] = useState(500)
+  const [copyState, setCopyState] = useState<'idle' | 'copied' | 'failed'>('idle')
   const count = frames.length
 
   useEffect(() => {
@@ -14,10 +15,37 @@ export function BlinkPlayer({ frames }: { frames: Frame[] }) {
     return () => window.clearInterval(timer)
   }, [playing, delayMs, count])
 
+  // Space plays/pauses, arrows step – unless the key already means something where focus is.
+  useEffect(() => {
+    const onKey = (event: KeyboardEvent) => {
+      if (event.altKey || event.ctrlKey || event.metaKey) return
+      const target = event.target instanceof Element ? event.target : null
+      if (target?.closest('input, textarea, select, [contenteditable="true"]')) return
+      if (event.key === ' ') {
+        if (target?.closest('button, a')) return
+        if (!event.repeat) setPlaying((p) => !p)
+      } else if (event.key === 'ArrowLeft' || event.key === 'ArrowRight') {
+        setPlaying(false)
+        setIndex((i) => (i + (event.key === 'ArrowLeft' ? -1 : 1) + count) % count)
+      } else return
+      event.preventDefault()
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [count])
+
   const frame = frames[index]
   const step = (delta: number) => {
     setPlaying(false)
     setIndex((i) => (i + delta + count) % count)
+  }
+  const copyLink = async () => {
+    try {
+      await navigator.clipboard.writeText(window.location.href)
+      setCopyState('copied')
+    } catch {
+      setCopyState('failed')
+    }
   }
 
   return (
@@ -71,6 +99,13 @@ export function BlinkPlayer({ frames }: { frames: Frame[] }) {
             onChange={(event) => setDelayMs(1650 - Number(event.target.value))}
           />
         </label>
+        <button type="button" onClick={() => void copyLink()} onBlur={() => setCopyState('idle')}>
+          {copyState === 'copied'
+            ? 'Link copied'
+            : copyState === 'failed'
+              ? 'Copy failed'
+              : 'Copy link'}
+        </button>
       </div>
 
       <dl className="meta">

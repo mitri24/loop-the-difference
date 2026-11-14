@@ -275,6 +275,10 @@ select {
   font-size: 0.8rem;
 }
 
+.layout.embed {
+  grid-template-columns: minmax(0, 1fr);
+}
+
 @media (max-width: 1100px) {
   .layout {
     grid-template-columns: 1fr;

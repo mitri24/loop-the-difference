@@ -5,9 +5,10 @@ import { ObservationInfo } from './components/ObservationInfo'
 import { SkyContext } from './components/SkyContext'
 import { TargetForm } from './components/TargetForm'
 import type { FrameJob, ObservationSummary } from './types'
-import { POLARIS, readQuery, toSearch, type TargetQuery } from './url'
+import { POLARIS, readEmbed, readQuery, toSearch, type TargetQuery } from './url'
 
 const INITIAL = readQuery(window.location.search)
+const EMBED = readEmbed(window.location.search)
 const POLARIS_CENTER = { ra: 37.954542, dec: 89.264111 }
 const MAX_FRAMES = 12
 const POLL_MS = 1500
@@ -32,7 +33,7 @@ export default function App() {
     setJob(null)
     setError(null)
     setBusy(true)
-    window.history.replaceState(null, '', toSearch(next))
+    window.history.replaceState(null, '', toSearch(next, EMBED))
     try {
       const [found, started] = await Promise.all([
         getObservations(next.ra, next.dec),
@@ -88,16 +89,26 @@ export default function App() {
 
   return (
     <div className="app">
-      <header className="header">
-        <h1>SkyShift</h1>
-        <p>See how the sky shifts: NASA SPHEREx images of one patch of sky, played over time.</p>
-      </header>
+      {!EMBED && (
+        <header className="header">
+          <h1>SkyShift</h1>
+          <p>See how the sky shifts: NASA SPHEREx images of one patch of sky, played over time.</p>
+        </header>
+      )}
 
-      <main className="layout">
-        <aside className="panel">
-          <TargetForm key={toSearch(query)} value={query} busy={busy} onShow={show} onFind={find} />
-          {summary && <ObservationInfo summary={summary} band={query.band} />}
-        </aside>
+      <main className={EMBED ? 'layout embed' : 'layout'}>
+        {!EMBED && (
+          <aside className="panel">
+            <TargetForm
+              key={toSearch(query)}
+              value={query}
+              busy={busy}
+              onShow={show}
+              onFind={find}
+            />
+            {summary && <ObservationInfo summary={summary} band={query.band} />}
+          </aside>
+        )}
 
         <section className="stage">
           {error && <p className="notice error">{error}</p>}
@@ -117,7 +128,11 @@ export default function App() {
             <BlinkPlayer key={job.job_id} frames={manifest.frames} />
           )}
           {!busy && !job && !error && (
-            <p className="hint">Enter a sky position, or pick one of the challenge targets.</p>
+            <p className="hint">
+              {EMBED
+                ? 'Add ra and dec to the URL, e.g. ?ra=02:31:49.09&dec=+89:15:50.8&embed=1'
+                : 'Enter a sky position, or pick one of the challenge targets.'}
+            </p>
           )}
           <p className="caveat">
             SkyShift is a discovery aid, not a detection pipeline: check every change against
@@ -126,15 +141,18 @@ export default function App() {
           </p>
         </section>
 
-        <section className="context">
-          <h2>Sky context · AllWISE</h2>
-          <SkyContext ra={center.ra} dec={center.dec} fov={query.fov} />
-        </section>
+        {!EMBED && (
+          <section className="context">
+            <h2>Sky context · AllWISE</h2>
+            <SkyContext ra={center.ra} dec={center.dec} fov={query.fov} />
+          </section>
+        )}
       </main>
 
       <footer className="footer">
         Data: SPHEREx ({summary?.collection ?? 'spherex_dr1'}), NASA/IPAC Infrared Science Archive
-        (IRSA) · Sky context: Aladin Lite, CDS Strasbourg · Built for NASA Space Apps 2026
+        (IRSA) · {!EMBED && 'Sky context: Aladin Lite, CDS Strasbourg · '}Built for NASA Space Apps
+        2026
       </footer>
     </div>
   )
