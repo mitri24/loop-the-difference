@@ -40,6 +40,14 @@ def test_an_empty_field_has_no_bodies():
     assert smallbodies.parse_sbident(EMPTY, 133.795, -7.245, 0.2) == []
 
 
+def test_an_answer_without_rows_or_an_empty_field_statement_is_an_unknown_format():
+    changed = {key: value for key, value in EMPTY.items() if key != "warning"}
+
+    with pytest.raises(KeyError):
+        smallbodies.parse_sbident(changed, 133.795, -7.245, 0.2)
+    assert smallbodies.parse_sbident({**changed, "n_second_pass": 0}, 133.795, -7.245, 0.2) == []
+
+
 def test_query_asks_the_second_pass_for_a_box_around_the_frame():
     params = smallbodies.query_params(133.79513, -7.24514, 0.2, 60989.25)
 

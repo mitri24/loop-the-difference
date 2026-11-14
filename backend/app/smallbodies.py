@@ -89,8 +89,15 @@ def query_params(ra: float, dec: float, size_deg: float, mjd: float) -> dict[str
 
 
 def parse_sbident(payload: dict, ra: float, dec: float, size_deg: float) -> list[SmallBody]:
-    """Second-pass bodies on the frame grid (frames.target_grid), brightest first."""
-    rows = payload.get("data_second_pass") or []
+    """Second-pass bodies on the frame grid (frames.target_grid), brightest first.
+
+    An empty field is stated by JPL; any other answer without rows raises, so it is not cached.
+    """
+    if "data_second_pass" not in payload:
+        if payload.get("n_second_pass") == 0 or payload.get("warning") == "no matching records":
+            return []
+        raise KeyError("data_second_pass")
+    rows = payload["data_second_pass"]
     if not rows:
         return []
     index = [payload["fields_second"].index(name) for name in COLUMNS]
