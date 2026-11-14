@@ -10,6 +10,7 @@ import { DifferenceView } from './components/DifferenceView'
 import { LayersSection } from './components/LayersSection'
 import { ModeSwitch } from './components/ModeSwitch'
 import { SkyView } from './components/SkyView'
+import { SmallBodies, useSmallBodies } from './components/SmallBodies'
 import { SourceList } from './components/SourceList'
 import { TargetForm } from './components/TargetForm'
 import { WavelengthStrip } from './components/WavelengthStrip'
@@ -17,6 +18,7 @@ import { useFrameLayers } from './frameLayers'
 import { useMotionTrack } from './motionTrack'
 import { sliceForDetector } from './sky'
 import { sliceText, useCubeWavelengths, useSkySlice } from './skyCube'
+import { useSmallBodyLayer } from './smallBodyLayer'
 import { countSources, useSourceLayer } from './sourceLayer'
 import type { FrameJob, ObservationSummary, ProperMotion } from './types'
 import { POLARIS, readEmbed, readQuery, toSearch, type TargetQuery, type ViewMode } from './url'
@@ -49,6 +51,7 @@ export default function App() {
   const [frameIndex, setFrameIndex] = useState(0)
   const [framesOnSky, setFramesOnSky] = useState(true)
   const [sourcesOnSky, setSourcesOnSky] = useState(true)
+  const [smallBodiesOnSky, setSmallBodiesOnSky] = useState(true)
   const [skySlice, setSkySlice] = useState(() => sliceForDetector((INITIAL ?? POLARIS).band))
   const [sliceBand, setSliceBand] = useState((INITIAL ?? POLARIS).band)
   const [viewRevision, setViewRevision] = useState(0)
@@ -239,6 +242,12 @@ export default function App() {
   const counts = frame?.sources ? countSources(frame.sources) : null
   const sourceSummary = counts ? ` · ${counts.detected} in this frame · ${counts.none} ${counts.none === 1 ? 'needs' : 'need'} verification${counts.unknown ? ` · ${counts.unknown} unknown` : ''}` : ''
   const frameOnSky = frame && sky && framesOnSky && !showDifference ? frame : null
+  // JPL SBIdent takes about a minute per time: one time per epoch, its first frame's.
+  const smallBodies = useSmallBodies(manifest && hasFrames ? {
+    ra: `${manifest.ra}`, dec: `${manifest.dec}`, size_deg: manifest.size_deg,
+    mjds: manifest.frames.filter((f, i, all) => all.findIndex((g) => g.epoch === f.epoch) === i).map((f) => f.mjd).slice(0, 6),
+  } : null)
+  useSmallBodyLayer(sky, smallBodies.epochs, frame?.mjd ?? null, smallBodiesOnSky)
 
   const comparison = (
     <>
@@ -284,11 +293,13 @@ export default function App() {
       {!EMBED && !skyUnavailable && <LayersSection aladin={sky} sizeDeg={query.fov} frame={frame}
         framesOnSky={framesOnSky} onFramesOnSkyChange={setFramesOnSky} sourcesOnSky={sourcesOnSky} onSourcesOnSkyChange={setSourcesOnSky}
         trackShown={track.length > 0} skySlice={skySlice} onSkySliceChange={setSkySlice} cubeActive={cubeActive}
+        smallBodyEpochs={smallBodies.epochs} smallBodiesOnSky={smallBodiesOnSky} onSmallBodiesOnSkyChange={setSmallBodiesOnSky}
         framesBlocked={showDifference ? 'The difference image is shown in this panel. Frames and their detected sources go back on the sky in the other modes.' : undefined} />}
       {!EMBED && !skyUnavailable && frame && !showDifference && <details className="disclosure">
         <summary>Detected sources{sourceSummary}</summary>
         <SourceList frame={frame} onSelect={(ra, dec) => sky?.gotoRaDec(ra, dec)} />
       </details>}
+      {!EMBED && manifest && hasFrames && <SmallBodies lookup={smallBodies} currentMjd={frame?.mjd ?? null} />}
       {manifest && checks.length > 0 && <details className="disclosure" open={hasBlocker(checks, 'difference')}><summary>Quality checks · {checks.length}</summary><EvidencePanel checks={checks} /></details>}
       <p className="science-note">Changes are unverified. Wavelength, coverage and image artifacts can affect a comparison.</p>
     </>

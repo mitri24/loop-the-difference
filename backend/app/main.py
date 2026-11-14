@@ -20,6 +20,7 @@ from app.models import (
     SpectrumJob,
     SpectrumRequest,
 )
+from app.smallbodies import router as smallbodies_router
 
 _JOB_ID = re.compile(r"^[0-9a-f]{16}$")
 _FRAME_FILE = re.compile(r"^(frame_\d{2}|diff_\d{2}_\d{2})\.png$")
@@ -141,3 +142,6 @@ def spectrum_job(job_id: str, settings: SettingsDep) -> SpectrumJob:
     if not _JOB_ID.match(job_id):
         raise HTTPException(status_code=404, detail="Unknown job")
     return jobs.spectrum_status(jobs.connect(settings.redis_url), job_id)
+
+
+app.include_router(smallbodies_router)

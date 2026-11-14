@@ -3,6 +3,8 @@ import type {
   FrameRequest,
   ObservationSummary,
   ResolvedTarget,
+  SmallBodiesJob,
+  SmallBodiesRequest,
   SpectrumJob,
   SpectrumRequest,
 } from './types'
@@ -49,3 +51,14 @@ export const createSpectrum = (body: SpectrumRequest) =>
   })
 
 export const getSpectrumJob = (jobId: string) => request<SpectrumJob>(`/api/spectrum/${jobId}`)
+
+// Known asteroids and comets per epoch (NASA/JPL SBIdent), looked up by the worker.
+export const createSmallBodies = (body: SmallBodiesRequest) =>
+  request<SmallBodiesJob>('/api/smallbodies', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  })
+
+export const getSmallBodiesJob = (jobId: string) =>
+  request<SmallBodiesJob>(`/api/smallbodies/${jobId}`)

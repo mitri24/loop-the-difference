@@ -173,3 +173,39 @@ export interface DetectedSource {
   catalog_mag: number | null
   catalog_band: 'G' | 'W1' | null
 }
+
+// Known asteroids and comets per epoch from NASA/JPL SBIdent (backend/app/smallbodies.py).
+export interface SmallBodiesRequest {
+  ra: string
+  dec: string
+  size_deg: number
+  mjds: number[]
+}
+
+export interface SmallBody {
+  name: string
+  ra: number
+  dec: number
+  vmag: number | null
+  // Arcsec per hour; the RA rate is on the sky (dRA·cos dec).
+  ra_rate: number
+  dec_rate: number
+  distance_arcsec: number
+}
+
+export interface SmallBodyEpoch {
+  mjd: number
+  date: string
+  bodies: SmallBody[]
+  error: string | null
+  source_url: string
+}
+
+export interface SmallBodiesJob {
+  job_id: string
+  status: FrameJob['status']
+  progress: number
+  total: number
+  epochs: SmallBodyEpoch[]
+  error: string | null
+}

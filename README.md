@@ -82,7 +82,7 @@ git pull && docker compose -f docker-compose.yml -f docker-compose.prod.yml up -
 Logs:
 
 ```sh
-docker compose -f docker-compose.yml -f docker-compose.prod.yml logs -f caddy api worker
+docker compose -f docker-compose.yml -f docker-compose.prod.yml logs -f caddy api worker worker-slow
 ```
 
 ## Data and credits

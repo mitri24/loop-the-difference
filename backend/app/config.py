@@ -14,6 +14,9 @@ class Settings(BaseSettings):
     http_timeout_s: float = 90.0
     download_workers: int = 4
     max_queued: int = 20
+    # Queues this worker process takes, comma-separated in priority order; empty means all, frames
+    # first. docker compose gives the slow JPL lookups a worker of their own.
+    worker_queues: str = ""
     cors_origins: list[str] = ["http://localhost:5173"]
 
 
