@@ -1,5 +1,12 @@
-import { CHALLENGE_TARGETS, DETECTORS, FIELDS_OF_VIEW, presetView } from '../targets'
+import { CHALLENGE_TARGETS, DETECTORS, FIELDS_OF_VIEW, presetView, type ChallengeTarget } from '../targets'
 import type { TargetQuery } from '../url'
+
+// A preset with a name is resolved (Gaia proper motion included); one with coordinates is shown as is.
+export function openTarget(target: ChallengeTarget, draft: TargetQuery, { onShow, onFind }: Pick<Props, 'onShow' | 'onFind'>) {
+  const view = presetView(target, draft)
+  if ('name' in target) onFind(target.name, view)
+  else onShow({ ...view, ra: target.ra, dec: target.dec })
+}
 
 interface Props {
   value: TargetQuery
@@ -19,11 +26,7 @@ export function TargetForm({ value: draft, busy, onShow, onFind, onChange: setDr
         <div className="target-presets">
           {CHALLENGE_TARGETS.map((target) => (
             <button type="button" key={target.label} disabled={busy}
-              onClick={() => {
-                const view = presetView(target, draft)
-                if ('name' in target) onFind(target.name, view)
-                else onShow({ ...view, ra: target.ra, dec: target.dec })
-              }}>
+              onClick={() => openTarget(target, draft, { onShow, onFind })}>
               <span>{target.label}{target.hint && <span className="field-hint">{' '}<br />{target.hint}</span>}</span>
               <span aria-hidden="true">↗</span>
             </button>

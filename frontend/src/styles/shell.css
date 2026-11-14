@@ -1,0 +1,167 @@
+/* One workspace, two stages. Explore: the full Aladin sky to choose a region.
+   Investigate: the SPHEREx images large in the middle, the timeline under them, the sky as a small
+   overview map. Search bar on top, dock and one floating panel on the right. Breakpoints match useResizable.ts. */
+:root { --dock-w:72px; --z-map:0; --z-chrome:10; --z-panel:20; --z-feedback:30; }
+
+.shell {
+  position:fixed; inset:0;
+  display:grid;
+  grid-template-columns:minmax(0,1fr) auto var(--dock-w);
+  grid-template-rows:auto minmax(0,1fr) auto;
+  grid-template-areas:'hud panel dock' 'main panel dock' 'bar panel dock';
+  height:100dvh;
+  padding:env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left);
+  background:var(--surface-0);
+  isolation:isolate;
+}
+
+/* Search bar: its own row, so Aladin's corner tools stay uncovered. */
+.hud { grid-area:hud; z-index:var(--z-chrome); display:flex; flex-direction:column; gap:var(--space-2); padding:var(--space-2) var(--space-3); background:var(--surface-1); border-bottom:1px solid var(--border); min-width:0; }
+.hud-row { display:flex; align-items:center; gap:var(--space-3); min-width:0; }
+.brand { display:flex; align-items:center; gap:var(--space-2); white-space:nowrap; font-weight:650; }
+.brand-mark { width:28px; height:28px; display:grid; place-items:center; border:1px solid var(--accent); color:var(--accent); font-size:20px; font-weight:300; }
+.global-search { display:flex; gap:var(--space-2); flex:1; min-width:0; max-width:640px; margin-inline:auto; }
+.global-search input { flex:1; width:0; }
+.share-button { background:transparent; }
+.hud-chips { display:flex; gap:var(--space-1); overflow-x:auto; scrollbar-width:none; justify-content:center; }
+.chip { flex:none; min-height:32px; padding:var(--space-1) var(--space-3); border-radius:999px; font-size:var(--text-xs); background:var(--surface-2); }
+
+.stage { grid-area:main; position:relative; min-width:0; min-height:0; overflow:hidden; }
+
+/* The sky: the whole stage in Explore; Aladin follows the element's size. */
+.sky-area { position:absolute; inset:0; overflow:hidden; }
+.sky-stage { position:absolute; inset:0; z-index:var(--z-map); }
+.sky-view { width:100%; height:100%; overflow:hidden; }
+.sky-stage > .notice { position:absolute; top:var(--space-2); left:var(--space-3); }
+.sky-view .aladin-box:not(.aladin-status-bar) { max-width:calc(100% - 16px); max-height:calc(100% - 64px); }
+.map-caption { position:absolute; z-index:var(--z-chrome); bottom:36px; left:var(--space-2); max-width:calc(100% - 160px); padding:var(--space-1) var(--space-3); background:var(--surface-glass); border:1px solid var(--border); border-radius:var(--radius-sm); display:flex; flex-wrap:wrap; gap:var(--space-1) var(--space-4); align-items:center; pointer-events:none; font-size:var(--text-xs); }
+.sky-area:has(.aladin-table) .map-caption { display:none; }
+.explore-actions { position:absolute; z-index:var(--z-chrome); left:50%; bottom:96px; transform:translateX(-50%); display:flex; flex-wrap:wrap; justify-content:center; gap:var(--space-2); width:max-content; max-width:calc(100% - 32px); }
+.pick-card { display:flex; align-items:center; gap:var(--space-2); padding:var(--space-1) var(--space-1) var(--space-1) var(--space-3); background:var(--surface-glass); border:1px solid var(--border-strong); border-radius:var(--radius-md); font-family:var(--font-mono); font-size:var(--text-xs); }
+.explore-actions > button { background:var(--surface-glass); }
+
+/* Investigate: the sky shrinks to an overview map in its own column beside the viewer, width from its handle. */
+.stage.investigate { display:grid; grid-template-columns:minmax(0,1fr) auto; grid-template-rows:minmax(0,1fr); }
+.stage.investigate > .viewer { position:relative; inset:auto; }
+.sky-area.overview { position:relative; inset:auto; align-self:start; margin:var(--space-3) var(--space-3) var(--space-3) 0; z-index:var(--z-chrome); width:var(--map-w); max-width:calc(100% - 24px); height:calc(var(--map-w) * .75 + 36px); max-height:calc(100% - 24px); overflow:visible; background:var(--surface-1); border:1px solid var(--border-strong); border-radius:var(--radius-md); }
+.sky-area.overview .sky-stage { top:36px; overflow:hidden; border-radius:0 0 var(--radius-md) var(--radius-md); }
+.sky-area.overview .map-caption { display:none; }
+.sky-area.overview.collapsed { width:auto; height:36px; }
+.sky-area.overview.collapsed .sky-stage { visibility:hidden; pointer-events:none; width:var(--map-w); height:calc(var(--map-w) * .75); }
+.overview-bar { position:relative; height:36px; display:flex; align-items:center; justify-content:space-between; gap:var(--space-2); padding:0 var(--space-1) 0 var(--space-3); font-size:var(--text-xs); }
+.overview-bar button { min-height:28px; padding:0 var(--space-2); background:transparent; font-size:var(--text-xs); }
+
+/* The SPHEREx cutout viewer: modes at the image, the image as large as the stage allows. */
+.viewer { position:absolute; inset:0; display:flex; flex-direction:column; min-width:0; }
+.viewer-head { flex:none; display:flex; flex-wrap:wrap; align-items:center; gap:var(--space-2) var(--space-3); padding:var(--space-2) var(--space-3); border-bottom:1px solid var(--border); }
+.viewer-head .target-summary { padding:0; border:0; flex-direction:column; gap:0; min-width:0; }
+.viewer-head .mode-switch { flex:1 1 280px; max-width:420px; flex-direction:row; align-items:center; }
+.back-button { background:transparent; }
+.viewer-body { flex:1; min-height:0; overflow-y:auto; overscroll-behavior:contain; padding:var(--space-3); display:flex; flex-direction:column; gap:var(--space-3); container-type:size; scrollbar-width:thin; }
+.viewer .player { display:grid; grid-template-columns:minmax(0,1fr); gap:var(--space-2); }
+.viewer .player .blink-mode { order:-1; display:flex; gap:var(--space-1); }
+.viewer .viewport { width:clamp(160px, min(100cqw, 100cqh - 120px), 1100px); justify-self:center; }
+.viewer .controls .speed { width:auto; }
+@container (min-width:760px) {
+  .viewer .player { grid-template-columns:auto minmax(220px, 340px); grid-template-areas:'mode mode' 'view pair' 'view meta' 'view note' 'controls controls'; align-items:start; justify-content:center; }
+  .viewer .viewport { grid-area:view; width:clamp(200px, min(100cqw - 380px, 100cqh - 130px), 1100px); }
+  .viewer .player > .controls { grid-area:controls; }
+  .viewer .player > .blink-mode { grid-area:mode; }
+  .viewer .player > .blink-pair { grid-area:pair; }
+  .viewer .player > .meta { grid-area:meta; }
+  .viewer .player > .notice { grid-area:note; }
+}
+
+/* Timeline under the viewer: height from its top edge, collapsible to its heading. */
+.bottom-bar { grid-area:bar; position:relative; z-index:var(--z-chrome); display:flex; flex-direction:column; height:var(--bar-h); min-height:0; background:var(--surface-1); border-top:1px solid var(--border); }
+.bottom-bar.collapsed { height:auto; }
+.bottom-bar.collapsed .bottom-bar-body { display:none; }
+.bottom-bar-head { flex:none; display:flex; align-items:center; gap:var(--space-3); padding:var(--space-1) var(--space-3); min-width:0; font-size:var(--text-xs); }
+.collapse-button { margin-left:auto; flex:none; width:40px; min-height:32px; padding:0; background:transparent; }
+.bottom-bar-body { flex:1; min-height:0; overflow-y:auto; overscroll-behavior:contain; padding:0 var(--space-3) var(--space-3); container-type:inline-size; }
+/* The timeline keeps its drawn proportions and text size: as wide as the bar, never taller than it. */
+.bottom-bar-body svg { display:block; width:auto; max-width:100%; height:calc(var(--bar-h) - 72px); margin-inline:auto; }
+
+/* Drag handles: a thin line that grows on hover and focus; only here touch-action is off. */
+.resizer { position:absolute; z-index:1; touch-action:none; background:transparent; }
+.resizer::after { content:''; position:absolute; background:var(--border-strong); border-radius:2px; opacity:.6; }
+.resizer:hover::after,.resizer:focus-visible::after { background:var(--accent); opacity:1; }
+.resizer-x { top:0; bottom:0; left:-6px; width:12px; cursor:ew-resize; }
+.resizer-x::after { top:50%; left:5px; width:2px; height:48px; transform:translateY(-50%); }
+.resizer-y { left:0; right:0; top:-6px; height:12px; cursor:ns-resize; }
+.resizer-y::after { left:50%; top:5px; height:2px; width:48px; transform:translateX(-50%); }
+
+/* Floating panel next to the dock: width from its handle, only the body scrolls. */
+.fpanel { grid-area:panel; position:relative; z-index:var(--z-panel); display:flex; flex-direction:column; width:clamp(320px, var(--panel-w), min(60vw, 960px)); min-height:0; background:var(--surface-1); border-left:1px solid var(--border); }
+.fpanel > .resizer-y { display:none; }
+.fpanel-header { flex:none; display:flex; align-items:center; justify-content:space-between; gap:var(--space-3); padding:var(--space-3) var(--space-4); border-bottom:1px solid var(--border); }
+.fpanel-header h2 { font-size:var(--text-lg); }
+.close-button { flex:none; width:40px; padding:0; background:transparent; border-color:transparent; }
+.fpanel-body { flex:1; min-height:0; overflow-y:auto; overscroll-behavior:contain; padding:var(--space-4); container-type:inline-size; scrollbar-width:thin; }
+.fpanel-body > section { display:flex; flex-direction:column; gap:var(--space-4); }
+.fpanel-body svg,.fpanel-body table { max-width:100%; }
+.fpanel-body svg { width:100%; height:auto; }
+.fpanel-actions { flex:none; display:grid; gap:var(--space-2); padding:var(--space-3) var(--space-4); border-top:1px solid var(--border); }
+.fpanel-actions .primary { justify-content:space-between; }
+@container (min-width:560px) {
+  .target-presets { grid-template-columns:repeat(3, minmax(0,1fr)); }
+  .fpanel-actions { grid-template-columns:1fr 1fr; }
+}
+@container (max-width:360px) {
+  .target-presets,.form-row { grid-template-columns:minmax(0,1fr); }
+}
+
+/* Dock: icon + word, count badge, red badge for a blocking check. */
+.dock { grid-area:dock; z-index:var(--z-chrome); display:flex; flex-direction:column; gap:var(--space-1); padding:var(--space-2) var(--space-1); background:var(--surface-1); border-left:1px solid var(--border); overflow-y:auto; scrollbar-width:none; }
+.dock button { position:relative; flex-direction:column; gap:2px; min-height:56px; padding:var(--space-1); background:transparent; border-color:transparent; font-size:11px; }
+.dock button.selected { color:var(--accent); background:var(--accent-subtle); border-color:var(--accent); }
+.dock-icon { font-size:18px; line-height:1; }
+.dock-badge { position:absolute; top:2px; right:4px; min-width:16px; padding:0 4px; border-radius:var(--radius-md); font-size:10px; background:var(--accent); color:var(--text-on-accent); }
+.dock-badge.alert { background:var(--status-fail); }
+
+.share-feedback { position:fixed; z-index:var(--z-feedback); top:calc(env(safe-area-inset-top) + 96px); left:50%; transform:translateX(-50%); width:min(440px,calc(100% - 32px)); background:var(--surface-2); border:1px solid var(--accent); padding:var(--space-2); display:flex; align-items:center; justify-content:space-between; gap:var(--space-2); }
+.share-feedback button { flex:none; }
+
+/* 701–1023 px: the panel lies over the stage (not over the timeline), the dock stays. */
+@media (max-width:1023px) {
+  .shell { grid-template-columns:minmax(0,1fr) var(--dock-w); grid-template-areas:'hud dock' 'main dock' 'bar dock'; }
+  .fpanel { grid-area:main; justify-self:end; max-width:100%; border-right:1px solid var(--border); }
+  .map-hint { display:none; }
+}
+
+/* ≤ 700 px: the dock becomes a bottom row; the panel is a bottom sheet between stage and timeline
+   with a height handle; the overview map starts folded. */
+@media (max-width:700px) {
+  :root { --dock-h:60px; }
+  .shell { grid-template-columns:minmax(0,1fr); grid-template-rows:auto minmax(48px,1fr) minmax(0,max-content) auto var(--dock-h);
+    grid-template-areas:'hud' 'main' 'panel' 'bar' 'dock'; }
+  .brand-name,.share-button { display:none; }
+  .hud-chips { justify-content:flex-start; }
+  .global-search input { font-size:16px; }
+  .dock { flex-direction:row; padding:var(--space-1); border-left:0; border-top:1px solid var(--border); overflow-x:auto; overflow-y:hidden; }
+  .dock button { flex:1 0 52px; min-height:48px; }
+  .fpanel { grid-area:panel; justify-self:stretch; width:auto; height:var(--sheet-h); max-height:100%; border:0; border-top:1px solid var(--border-strong); border-radius:var(--radius-lg) var(--radius-lg) 0 0; }
+  .fpanel > .resizer-x { display:none; }
+  .fpanel > .resizer-y { display:block; }
+  .fpanel-actions { grid-template-columns:1fr 1fr; }
+  .bottom-bar { height:min(var(--bar-h), 30dvh); }
+  .bottom-bar.collapsed { height:auto; }
+  .shell:has(> .fpanel:not([hidden])) .bottom-bar { display:none; }
+  .sky-area.overview > .resizer { display:none; }
+  .bottom-bar-body svg { height:calc(min(var(--bar-h), 30dvh) - 72px); }
+  .map-caption { max-width:calc(100% - 80px); bottom:28px; }
+  .shell:has(> .fpanel:not([hidden])) .map-caption { display:none; }
+  /* The overview map sits under the viewer, folded at first. */
+  .stage.investigate { display:flex; flex-direction:column; }
+  .stage.investigate > .viewer { flex:1; min-height:0; }
+  .sky-area.overview { flex:none; width:auto; max-width:none; height:min(calc(var(--map-w) * .75 + 36px), 50%); margin:0; border-width:1px 0 0; border-radius:0; }
+  .sky-area.overview.collapsed { height:36px; }
+}
+@media (max-height:600px) and (min-width:701px) {
+  .hud-chips { display:none; }
+}
+/* Short phones (landscape, high zoom): the panel goes before the sky; the examples stay in Target & options. */
+@media (max-width:700px) and (max-height:460px) {
+  .hud-chips { display:none; }
+  .shell { grid-template-rows:auto minmax(0,1fr) minmax(0,max-content) auto var(--dock-h); }
+}

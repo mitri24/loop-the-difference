@@ -1,36 +1,13 @@
-import { useEffect, useRef } from 'react'
 import { LearnLinks } from './DataLinks'
 
 const REPO_URL = 'https://github.com/mitri24/loop-the-difference'
 
-type Props = { open: boolean; onClose: () => void }
-
-// Dependency-free modal: the native <dialog> handles Esc and focus; a click on the backdrop closes it.
-export function AboutPanel({ open, onClose }: Props) {
-  const ref = useRef<HTMLDialogElement>(null)
-
-  useEffect(() => {
-    const dialog = ref.current
-    if (!dialog) return
-    if (open && !dialog.open) dialog.showModal()
-    if (!open && dialog.open) dialog.close()
-  }, [open])
-
+export function AboutPanel() {
   return (
-    <dialog
-      ref={ref}
-      className="about"
-      onClose={onClose}
-      onClick={(event) => {
-        if (event.target === event.currentTarget) onClose()
-      }}
-    >
+    <div className="about">
       <div className="about-body">
         <div className="about-head">
           <h2>About Loop the Difference</h2>
-          <button type="button" onClick={onClose} aria-label="Close">
-            ✕
-          </button>
         </div>
 
         <h3>What it does</h3>
@@ -149,6 +126,6 @@ export function AboutPanel({ open, onClose }: Props) {
           </li>
         </ul>
       </div>
-    </dialog>
+    </div>
   )
 }
