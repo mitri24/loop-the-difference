@@ -1,5 +1,6 @@
 import warnings
 from concurrent.futures import ThreadPoolExecutor
+from itertools import combinations
 from pathlib import Path
 
 import httpx
@@ -14,10 +15,11 @@ from app.frames import (
     cutout_url,
     fetch_cutout,
     read_image,
+    render_diff,
     render_png,
     target_grid,
 )
-from app.models import Check, Frame, FrameManifest, Observation
+from app.models import Check, Difference, Frame, FrameManifest, Observation
 
 MIN_COVERAGE = 0.5
 
@@ -124,6 +126,32 @@ def build_frames(
     out_dir = manifest_path(settings.cache_dir, key).parent
     out_dir.mkdir(parents=True, exist_ok=True)
     names = render_png(images, out_dir) if images else []
+    differences = []
+    if stack:
+        for a, b in combinations(range(len(images)), 2):
+            name = f"diff_{a:02d}_{b:02d}.png"
+            render_diff(images[a], images[b], out_dir, name)
+            differences.append(
+                Difference(
+                    a=a,
+                    b=b,
+                    url=f"/api/frames/{key}/{name}",
+                    comparable=True,
+                    obs_ids_a=[kept[i][0].obs_id for i in members[a][1]],
+                    obs_ids_b=[kept[i][0].obs_id for i in members[b][1]],
+                )
+            )
+    if differences:
+        checks.append(
+            Check(
+                code="WAVELENGTH_UNKNOWN",
+                severity="info",
+                message="Wavelength match between epochs not checked yet",
+                detail="Differences use the same detector; whether both epochs saw the same "
+                "wavelength at the target is not checked yet",
+                affects=["difference"],
+            )
+        )
     manifest = FrameManifest(
         collection=settings.spherex_collection,
         ra=ra,
@@ -138,8 +166,9 @@ def build_frames(
             _frame(index, f"/api/frames/{key}/{name}", epoch, [kept[i] for i in group])
             for index, ((epoch, group), name) in enumerate(zip(members, names, strict=True))
         ],
-        warnings=[check.detail for check in checks],
+        warnings=[check.detail for check in checks if check.severity != "info"],
         checks=checks,
+        differences=differences,
     )
     partial = out_dir / "manifest.json.part"
     partial.write_text(manifest.model_dump_json())

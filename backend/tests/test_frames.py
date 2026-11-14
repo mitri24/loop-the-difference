@@ -5,7 +5,7 @@ from astropy.wcs import WCS
 from PIL import Image
 
 from app import frames
-from app.frames import align, render_png, target_grid
+from app.frames import align, render_diff, render_png, target_grid
 
 RA, DEC = 133.795, -7.245
 
@@ -54,6 +54,31 @@ def test_frames_share_one_stretch(tmp_path):
     assert names == ["frame_00.png", "frame_01.png"]
     dark, bright = (np.asarray(Image.open(tmp_path / name)) for name in names)
     assert dark.mean() < bright.mean()
+
+
+def _star(x: int, y: int, size: int = 64) -> np.ndarray:
+    yy, xx = np.mgrid[:size, :size]
+    return 100 * np.exp(-((xx - x) ** 2 + (yy - y) ** 2) / (2 * 1.5**2))
+
+
+def test_a_moving_star_leaves_a_red_blue_pair_on_grey(tmp_path):
+    earlier, later = _star(20, 20), _star(24, 20)
+    later[:, 0] = np.nan
+
+    render_diff(earlier, later, tmp_path, "diff_00_01.png")
+
+    rgb = np.flipud(np.asarray(Image.open(tmp_path / "diff_00_01.png"))).astype(int)
+    assert rgb.shape == (64, 64, 3)
+    assert tuple(rgb[20, 20]) == (214, 64, 48)
+    assert tuple(rgb[20, 24]) == (52, 112, 219)
+    assert tuple(rgb[50, 50]) == (128, 128, 128)
+    assert tuple(rgb[10, 0]) == (40, 40, 40)
+
+
+def test_identical_epochs_give_a_plain_grey_difference(tmp_path):
+    render_diff(np.ones((8, 8)), np.ones((8, 8)), tmp_path, "diff.png")
+
+    assert (np.asarray(Image.open(tmp_path / "diff.png")) == 128).all()
 
 
 def _client(responses: list[httpx.Response], calls: list[int]) -> httpx.Client:

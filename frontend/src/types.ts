@@ -66,6 +66,8 @@ export interface Difference {
   url: string
   comparable: boolean
   delta_lambda_pct: number | null
+  obs_ids_a: string[]
+  obs_ids_b: string[]
 }
 
 export interface FrameManifest {

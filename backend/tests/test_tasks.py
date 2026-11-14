@@ -101,6 +101,27 @@ def test_stacked_job_yields_one_median_frame_per_epoch(monkeypatch, settings, tm
     # The cosmic ray in exposure 100 is gone from the first stack: the frames are all alike.
     pixels = [_png(settings, f) for f in frames]
     assert (pixels[0] == pixels[1]).all()
+    assert [(d["a"], d["b"], d["url"]) for d in manifest["differences"]] == [
+        (0, 1, "/api/frames/job/diff_00_01.png"),
+        (0, 2, "/api/frames/job/diff_00_02.png"),
+        (1, 2, "/api/frames/job/diff_01_02.png"),
+    ]
+    first = manifest["differences"][0]
+    assert first["obs_ids_a"] == ["obs-100", "obs-101", "obs-102"]
+    assert first["obs_ids_b"] == ["obs-290", "obs-291", "obs-292"]
+    assert (settings.cache_dir / "frames" / "job" / "diff_01_02.png").exists()
+    assert "WAVELENGTH_UNKNOWN" in [c["code"] for c in manifest["checks"]]
+
+
+def test_one_epoch_gives_no_difference_and_blocks_it(monkeypatch, settings, tmp_path):
+    _offline_archive(monkeypatch, settings, tmp_path, [_observation(100 + i) for i in range(3)])
+
+    manifest = build_frames("job", RA, DEC, SIZE_DEG, 6, 12, stack=True)
+
+    assert manifest["differences"] == []
+    assert [(c["code"], c["severity"]) for c in manifest["checks"]] == [
+        ("NO_TIME_BASELINE", "blocker")
+    ]
 
 
 def test_exposure_job_numbers_the_epoch_of_every_frame(monkeypatch, settings, tmp_path):
@@ -121,3 +142,4 @@ def test_exposure_job_numbers_the_epoch_of_every_frame(monkeypatch, settings, tm
     # Without stacking the cosmic ray in exposure 100 stays visible.
     pixels = [_png(settings, f) for f in frames]
     assert (pixels[0] != pixels[1]).any()
+    assert manifest["differences"] == []

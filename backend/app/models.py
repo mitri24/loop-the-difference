@@ -77,6 +77,8 @@ class Difference(BaseModel):
     url: str
     comparable: bool
     delta_lambda_pct: float | None = None
+    obs_ids_a: list[str] = []
+    obs_ids_b: list[str] = []
 
 
 class FrameManifest(BaseModel):
