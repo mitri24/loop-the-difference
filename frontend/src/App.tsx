@@ -366,7 +366,7 @@ export default function App() {
             </section>
             <section id="details-panel" hidden={panel !== 'details'}>
               <DataPanel query={query} targetLabel={targetLabel} summary={summary} manifest={manifest} checks={checks}
-                frameIndex={showDifference ? undefined : frameIndex} onAbout={() => setAbout(true)} />
+                frameIndex={showDifference ? undefined : frameIndex} open={panel === 'details'} onAbout={() => setAbout(true)} />
             </section>
           </div>
           {panel === 'locate' && <div className="sheet-actions">

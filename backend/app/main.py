@@ -7,7 +7,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, JSONResponse
 from redis.exceptions import RedisError
 
-from app import jobs, names
+from app import jobs, names, partners
 from app.archive import ArchiveError, resolve_position, search_observations, summarize
 from app.catalogs import find_proper_motion
 from app.config import Settings, get_settings
@@ -34,6 +34,7 @@ app.add_middleware(
     allow_methods=["GET", "POST"],
     allow_headers=["*"],
 )
+app.include_router(partners.router)
 
 
 @app.exception_handler(CoordinateError)

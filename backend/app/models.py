@@ -237,3 +237,16 @@ class SmallBodiesJob(BaseModel):
     total: int = 0
     epochs: list[SmallBodyEpoch] = []
     error: str | None = None
+
+
+class NeossatCoverage(BaseModel):
+    """NEOSSat (CSA) sky frames covering a position, counted at CADC: visible light, not SPHEREx."""
+
+    collection: str
+    ra: float
+    dec: float
+    count: int
+    first_date: str | None = None
+    last_date: str | None = None
+    search_url: str
+    note: str

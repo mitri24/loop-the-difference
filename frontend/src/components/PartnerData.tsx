@@ -1,0 +1,93 @@
+import { useEffect, useState } from 'react'
+import { getNeossat } from '../api'
+import type { NeossatCoverage } from '../types'
+
+export type NeossatState =
+  | { status: 'loading' }
+  | { status: 'ready'; coverage: NeossatCoverage }
+  | { status: 'error'; message: string }
+
+// "619 observations, 2019" or "3 observations, 2019–2024"; null when no sky frame covers it.
+export function neossatSummary(coverage: NeossatCoverage): string | null {
+  if (coverage.count === 0) return null
+  const noun = coverage.count === 1 ? 'observation' : 'observations'
+  const first = coverage.first_date?.slice(0, 4)
+  const last = coverage.last_date?.slice(0, 4)
+  const years = first !== last ? `${first}–${last}` : first
+  return years ? `${coverage.count} ${noun}, ${years}` : `${coverage.count} ${noun}`
+}
+
+// One CADC lookup per position; retry asks again (the API joins a query that is still running).
+export function useNeossat(ra: string, dec: string): { state: NeossatState; retry: () => void } {
+  const [attempt, setAttempt] = useState(0)
+  const key = `${ra}|${dec}|${attempt}`
+  const [result, setResult] = useState<{ key: string; state: NeossatState } | null>(null)
+
+  useEffect(() => {
+    let current = true
+    getNeossat(ra, dec).then(
+      (coverage) => {
+        if (current) setResult({ key, state: { status: 'ready', coverage } })
+      },
+      (e: Error) => {
+        if (current) setResult({ key, state: { status: 'error', message: e.message } })
+      },
+    )
+    return () => {
+      current = false
+    }
+  }, [ra, dec, key])
+
+  return {
+    state: result?.key === key ? result.state : { status: 'loading' },
+    retry: () => setAttempt((n) => n + 1),
+  }
+}
+
+export function NeossatLine({ state, onRetry }: { state: NeossatState; onRetry: () => void }) {
+  if (state.status === 'loading') {
+    return (
+      <p role="status" className="muted">
+        NEOSSat (CSA): checking the CADC archive…
+      </p>
+    )
+  }
+  if (state.status === 'error') {
+    return (
+      <div className="notice error" role="alert">
+        <p>NEOSSat (CSA): {state.message}</p>
+        <button type="button" onClick={onRetry}>
+          Try again
+        </button>
+      </div>
+    )
+  }
+  const summary = neossatSummary(state.coverage)
+  if (!summary) {
+    return <p role="status">NEOSSat (CSA): no NEOSSat observations cover this position</p>
+  }
+  return (
+    <p role="status">
+      NEOSSat (CSA): {summary}{' '}
+      <span className="muted">· visible light, not comparable with SPHEREx ·</span>{' '}
+      <a
+        href={state.coverage.search_url}
+        target="_blank"
+        rel="noreferrer"
+        aria-label="Open at CADC (opens in a new tab)"
+      >
+        Open at CADC
+      </a>
+    </p>
+  )
+}
+
+// Partner-agency data for the current target; key by target like the spectrum.
+export function PartnerData({ ra, dec }: { ra: string; dec: string }) {
+  const { state, retry } = useNeossat(ra, dec)
+  return (
+    <section className="partner-data" aria-label="Partner-agency data">
+      <NeossatLine state={state} onRetry={retry} />
+    </section>
+  )
+}

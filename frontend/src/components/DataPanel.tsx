@@ -3,6 +3,7 @@ import type { TargetQuery } from '../url'
 import { EvidencePanel } from './EvidencePanel'
 import { ObservationInfo } from './ObservationInfo'
 import { ObservationTimeline } from './ObservationTimeline'
+import { PartnerData } from './PartnerData'
 import { SpectrumChart } from './SpectrumChart'
 
 interface Props {
@@ -13,11 +14,13 @@ interface Props {
   checks: Check[]
   // The frame the player shows; undefined while the difference image is shown.
   frameIndex?: number
+  // Partner archives are asked only while the panel is open.
+  open: boolean
   onAbout: () => void
 }
 
 // Inspect: the region, its SPHEREx coverage, the spectrum at the target and how the images were prepared.
-export function DataPanel({ query, targetLabel, summary, manifest, checks, frameIndex, onAbout }: Props) {
+export function DataPanel({ query, targetLabel, summary, manifest, checks, frameIndex, open, onAbout }: Props) {
   const frame = frameIndex == null ? undefined : manifest?.frames[frameIndex]
   return (
     <>
@@ -27,6 +30,7 @@ export function DataPanel({ query, targetLabel, summary, manifest, checks, frame
       {manifest && <div className="data-section spectrum-section"><SpectrumChart key={`${manifest.ra},${manifest.dec}`} ra={`${manifest.ra}`} dec={`${manifest.dec}`}
         centerUm={(frame ?? manifest.frames[0])?.wavelength_um} detector={manifest.detector} /></div>}
       {manifest && <div className="data-section"><h3>Image preparation</h3><dl className="meta"><dt>Grid scale</dt><dd>{manifest.pixel_scale_arcsec} arcsec / pixel</dd><dt>Prepared images</dt><dd>{manifest.frames.length} · {manifest.stacked ? 'epoch stacks' : 'individual exposures'}</dd><dt>Complete</dt><dd>{manifest.complete ? 'Yes' : 'Partial · check warnings'}</dd></dl><EvidencePanel checks={checks} /></div>}
+      {open && summary && <div className="data-section"><h3>Partner data</h3><PartnerData key={`${summary.ra},${summary.dec}`} ra={`${summary.ra}`} dec={`${summary.dec}`} /></div>}
       <div className="data-section"><h3>Sky context ≠ observation evidence</h3><p>The background is a sky survey for context. The dated SPHEREx cutouts from IRSA are drawn on top of it inside the blue footprint and play in Compare. Changing a map layer does not change the observation detector.</p><p>Exact wavelength can differ between images from the same detector. A change in brightness can be a wavelength or coverage effect.</p><a href="https://irsa.ipac.caltech.edu/Missions/spherex.html" target="_blank" rel="noreferrer">Open SPHEREx archive ↗</a></div>
       <button type="button" onClick={onAbout}>Sources, credits & reading the images</button>
     </>

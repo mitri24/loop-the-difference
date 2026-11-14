@@ -1,6 +1,7 @@
 import type {
   FrameJob,
   FrameRequest,
+  NeossatCoverage,
   ObservationSummary,
   ResolvedTarget,
   SmallBodiesJob,
@@ -62,3 +63,6 @@ export const createSmallBodies = (body: SmallBodiesRequest) =>
 
 export const getSmallBodiesJob = (jobId: string) =>
   request<SmallBodiesJob>(`/api/smallbodies/${jobId}`)
+
+export const getNeossat = (ra: string, dec: string) =>
+  request<NeossatCoverage>(`/api/partners/neossat?${new URLSearchParams({ ra, dec })}`)

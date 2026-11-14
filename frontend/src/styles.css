@@ -685,3 +685,17 @@ summary { cursor:pointer; min-height:32px; padding:5px 0; font-size:13px; }
 .small-bodies .progress {
   color: var(--muted);
 }
+
+/* NAS-56: partner-agency data (NEOSSat via CADC). */
+.partner-data {
+  margin-bottom: 16px;
+  font-size: 13px;
+}
+
+.partner-data p {
+  margin: 0;
+}
+
+.partner-data .notice button {
+  margin-top: 8px;
+}

@@ -209,3 +209,14 @@ export interface SmallBodiesJob {
   epochs: SmallBodyEpoch[]
   error: string | null
 }
+
+export interface NeossatCoverage {
+  collection: string
+  ra: number
+  dec: number
+  count: number
+  first_date: string | null
+  last_date: string | null
+  search_url: string
+  note: string
+}
