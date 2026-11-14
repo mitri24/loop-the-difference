@@ -109,6 +109,12 @@ export function AboutPanel({ open, onClose }: Props) {
             </a>
           </li>
           <li>
+            <strong>Catalogue layers on the sky</strong> – Gaia DR3 (ESA) and AllWISE (NASA/IPAC)
+            through VizieR, and SIMBAD: “This research has made use of the SIMBAD database and the
+            VizieR catalogue access tool, CDS, Strasbourg Observatory, France.” Known asteroids from
+            SkyBoT (IMCCE, Observatoire de Paris; Berthier et al. 2006).
+          </li>
+          <li>
             <strong>Code</strong> – free software under the GNU General Public License v3.0, written
             with Claude Code (Anthropic) under human review. Built for NASA Space Apps 2026.{' '}
             <a href={REPO_URL} target="_blank" rel="noreferrer">

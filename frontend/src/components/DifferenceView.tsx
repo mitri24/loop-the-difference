@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import type { Difference, Frame, FrameManifest } from '../types'
+import { ObservationImage } from './ObservationImage'
 
 // Smallest a with the largest comparable b; without any comparable pair, smallest a with the largest b.
 export function defaultPair(differences: Difference[]): Difference | undefined {
@@ -50,7 +51,8 @@ export function DifferenceView({ manifest }: { manifest: FrameManifest }) {
         </p>
       ) : (
         <div className="viewport">
-          <img
+          <ObservationImage
+            key={pair.url}
             src={pair.url}
             alt={`Difference between ${epochLabel(frames[pair.a], pair.a)} and ${epochLabel(frames[pair.b], pair.b)}`}
           />

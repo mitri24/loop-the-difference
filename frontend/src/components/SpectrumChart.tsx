@@ -92,7 +92,9 @@ export function SpectrumChart({ ra, dec }: { ra: string; dec: string }) {
             : 'Searching all detectors…'}
         </p>
       )}
-      {(error ?? job?.error) && <p className="notice error">{error ?? job?.error}</p>}
+      {(error ?? job?.error) && (
+        <p className="notice error">Could not build the spectrum: {error ?? job?.error}</p>
+      )}
       {spectrum && points.length === 0 && (
         <p className="notice">No visit gave a usable flux at this position.</p>
       )}

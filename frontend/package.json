@@ -10,7 +10,8 @@
     "preview": "vite preview",
     "lint": "eslint .",
     "typecheck": "tsc",
-    "test": "vitest run"
+    "test": "vitest run",
+    "test:e2e": "playwright test"
   },
   "dependencies": {
     "aladin-lite": "^3.9.2-beta",
@@ -19,6 +20,7 @@
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",
+    "@playwright/test": "^1.65.1",
     "@types/react": "^19.3.0",
     "@types/react-dom": "^19.3.0",
     "@vitejs/plugin-react": "^6.3.0",

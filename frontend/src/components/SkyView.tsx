@@ -1,7 +1,6 @@
 import type { AladinInstance, GraphicOverlay, HiPSLayer } from 'aladin-lite'
 import type AladinModule from 'aladin-lite'
 import { useEffect, useRef, useState } from 'react'
-import { CatalogLegend } from './CatalogLegend'
 import { ALLWISE, SPHEREX, SURVEYS, footprintCorners, sliceForDetector, spherexLabel } from '../sky'
 
 interface Props {
@@ -10,8 +9,7 @@ interface Props {
   // Side of the frame in degrees; the view shows CONTEXT_ZOOM times as much sky.
   fov: number
   detector: number
-  // Epoch of the shown frame: Gaia stars are moved to it, SkyBoT is asked for it.
-  frameMjd?: number | null
+  revision?: number
   onReady?: (aladin: AladinInstance) => void
   onLayerChange?: (label: string) => void
   onUnavailable?: () => void
@@ -22,6 +20,7 @@ interface Sky {
   aladin: AladinInstance
   spherex: HiPSLayer
   footprint: GraphicOverlay
+  spherexReady: boolean
 }
 
 const CONTEXT_ZOOM = 4
@@ -29,21 +28,11 @@ const CONTEXT_ZOOM = 4
 const SPHEREX_TIMEOUT_MS = 5000
 const FALLBACK_LABEL = 'AllWISE (fallback)'
 
-export function SkyView({
-  ra,
-  dec,
-  fov,
-  detector,
-  frameMjd = null,
-  onReady,
-  onLayerChange,
-  onUnavailable,
-}: Props) {
+export function SkyView({ ra, dec, fov, detector, revision, onReady, onLayerChange, onUnavailable }: Props) {
   const container = useRef<HTMLDivElement>(null)
   const sky = useRef<Sky | null>(null)
   const latest = useRef({ ra, dec, fov, detector, onReady, onLayerChange, onUnavailable })
   const [unavailable, setUnavailable] = useState(false)
-  const [aladin, setAladin] = useState<AladinInstance | null>(null)
 
   useEffect(() => {
     latest.current = { ra, dec, fov, detector, onReady, onLayerChange, onUnavailable }
@@ -51,7 +40,7 @@ export function SkyView({
 
   useEffect(() => {
     if (sky.current) place(sky.current, ra, dec, fov)
-  }, [ra, dec, fov])
+  }, [ra, dec, fov, revision])
 
   useEffect(() => {
     if (sky.current) tune(sky.current, detector, onLayerChange)
@@ -62,6 +51,7 @@ export function SkyView({
     if (!el) return
     let cancelled = false
     let timer = 0
+    let spherexReady = false
     // Loaded on demand: the engine is large and not needed for the first paint.
     import('aladin-lite')
       .then(async ({ default: A }) => {
@@ -89,32 +79,45 @@ export function SkyView({
           name: SPHEREX.name,
           successCallback: (layer) => {
             window.clearTimeout(timer)
-            if (!cancelled) layer.setSliceNumber(sliceForDetector(latest.current.detector))
+            spherexReady = true
+            if (sky.current) sky.current.spherexReady = true
+            if (!cancelled) {
+              layer.setSliceNumber(sliceForDetector(latest.current.detector))
+              if (aladin.getBaseImageLayer() === layer) latest.current.onLayerChange?.(spherexLabel(latest.current.detector))
+            }
           },
           errorCallback: () => {
             window.clearTimeout(timer)
-            if (!cancelled) latest.current.onLayerChange?.(FALLBACK_LABEL)
+            if (!cancelled) activateFallback()
           },
         })
-        timer = window.setTimeout(
-          () => latest.current.onLayerChange?.(FALLBACK_LABEL),
-          SPHEREX_TIMEOUT_MS,
-        )
+        const activateFallback = () => {
+          // Never replace a layer the user deliberately selected while loading.
+          if (cancelled || aladin.getBaseImageLayer() !== spherex) return
+          aladin.setBaseImageLayer(A.imageHiPS(ALLWISE.url, { name: ALLWISE.name }))
+          latest.current.onLayerChange?.(FALLBACK_LABEL)
+        }
+        timer = window.setTimeout(() => { if (!spherexReady) activateFallback() }, SPHEREX_TIMEOUT_MS)
         // Fires when a layer lands or the user picks another survey in the layer box.
         aladin.on('stackChanged', ({ layer }) => {
           if (!layer || cancelled) return
           const base = aladin.getBaseImageLayer()
           latest.current.onLayerChange?.(
-            base === spherex ? spherexLabel(latest.current.detector) : base.name,
+            base === spherex ? spherexReady ? spherexLabel(latest.current.detector) : 'SPHEREx survey loading…' : base.name,
           )
         })
         aladin.setBaseImageLayer(spherex)
-        aladin.customizeShareURLFunction(() => window.location.href)
+        aladin.customizeShareURLFunction(() => {
+          const url = new URL(window.location.href)
+          const [currentRa, currentDec] = aladin.getRaDec()
+          url.searchParams.set('ra', currentRa.toFixed(6))
+          url.searchParams.set('dec', currentDec.toFixed(6))
+          return url.href
+        })
         const footprint = A.graphicOverlay({ name: 'Frame footprint', color: '#6ea8fe', lineWidth: 1 })
         aladin.addOverlay(footprint)
-        sky.current = { A, aladin, spherex, footprint }
+        sky.current = { A, aladin, spherex, footprint, spherexReady }
         place(sky.current, start.ra, start.dec, start.fov)
-        setAladin(aladin)
         latest.current.onReady?.(aladin)
       })
       .catch(() => {
@@ -132,12 +135,7 @@ export function SkyView({
   }, [])
 
   if (unavailable) return <p className="notice">The sky view needs WebGL2</p>
-  return (
-    <>
-      <CatalogLegend aladin={aladin} ra={ra} dec={dec} sizeDeg={fov} frameMjd={frameMjd} />
-      <div ref={container} className="sky-view" />
-    </>
-  )
+  return <div ref={container} className="sky-view" />
 }
 
 function place({ A, aladin, footprint }: Sky, ra: number, dec: number, fov: number) {
@@ -150,8 +148,8 @@ function place({ A, aladin, footprint }: Sky, ra: number, dec: number, fov: numb
 
 // The slice only matters while the SPHEREx cube is the base layer; the user may have picked
 // another survey in the layer box.
-function tune({ aladin, spherex }: Sky, detector: number, onLayerChange?: (label: string) => void) {
+function tune({ aladin, spherex, spherexReady }: Sky, detector: number, onLayerChange?: (label: string) => void) {
   if (aladin.getBaseImageLayer() !== spherex) return
   spherex.setSliceNumber(sliceForDetector(detector))
-  onLayerChange?.(spherexLabel(detector))
+  onLayerChange?.(spherexReady ? spherexLabel(detector) : 'SPHEREx survey loading…')
 }
