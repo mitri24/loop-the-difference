@@ -10,21 +10,25 @@ from rq import get_current_job
 from app.archive import group_epochs, search_observations, select_for_stacks, select_frames
 from app.config import get_settings
 from app.frames import (
+    R_BY_DETECTOR,
     SPHEREX_PIXEL_SCALE_ARCSEC,
     align,
+    comparable_wavelengths,
     cutout_url,
+    delta_lambda_pct,
     fetch_cutout,
     read_image,
     render_diff,
     render_png,
     target_grid,
+    wavelength_at,
 )
 from app.models import Check, Difference, Frame, FrameManifest, Observation
 
 MIN_COVERAGE = 0.5
 # Bump whenever the rendered output changes: the job key changes, so cached results are rebuilt,
 # and `warm` removes frame folders whose manifest carries an older version.
-PIPELINE_VERSION = 4
+PIPELINE_VERSION = 5
 
 
 def manifest_path(cache_dir: Path, key: str) -> Path:
@@ -54,6 +58,25 @@ def epoch_checks(usable: int, epochs: int) -> list[Check]:
             )
         ]
     return []
+
+
+def wavelength_checks(wavelengths: list[float | None], detector: int) -> list[Check]:
+    """Were all frames of the blink observed through the same part of the filter?"""
+    known = [w for w in wavelengths if w is not None]
+    if len(known) < 2 or comparable_wavelengths(min(known), max(known), detector):
+        return []
+    return [
+        Check(
+            code="WAVELENGTH_MISMATCH",
+            severity="blocker",
+            message="Frames were observed at different wavelengths",
+            detail=f"Effective wavelength ranges from {min(known):.3f} to {max(known):.3f} µm "
+            f"({delta_lambda_pct(min(known), max(known)):.1f} %, more than one resolution element "
+            f"1/R = {100 / R_BY_DETECTOR[detector]:.1f} % of detector {detector}); "
+            "a direct difference needs wavelength-matched frames",
+            affects=["difference"],
+        )
+    ]
 
 
 def build_frames(
@@ -115,7 +138,8 @@ def build_frames(
                 )
             )
             continue
-        kept.append((obs, url, coverage))
+        wavelength, bandwidth = wavelength_at(path, ra, dec)
+        kept.append((obs, url, coverage, wavelength, bandwidth))
         images.append(image)
 
     epochs = _epoch_groups(kept)
@@ -129,29 +153,37 @@ def build_frames(
     out_dir = manifest_path(settings.cache_dir, key).parent
     out_dir.mkdir(parents=True, exist_ok=True)
     names = render_png(images, out_dir) if images else []
+    frames = [
+        _frame(index, f"/api/frames/{key}/{name}", epoch, [kept[i] for i in group])
+        for index, ((epoch, group), name) in enumerate(zip(members, names, strict=True))
+    ]
+    checks += wavelength_checks([frame.wavelength_um for frame in frames], detector)
     differences = []
     if stack:
         for a, b in combinations(range(len(images)), 2):
             name = f"diff_{a:02d}_{b:02d}.png"
             render_diff(images[a], images[b], out_dir, name)
+            wave_a, wave_b = frames[a].wavelength_um, frames[b].wavelength_um
+            known = wave_a is not None and wave_b is not None
             differences.append(
                 Difference(
                     a=a,
                     b=b,
                     url=f"/api/frames/{key}/{name}",
-                    comparable=True,
+                    comparable=comparable_wavelengths(wave_a, wave_b, detector) if known else True,
+                    delta_lambda_pct=round(delta_lambda_pct(wave_a, wave_b), 2) if known else None,
                     obs_ids_a=[kept[i][0].obs_id for i in members[a][1]],
                     obs_ids_b=[kept[i][0].obs_id for i in members[b][1]],
                 )
             )
-    if differences:
+    if any(difference.delta_lambda_pct is None for difference in differences):
         checks.append(
             Check(
                 code="WAVELENGTH_UNKNOWN",
                 severity="info",
-                message="Wavelength match between epochs not checked yet",
-                detail="Differences use the same detector; whether both epochs saw the same "
-                "wavelength at the target is not checked yet",
+                message="Wavelength match between epochs not checked",
+                detail="Differences use the same detector, but a cutout carries no WCS-WAVE table, "
+                "so whether both epochs saw the same wavelength at the target is unknown",
                 affects=["difference"],
             )
         )
@@ -166,10 +198,7 @@ def build_frames(
         complete=len(downloaded) == len(selected),
         stacked=stack,
         pipeline_version=PIPELINE_VERSION,
-        frames=[
-            _frame(index, f"/api/frames/{key}/{name}", epoch, [kept[i] for i in group])
-            for index, ((epoch, group), name) in enumerate(zip(members, names, strict=True))
-        ],
+        frames=frames,
         warnings=[check.detail for check in checks if check.severity != "info"],
         checks=checks,
         differences=differences,
@@ -189,18 +218,22 @@ def stack_images(images: list[np.ndarray]) -> np.ndarray:
         return np.nanmedian(np.stack(images), axis=0)
 
 
-def _epoch_groups(kept: list[tuple[Observation, str, float]]) -> list[list[int]]:
+# One usable exposure: observation, cutout URL, coverage, wavelength and bandwidth at the target.
+KeptFrame = tuple[Observation, str, float, float | None, float | None]
+
+
+def _epoch_groups(kept: list[KeptFrame]) -> list[list[int]]:
     """Positions in `kept`, grouped by epoch and in time order."""
-    position = {obs.obs_id: i for i, (obs, _, _) in enumerate(kept)}
+    position = {obs.obs_id: i for i, (obs, *_) in enumerate(kept)}
     return [[position[obs.obs_id] for obs in epoch] for epoch in group_epochs([k[0] for k in kept])]
 
 
-def _frame(
-    index: int, url: str, epoch: int, members: list[tuple[Observation, str, float]]
-) -> Frame:
+def _frame(index: int, url: str, epoch: int, members: list[KeptFrame]) -> Frame:
     """One frame from a single exposure or from all exposures of one epoch stacked together."""
-    observations = [obs for obs, _, _ in members]
+    observations = [obs for obs, *_ in members]
     first, last = observations[0], observations[-1]
+    wavelengths = [w for *_, w, _ in members if w is not None]
+    bandwidths = [b for *_, b in members if b is not None]
     return Frame(
         index=index,
         url=url,
@@ -210,11 +243,13 @@ def _frame(
         detector=first.detector,
         wavelength_min_um=min(obs.wavelength_min_um for obs in observations),
         wavelength_max_um=max(obs.wavelength_max_um for obs in observations),
-        coverage=round(float(np.mean([coverage for _, _, coverage in members])), 3),
+        coverage=round(float(np.mean([coverage for _, _, coverage, *_ in members])), 3),
         source_url=members[0][1],
         epoch=epoch,
         n_combined=len(members),
         date_end=last.date if len(members) > 1 else None,
+        wavelength_um=round(float(np.median(wavelengths)), 4) if wavelengths else None,
+        bandwidth_um=round(float(np.median(bandwidths)), 4) if bandwidths else None,
     )
 
 
