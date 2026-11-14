@@ -8,7 +8,7 @@ import numpy as np
 from rq import get_current_job
 
 from app.archive import group_epochs, search_observations, select_for_stacks, select_frames
-from app.config import get_settings
+from app.config import Settings, get_settings
 from app.frames import (
     R_BY_DETECTOR,
     SPHEREX_PIXEL_SCALE_ARCSEC,
@@ -25,9 +25,15 @@ from app.frames import (
     target_is_flagged,
     wavelength_at,
 )
-from app.models import Check, Difference, Frame, FrameManifest, Observation
+from app.models import Check, Difference, Frame, FrameManifest, Observation, Spectrum, SpectrumPoint
+from app.photometry import forced_photometry
 
 MIN_COVERAGE = 0.5
+# Just the aperture and the sky ring around the target (about 25 px with the rotation margin).
+SPECTRUM_SIZE_DEG = 0.03
+MAX_SPECTRUM_POINTS = 200
+# Bump whenever the photometry changes: the spectrum job key changes, so results are rebuilt.
+SPECTRUM_VERSION = 1
 # Bump whenever the rendered output changes: the job key changes, so cached results are rebuilt,
 # and `warm` removes frame folders whose manifest carries an older version.
 PIPELINE_VERSION = 6
@@ -97,32 +103,7 @@ def build_frames(
     urls = [cutout_url(o.access_url, ra, dec, size_deg) for o in selected]
     _report(0, len(selected))
 
-    checks: list[Check] = []
-    downloaded = []
-    with (
-        httpx.Client(timeout=settings.http_timeout_s, follow_redirects=True) as client,
-        ThreadPoolExecutor(max_workers=settings.download_workers) as pool,
-    ):
-        futures = [
-            pool.submit(fetch_cutout, client, url, settings.cache_dir / "cutouts") for url in urls
-        ]
-        for done, (obs, url, future) in enumerate(
-            zip(selected, urls, futures, strict=True), start=1
-        ):
-            try:
-                downloaded.append((obs, url, future.result()))
-            except httpx.HTTPError:
-                checks.append(
-                    Check(
-                        code="CUTOUT_MISSING",
-                        severity="warning",
-                        message="Archive did not deliver a cutout",
-                        detail=f"{obs.obs_id}: archive did not deliver the cutout, frame skipped "
-                        "(requesting the same view again retries it)",
-                        affects=[f"obs:{obs.obs_id}"],
-                    )
-                )
-            _report(done, len(selected))
+    downloaded, checks = download_cutouts(selected, urls, settings)
 
     target, shape = target_grid(ra, dec, size_deg)
     kept, images = [], []
@@ -220,6 +201,108 @@ def build_frames(
     partial.write_text(manifest.model_dump_json())
     partial.replace(manifest_path(settings.cache_dir, key))
     return manifest.model_dump()
+
+
+def build_spectrum(ra: float, dec: float) -> dict:
+    """Worker job: flux at the target in every visit of every detector, against its wavelength."""
+    settings = get_settings()
+    observations = search_observations(ra, dec, settings)
+    selected = select_frames(observations, MAX_SPECTRUM_POINTS)
+    urls = [cutout_url(o.access_url, ra, dec, SPECTRUM_SIZE_DEG) for o in selected]
+    _report(0, len(selected))
+    downloaded, checks = download_cutouts(selected, urls, settings)
+    checks.append(
+        Check(
+            code="QUICK_LOOK_SPECTRUM",
+            severity="info",
+            message="Quick-look spectrum, not calibrated",
+            detail="Aperture flux (2 px radius) at the target without aperture correction: the PSF "
+            "changes between detectors, so the shape across detectors is approximate",
+        )
+    )
+    if len(selected) < len(observations):
+        checks.append(
+            Check(
+                code="SPECTRUM_THINNED",
+                severity="info",
+                message="Not every visit is used",
+                detail=f"{len(selected)} of {len(observations)} visits, spread over all epochs",
+            )
+        )
+    epoch_of = {o.obs_id: i for i, epoch in enumerate(group_epochs(selected)) for o in epoch}
+
+    points, skipped = [], 0
+    for obs, url, path in downloaded:
+        wavelength, bandwidth = wavelength_at(path, ra, dec)
+        flux, error = forced_photometry(path, ra, dec)
+        if wavelength is None or flux is None:
+            skipped += 1
+            continue
+        points.append(
+            SpectrumPoint(
+                obs_id=obs.obs_id,
+                date=obs.date,
+                mjd=obs.mjd,
+                detector=obs.detector,
+                epoch=epoch_of[obs.obs_id],
+                wavelength_um=round(wavelength, 4),
+                bandwidth_um=round(bandwidth, 4),
+                flux_ujy=round(flux, 2),
+                flux_err_ujy=round(error, 2),
+                source_url=url,
+            )
+        )
+    if skipped:
+        checks.append(
+            Check(
+                code="SPECTRUM_POINTS_SKIPPED",
+                severity="info",
+                message="Some visits give no spectrum point",
+                detail=f"{skipped} visits skipped: target at the cutout edge, masked pixels "
+                "or no WCS-WAVE table",
+            )
+        )
+    return Spectrum(
+        collection=settings.spherex_collection,
+        ra=ra,
+        dec=dec,
+        complete=len(downloaded) == len(selected),
+        points=sorted(points, key=lambda point: point.wavelength_um),
+        checks=checks,
+    ).model_dump()
+
+
+def download_cutouts(
+    selected: list[Observation], urls: list[str], settings: Settings
+) -> tuple[list[tuple[Observation, str, Path]], list[Check]]:
+    """Fetch the cutouts in parallel; a cutout the archive does not deliver becomes a check."""
+    checks: list[Check] = []
+    downloaded = []
+    with (
+        httpx.Client(timeout=settings.http_timeout_s, follow_redirects=True) as client,
+        ThreadPoolExecutor(max_workers=settings.download_workers) as pool,
+    ):
+        futures = [
+            pool.submit(fetch_cutout, client, url, settings.cache_dir / "cutouts") for url in urls
+        ]
+        for done, (obs, url, future) in enumerate(
+            zip(selected, urls, futures, strict=True), start=1
+        ):
+            try:
+                downloaded.append((obs, url, future.result()))
+            except httpx.HTTPError:
+                checks.append(
+                    Check(
+                        code="CUTOUT_MISSING",
+                        severity="warning",
+                        message="Archive did not deliver a cutout",
+                        detail=f"{obs.obs_id}: archive did not deliver the cutout, frame skipped "
+                        "(requesting the same view again retries it)",
+                        affects=[f"obs:{obs.obs_id}"],
+                    )
+                )
+            _report(done, len(selected))
+    return downloaded, checks
 
 
 def stack_images(images: list[np.ndarray]) -> np.ndarray:

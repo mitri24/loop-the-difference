@@ -234,3 +234,68 @@ def test_queue_at_the_limit_still_accepts_a_job(client, monkeypatch):
     assert response.status_code == 200
     assert response.json()["status"] == "queued"
     assert len(enqueued) == 1
+
+
+class _SpectrumJob:
+    def __init__(self, state, complete=True):
+        self.state, self.complete, self.meta, self.deleted = state, complete, {}, False
+
+    def get_status(self):
+        return self.state
+
+    def return_value(self):
+        spectrum = {"collection": "spherex_dr1", "ra": 1.0, "dec": 2.0, "points": []}
+        return {**spectrum, "complete": self.complete}
+
+    def latest_result(self):
+        return None
+
+    def delete(self):
+        self.deleted = True
+
+
+def test_finished_spectrum_comes_from_the_job_result(client, monkeypatch):
+    monkeypatch.setattr(jobs.Job, "fetch", lambda *_, **__: _SpectrumJob(jobs.JobStatus.FINISHED))
+
+    response = client.get("/api/spectrum/0123456789abcdef")
+
+    assert response.status_code == 200
+    assert response.json()["status"] == "finished"
+    assert response.json()["spectrum"]["points"] == []
+
+
+@pytest.mark.parametrize(
+    ("state", "complete", "rerun"),
+    [
+        (jobs.JobStatus.FINISHED, True, False),
+        (jobs.JobStatus.STARTED, True, False),
+        (jobs.JobStatus.FINISHED, False, True),
+        (jobs.JobStatus.FAILED, True, True),
+        (jobs.JobStatus.STOPPED, True, True),
+    ],
+)
+def test_spectrum_is_rebuilt_only_when_it_is_missing_or_incomplete(
+    client, monkeypatch, state, complete, rerun
+):
+    previous = _SpectrumJob(state, complete)
+    enqueued = []
+
+    class _Queue(_FullQueue):
+        count = 0
+
+        def enqueue(self, *_, **kwargs):
+            enqueued.append(kwargs["kwargs"])
+
+    monkeypatch.setattr(jobs.Job, "fetch", lambda *_, **__: previous)
+    monkeypatch.setattr(jobs, "Queue", _Queue)
+
+    response = client.post("/api/spectrum", json={"ra": "133.795", "dec": "-7.245"})
+
+    assert response.status_code == 200
+    assert enqueued == ([{"ra": 133.795, "dec": -7.245}] if rerun else [])
+    assert previous.deleted is rerun
+
+
+def test_spectrum_rejects_invalid_coordinates_and_job_ids(client):
+    assert client.post("/api/spectrum", json={"ra": "nope", "dec": "1"}).status_code == 422
+    assert client.get("/api/spectrum/..").status_code == 404

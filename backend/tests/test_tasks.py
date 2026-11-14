@@ -5,7 +5,7 @@ from PIL import Image
 from app import tasks
 from app.frames import target_grid
 from app.models import Observation
-from app.tasks import build_frames, epoch_checks, stack_images, wavelength_checks
+from app.tasks import build_frames, build_spectrum, epoch_checks, stack_images, wavelength_checks
 
 RA, DEC, SIZE_DEG = 133.795, -7.245, 0.1
 
@@ -173,3 +173,25 @@ def test_wavelength_spread_beyond_one_resolution_element_blocks_the_difference()
 def test_matching_wavelengths_pass_without_a_check():
     assert wavelength_checks([4.50, 4.51, None], detector=6) == []
     assert wavelength_checks([4.50], detector=6) == []
+
+
+def test_spectrum_has_one_point_per_visit_of_every_detector(monkeypatch, settings, tmp_path):
+    observations = [_observation(100), _observation(101), _observation(290)]
+    observations[1] = observations[1].model_copy(update={"detector": 2})
+    _offline_archive(monkeypatch, settings, tmp_path, observations)
+    fluxes = {"100": (50.0, 2.0), "101": (None, None), "290": (40.0, 3.0)}
+    monkeypatch.setattr(tasks, "forced_photometry", lambda path, ra, dec: fluxes[path.stem])
+
+    spectrum = build_spectrum(RA, DEC)
+
+    points = spectrum["points"]
+    assert [(p["obs_id"], p["epoch"], p["wavelength_um"]) for p in points] == [
+        ("obs-100", 0, 4.6),
+        ("obs-290", 1, 4.79),
+    ]
+    assert (points[0]["flux_ujy"], points[0]["flux_err_ujy"]) == (50.0, 2.0)
+    assert "size=0.0426" in points[0]["source_url"]
+    assert [c["code"] for c in spectrum["checks"]] == [
+        "QUICK_LOOK_SPECTRUM",
+        "SPECTRUM_POINTS_SKIPPED",
+    ]

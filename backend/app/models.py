@@ -121,3 +121,40 @@ class FrameJob(BaseModel):
     total: int = 0
     manifest: FrameManifest | None = None
     error: str | None = None
+
+
+class SpectrumRequest(BaseModel):
+    ra: str = Field(min_length=1, max_length=40)
+    dec: str = Field(min_length=1, max_length=40)
+
+
+class SpectrumPoint(BaseModel):
+    obs_id: str
+    date: str
+    mjd: float
+    detector: int
+    epoch: int
+    wavelength_um: float
+    bandwidth_um: float
+    # Background-subtracted aperture flux at the target, no aperture correction (quick-look).
+    flux_ujy: float
+    flux_err_ujy: float
+    source_url: str
+
+
+class Spectrum(BaseModel):
+    collection: str
+    ra: float
+    dec: float
+    complete: bool = True
+    points: list[SpectrumPoint]
+    checks: list[Check] = []
+
+
+class SpectrumJob(BaseModel):
+    job_id: str
+    status: Literal["queued", "started", "finished", "failed", "not_found"]
+    progress: int = 0
+    total: int = 0
+    spectrum: Spectrum | None = None
+    error: str | None = None
