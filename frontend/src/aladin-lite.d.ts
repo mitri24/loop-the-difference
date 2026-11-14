@@ -57,6 +57,7 @@ declare module 'aladin-lite' {
     showLayersControl?: boolean
     showFullscreenControl?: boolean
     showStatusBar?: boolean
+    log?: boolean
   }
 
   export interface StackChange {
@@ -94,6 +95,7 @@ declare module 'aladin-lite' {
     setOverlayImageLayer(layer: ImageLayer, name: string): ImageLayer
     getOverlayImageLayer(name: string): ImageLayer | undefined
     removeImageLayer(name: string): void
+    removeHiPSFromFavorites(layer: ImageLayer): void
     customizeShareURLFunction(fn: () => string): void
     on(event: 'stackChanged', callback: (change: StackChange) => void): void
     on(event: 'click', callback: (click: { ra: number; dec: number; isDragging: boolean }) => void): void

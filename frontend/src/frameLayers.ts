@@ -107,6 +107,8 @@ export function useFrameLayers(
               },
             })
             aladin.setOverlayImageLayer(layer, names[i])
+            // Aladin lists every added image in the layer box's survey list; frames do not belong there.
+            aladin.removeHiPSFromFavorites(layer)
           })
         }),
       )
