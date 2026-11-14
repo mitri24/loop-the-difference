@@ -8,6 +8,7 @@ import numpy as np
 from rq import get_current_job
 
 from app.archive import group_epochs, search_observations, select_for_stacks, select_frames
+from app.catalogs import find_proper_motion, position_at
 from app.config import Settings, get_settings
 from app.frames import (
     R_BY_DETECTOR,
@@ -31,9 +32,11 @@ from app.photometry import forced_photometry
 MIN_COVERAGE = 0.5
 # Just the aperture and the sky ring around the target (about 25 px with the rotation margin).
 SPECTRUM_SIZE_DEG = 0.03
-MAX_SPECTRUM_POINTS = 200
+# About one visit per spectral channel (6 detectors × 17): enough for a quick look, and a cold
+# cache still finishes within the spectrum job timeout while IRSA is slow.
+MAX_SPECTRUM_POINTS = 100
 # Bump whenever the photometry changes: the spectrum job key changes, so results are rebuilt.
-SPECTRUM_VERSION = 2
+SPECTRUM_VERSION = 3
 # Bump whenever the rendered output changes: the job key changes, so cached results are rebuilt,
 # and `warm` removes frame folders whose manifest carries an older version.
 PIPELINE_VERSION = 6
@@ -208,7 +211,13 @@ def build_spectrum(ra: float, dec: float) -> dict:
     settings = get_settings()
     observations = search_observations(ra, dec, settings)
     selected = select_frames(observations, MAX_SPECTRUM_POINTS)
-    urls = [cutout_url(o.access_url, ra, dec, SPECTRUM_SIZE_DEG) for o in selected]
+    # A star with a known Gaia proper motion is measured where it stands on each visit's date.
+    try:
+        star, gaia_down = find_proper_motion(ra, dec, strict=True), False
+    except httpx.HTTPError:
+        star, gaia_down = None, True
+    position = {o.obs_id: position_at(star, o.mjd) if star else (ra, dec) for o in selected}
+    urls = [cutout_url(o.access_url, *position[o.obs_id], SPECTRUM_SIZE_DEG) for o in selected]
     _report(0, len(selected))
     downloaded, checks = download_cutouts(selected, urls, settings)
     checks.append(
@@ -229,12 +238,33 @@ def build_spectrum(ra: float, dec: float) -> dict:
                 detail=f"{len(selected)} of {len(observations)} visits, spread over all epochs",
             )
         )
+    if star:
+        motion = np.hypot(star.pmra_mas_yr, star.pmdec_mas_yr)
+        checks.append(
+            Check(
+                code="SPECTRUM_PROPER_MOTION",
+                severity="info",
+                message="Target followed with its proper motion",
+                detail=f"Gaia DR3 {star.source_id} ({motion:.0f} mas/yr): aperture placed at the "
+                "star's position on each visit's date",
+            )
+        )
+    if gaia_down:
+        checks.append(
+            Check(
+                code="SPECTRUM_GAIA_UNAVAILABLE",
+                severity="warning",
+                message="Proper motion unknown",
+                detail="Gaia DR3 did not answer: measured at the entered position, so a fast "
+                "moving star may lie outside the aperture (building the spectrum again retries)",
+            )
+        )
     epoch_of = {o.obs_id: i for i, epoch in enumerate(group_epochs(selected)) for o in epoch}
 
     points, skipped = [], 0
     for obs, url, path in downloaded:
-        wavelength, bandwidth = wavelength_at(path, ra, dec)
-        flux, error, flagged = forced_photometry(path, ra, dec)
+        wavelength, bandwidth = wavelength_at(path, *position[obs.obs_id])
+        flux, error, flagged = forced_photometry(path, *position[obs.obs_id])
         if wavelength is None or flux is None:
             skipped += 1
             continue
@@ -277,7 +307,7 @@ def build_spectrum(ra: float, dec: float) -> dict:
         collection=settings.spherex_collection,
         ra=ra,
         dec=dec,
-        complete=len(downloaded) == len(selected),
+        complete=len(downloaded) == len(selected) and not gaia_down,
         points=sorted(points, key=lambda point: point.wavelength_um),
         checks=checks,
     ).model_dump()

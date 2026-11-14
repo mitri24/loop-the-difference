@@ -24,6 +24,13 @@ describe('SpectrumChart', () => {
     expect(r.y).toEqual([-30, 55])
   })
 
+  it('keeps a flagged outlier from setting the flux axis', () => {
+    const r = ranges([point(0, 1.0, 50, 5), { ...point(0, 2.0, 125000, 10), flagged: true }])
+
+    expect(r.x).toEqual([1.0, 2.0])
+    expect(r.y).toEqual([0, 55])
+  })
+
   it('maps data onto pixels, a flat range to the middle', () => {
     expect(scale([0, 10], [100, 200])(5)).toBe(150)
     expect(scale([0, 10], [200, 100])(10)).toBe(100)
@@ -63,6 +70,9 @@ describe('SpectrumChart', () => {
       notes: ['not calibrated'],
     })
     expect(summarize([missing, missing]).retry).toContain('2 visits')
+    expect(summarize([check('SPECTRUM_GAIA_UNAVAILABLE', 'no Gaia')]).retry).toBe(
+      'Build the spectrum again',
+    )
   })
 
   it('draws the same exposure on two detectors as two points', () => {

@@ -20,8 +20,10 @@ export function ranges(points: SpectrumPoint[]): {
   y: [number, number]
 } {
   const xs = points.map((p) => p.wavelength_um)
-  const lows = points.map((p) => p.flux_ujy - p.flux_err_ujy)
-  const highs = points.map((p) => p.flux_ujy + p.flux_err_ujy)
+  // Flagged fluxes are unreliable: one saturated visit must not squash every other point.
+  const clean = points.some((p) => !p.flagged) ? points.filter((p) => !p.flagged) : points
+  const lows = clean.map((p) => p.flux_ujy - p.flux_err_ujy)
+  const highs = clean.map((p) => p.flux_ujy + p.flux_err_ujy)
   return {
     x: [Math.min(...xs), Math.max(...xs)],
     y: [Math.min(0, ...lows), Math.max(0, ...highs)],
@@ -35,7 +37,9 @@ const ticks = ([a, b]: [number, number], n = 5) =>
 export function summarize(checks: Check[]) {
   const missing = checks.filter((c) => c.code === 'CUTOUT_MISSING').length
   return {
-    retry: `Retry the ${missing} ${missing === 1 ? 'visit' : 'visits'} the archive did not deliver`,
+    retry: missing
+      ? `Retry the ${missing} ${missing === 1 ? 'visit' : 'visits'} the archive did not deliver`
+      : 'Build the spectrum again',
     notes: checks.filter((c) => c.code !== 'CUTOUT_MISSING').map((c) => c.detail),
   }
 }
@@ -107,7 +111,9 @@ export function SpectrumChart({ ra, dec }: { ra: string; dec: string }) {
 export function Plot({ points }: { points: SpectrumPoint[] }) {
   const { x: xr, y: yr } = ranges(points)
   const x = scale(xr, [M.left, W - M.right])
-  const y = scale(yr, [H - M.bottom, M.top])
+  const toY = scale(yr, [H - M.bottom, M.top])
+  // Flagged points outside the range sit on the plot edge; the tooltip keeps the real value.
+  const y = (v: number) => Math.min(H - M.bottom, Math.max(M.top, toY(v)))
   const epochs = [...new Set(points.map((p) => p.epoch))].sort((a, b) => a - b)
   // Whole µJy for bright targets, decimals when the whole axis spans only a few µJy.
   const decimals = yr[1] - yr[0] < 10 ? 1 : 0

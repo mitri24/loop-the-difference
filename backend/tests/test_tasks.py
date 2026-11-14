@@ -3,8 +3,9 @@ import pytest
 from PIL import Image
 
 from app import tasks
+from app.catalogs import position_at
 from app.frames import target_grid
-from app.models import Observation
+from app.models import Observation, ProperMotion
 from app.tasks import build_frames, build_spectrum, epoch_checks, stack_images, wavelength_checks
 
 RA, DEC, SIZE_DEG = 133.795, -7.245, 0.1
@@ -181,6 +182,7 @@ def test_spectrum_has_one_point_per_visit_of_every_detector(monkeypatch, setting
     _offline_archive(monkeypatch, settings, tmp_path, observations)
     fluxes = {"100": (50.0, 2.0, False), "101": (None, None, False), "290": (40.0, 3.0, True)}
     monkeypatch.setattr(tasks, "forced_photometry", lambda path, ra, dec: fluxes[path.stem])
+    monkeypatch.setattr(tasks, "find_proper_motion", lambda ra, dec, strict: None)
 
     spectrum = build_spectrum(RA, DEC)
 
@@ -197,3 +199,42 @@ def test_spectrum_has_one_point_per_visit_of_every_detector(monkeypatch, setting
         "SPECTRUM_POINTS_FLAGGED",
         "SPECTRUM_POINTS_SKIPPED",
     ]
+
+
+def test_spectrum_follows_a_star_with_proper_motion_to_each_visit(monkeypatch, settings, tmp_path):
+    observations = [_observation(100), _observation(290)]
+    _offline_archive(monkeypatch, settings, tmp_path, observations)
+    star = ProperMotion(
+        source_id="42",
+        ra=RA,
+        dec=DEC,
+        ref_epoch=2016.0,
+        pmra_mas_yr=0.0,
+        pmdec_mas_yr=36000.0,
+        parallax_mas=None,
+    )
+    monkeypatch.setattr(tasks, "find_proper_motion", lambda ra, dec, strict: star)
+    measured = []
+
+    def photometry(path, ra, dec):
+        measured.append(round(dec - DEC, 3))
+        return 1.0, 0.1, False
+
+    monkeypatch.setattr(tasks, "forced_photometry", photometry)
+
+    spectrum = build_spectrum(RA, DEC)
+
+    assert measured == [round(position_at(star, o.mjd)[1] - DEC, 3) for o in observations]
+    assert f"{position_at(star, 100)[1]:.6f}" in spectrum["points"][0]["source_url"]
+    assert "SPECTRUM_PROPER_MOTION" in [c["code"] for c in spectrum["checks"]]
+
+
+def test_spectrum_without_gaia_says_so_and_stays_incomplete(monkeypatch, settings, tmp_path):
+    _offline_archive(monkeypatch, settings, tmp_path, [_observation(100)])
+    monkeypatch.setattr(tasks, "forced_photometry", lambda path, ra, dec: (1.0, 0.1, False))
+
+    spectrum = build_spectrum(RA, DEC)  # conftest makes every Gaia request fail
+
+    assert "SPECTRUM_GAIA_UNAVAILABLE" in [c["code"] for c in spectrum["checks"]]
+    assert spectrum["complete"] is False
+    assert len(spectrum["points"]) == 1
