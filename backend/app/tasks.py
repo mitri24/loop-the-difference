@@ -1,10 +1,12 @@
+import warnings
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
 import httpx
+import numpy as np
 from rq import get_current_job
 
-from app.archive import group_epochs, search_observations, select_frames
+from app.archive import group_epochs, search_observations, select_for_stacks, select_frames
 from app.config import get_settings
 from app.frames import (
     SPHEREX_PIXEL_SCALE_ARCSEC,
@@ -15,7 +17,7 @@ from app.frames import (
     render_png,
     target_grid,
 )
-from app.models import Check, Frame, FrameManifest
+from app.models import Check, Frame, FrameManifest, Observation
 
 MIN_COVERAGE = 0.5
 
@@ -61,7 +63,7 @@ def build_frames(
     """Worker job: find the observations, cut them out, align them and render the blink frames."""
     settings = get_settings()
     observations = [o for o in search_observations(ra, dec, settings) if o.detector == detector]
-    selected = select_frames(observations, max_frames)
+    selected = select_for_stacks(observations) if stack else select_frames(observations, max_frames)
     urls = [cutout_url(o.access_url, ra, dec, size_deg) for o in selected]
     _report(0, len(selected))
 
@@ -111,8 +113,13 @@ def build_frames(
         kept.append((obs, url, coverage))
         images.append(image)
 
-    epochs = len(group_epochs([obs for obs, _, _ in kept]))
-    checks += epoch_checks(len(kept), epochs)
+    epochs = _epoch_groups(kept)
+    checks += epoch_checks(len(kept), len(epochs))
+    if stack:
+        members = list(enumerate(epochs))
+    else:
+        members = [(epoch, [i]) for epoch, group in enumerate(epochs) for i in group]
+    images = [stack_images([images[i] for i in group]) for _, group in members]
 
     out_dir = manifest_path(settings.cache_dir, key).parent
     out_dir.mkdir(parents=True, exist_ok=True)
@@ -124,22 +131,12 @@ def build_frames(
         size_deg=size_deg,
         detector=detector,
         pixel_scale_arcsec=SPHEREX_PIXEL_SCALE_ARCSEC,
-        epochs=epochs,
+        epochs=len(epochs),
         complete=len(downloaded) == len(selected),
+        stacked=stack,
         frames=[
-            Frame(
-                index=index,
-                url=f"/api/frames/{key}/{name}",
-                obs_id=obs.obs_id,
-                date=obs.date,
-                mjd=obs.mjd,
-                detector=obs.detector,
-                wavelength_min_um=obs.wavelength_min_um,
-                wavelength_max_um=obs.wavelength_max_um,
-                coverage=round(coverage, 3),
-                source_url=url,
-            )
-            for index, ((obs, url, coverage), name) in enumerate(zip(kept, names, strict=True))
+            _frame(index, f"/api/frames/{key}/{name}", epoch, [kept[i] for i in group])
+            for index, ((epoch, group), name) in enumerate(zip(members, names, strict=True))
         ],
         warnings=[check.detail for check in checks],
         checks=checks,
@@ -148,6 +145,44 @@ def build_frames(
     partial.write_text(manifest.model_dump_json())
     partial.replace(manifest_path(settings.cache_dir, key))
     return manifest.model_dump()
+
+
+def stack_images(images: list[np.ndarray]) -> np.ndarray:
+    """NaN-aware median of aligned exposures: noise averages out, cosmic rays vanish."""
+    if len(images) == 1:
+        return images[0]
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore", RuntimeWarning)  # all-NaN pixels outside the footprint
+        return np.nanmedian(np.stack(images), axis=0)
+
+
+def _epoch_groups(kept: list[tuple[Observation, str, float]]) -> list[list[int]]:
+    """Positions in `kept`, grouped by epoch and in time order."""
+    position = {obs.obs_id: i for i, (obs, _, _) in enumerate(kept)}
+    return [[position[obs.obs_id] for obs in epoch] for epoch in group_epochs([k[0] for k in kept])]
+
+
+def _frame(
+    index: int, url: str, epoch: int, members: list[tuple[Observation, str, float]]
+) -> Frame:
+    """One frame from a single exposure or from all exposures of one epoch stacked together."""
+    observations = [obs for obs, _, _ in members]
+    first, last = observations[0], observations[-1]
+    return Frame(
+        index=index,
+        url=url,
+        obs_id=first.obs_id,
+        date=first.date,
+        mjd=float(np.mean([obs.mjd for obs in observations])),
+        detector=first.detector,
+        wavelength_min_um=min(obs.wavelength_min_um for obs in observations),
+        wavelength_max_um=max(obs.wavelength_max_um for obs in observations),
+        coverage=round(float(np.mean([coverage for _, _, coverage in members])), 3),
+        source_url=members[0][1],
+        epoch=epoch,
+        n_combined=len(members),
+        date_end=last.date if len(members) > 1 else None,
+    )
 
 
 def _report(done: int, total: int) -> None:

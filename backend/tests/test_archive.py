@@ -8,6 +8,7 @@ from app.archive import (
     resolve_cache_path,
     resolve_position,
     search_observations,
+    select_for_stacks,
     select_frames,
     sia_cache_path,
     summarize,
@@ -56,6 +57,15 @@ def test_frame_selection_keeps_every_epoch():
 
     assert len(selected) == 4
     assert {len(epoch) for epoch in group_epochs(selected)} == {2}
+
+
+def test_stack_selection_caps_every_epoch_at_eight():
+    epochs = [[_obs(start + i * 0.5) for i in range(10)] for start in (100, 290, 470)]
+
+    selected = select_for_stacks([obs for epoch in epochs for obs in epoch])
+
+    assert [len(epoch) for epoch in group_epochs(selected)] == [8, 8, 8]
+    assert selected[0] is epochs[0][0] and selected[7] is epochs[0][-1]
 
 
 def test_summary_counts_detectors_and_epochs():

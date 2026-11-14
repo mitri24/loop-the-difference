@@ -16,6 +16,7 @@ from app.config import Settings
 from app.models import Epoch, Observation, ObservationSummary
 
 EPOCH_GAP_DAYS = 30.0
+STACK_PER_EPOCH = 8
 _DETECTOR = re.compile(r"D(\d)$")
 _REQUIRED = ("obs_id", "energy_bandpassname", "em_min", "em_max", "t_min", "t_max", "access_url")
 
@@ -124,6 +125,13 @@ def select_frames(observations: list[Observation], max_frames: int) -> list[Obse
     per_epoch = max(1, max_frames // len(epochs))
     picked = [obs for epoch in epochs for obs in _evenly(epoch, per_epoch)]
     return _evenly(picked, max_frames)
+
+
+def select_for_stacks(
+    observations: list[Observation], per_epoch: int = STACK_PER_EPOCH
+) -> list[Observation]:
+    """Up to `per_epoch` exposures per epoch, evenly spread: each epoch stacks into one frame."""
+    return [obs for epoch in group_epochs(observations) for obs in _evenly(epoch, per_epoch)]
 
 
 def summarize(
