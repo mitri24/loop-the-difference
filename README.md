@@ -43,7 +43,7 @@ docker compose run --rm worker python -m app.warm --dry-run  # list the jobs, no
 docker compose run --rm worker python -m app.warm --targets polaris,wise0855
 ```
 
-On the server, prefix the same `-f` compose files you deploy with. The command exits non-zero if a target failed or is incomplete, so it doubles as a smoke test after a deploy; re-run it until everything reports `cached`. **Re-run it with `--force` after every change to the frame pipeline** (`backend/app/frames.py`, `tasks.py`, `archive.py`), otherwise the cache keeps serving the old rendering. `--force` also refreshes the cached search and name-resolution answers.
+On the server, prefix the same `-f` compose files you deploy with. The command exits non-zero if a target failed or is incomplete, so it doubles as a smoke test after a deploy; re-run it until every frame job reports `cached`. **Re-run it with `--force` after every change to the frame pipeline** (`backend/app/frames.py`, `tasks.py`, `archive.py`), otherwise the cache keeps serving the old rendering. `--force` also refreshes the cached search and name-resolution answers. Each target's quick-look spectrum is measured on every run (it lives in the worker job, not on disk), which downloads its ~100 cutouts once (about 7 s for Barnard's Star once the cutouts are cached); its line never says `cached`, and `--no-spectrum` skips it.
 
 Copy the warmed cache (Docker volume `skyshift_cache`) to the other laptop or the server:
 

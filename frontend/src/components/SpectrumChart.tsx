@@ -108,11 +108,22 @@ export function SpectrumChart({ ra, dec }: { ra: string; dec: string }) {
   )
 }
 
+// Flagged points can lie beyond the flux axis: they get an arrow on the edge pointing their way.
+export function offScale(py: number): 'above' | 'below' | null {
+  return py < M.top ? 'above' : py > H - M.bottom ? 'below' : null
+}
+
+const arrow = (px: number, py: number, side: 'above' | 'below') => {
+  const tip = side === 'above' ? py - 5 : py + 5
+  const base = side === 'above' ? py + 3 : py - 3
+  return `M${px} ${tip} L${px - 5} ${base} L${px + 5} ${base} Z`
+}
+
 export function Plot({ points }: { points: SpectrumPoint[] }) {
   const { x: xr, y: yr } = ranges(points)
   const x = scale(xr, [M.left, W - M.right])
   const toY = scale(yr, [H - M.bottom, M.top])
-  // Flagged points outside the range sit on the plot edge; the tooltip keeps the real value.
+  // Points outside the range sit on the plot edge as arrows; the tooltip keeps the real value.
   const y = (v: number) => Math.min(H - M.bottom, Math.max(M.top, toY(v)))
   const epochs = [...new Set(points.map((p) => p.epoch))].sort((a, b) => a - b)
   // Whole µJy for bright targets, decimals when the whole axis spans only a few µJy.
@@ -163,19 +174,20 @@ export function Plot({ points }: { points: SpectrumPoint[] }) {
                 y1={y(p.flux_ujy - p.flux_err_ujy)}
                 y2={y(p.flux_ujy + p.flux_err_ujy)}
               />
-              <circle
-                cx={x(p.wavelength_um)}
-                cy={y(p.flux_ujy)}
-                r={3}
-                fill={p.flagged ? 'var(--bg)' : undefined}
+              <PointMark
+                px={x(p.wavelength_um)}
+                py={toY(p.flux_ujy)}
+                edge={y(p.flux_ujy)}
+                hollow={p.flagged}
               >
                 <title>
                   {`${p.date.slice(0, 10)} · D${p.detector} · ${p.wavelength_um.toFixed(3)} µm · ` +
                     `${p.flux_ujy.toFixed(1)} ± ${p.flux_err_ujy.toFixed(1)} µJy · ${p.obs_id} · ` +
                     (p.flagged ? 'flagged pixels in aperture, flux unreliable · ' : '') +
+                    (offScale(toY(p.flux_ujy)) ? 'beyond the flux axis · ' : '') +
                     'open the cutout'}
                 </title>
-              </circle>
+              </PointMark>
             </g>
           </a>
         ))}
@@ -186,8 +198,40 @@ export function Plot({ points }: { points: SpectrumPoint[] }) {
             ● Epoch {e + 1} ({firstDate(e)})
           </span>
         ))}
-        {points.some((p) => p.flagged) && <span>○ flagged pixels in aperture</span>}
+        {points.some((p) => p.flagged) && (
+          <span style={{ marginRight: '1em' }}>○ flagged pixels in aperture</span>
+        )}
+        {points.some((p) => offScale(toY(p.flux_ujy))) && (
+          <span>▲▼ beyond the flux axis, value in the tooltip</span>
+        )}
       </p>
     </>
+  )
+}
+
+// A circle inside the axes, an arrow on the edge (py = unclamped, edge = clamped) beyond them.
+function PointMark({
+  px,
+  py,
+  edge,
+  hollow,
+  children,
+}: {
+  px: number
+  py: number
+  edge: number
+  hollow?: boolean
+  children: React.ReactNode
+}) {
+  const fill = hollow ? 'var(--bg)' : undefined
+  const side = offScale(py)
+  return side ? (
+    <path d={arrow(px, edge, side)} fill={fill}>
+      {children}
+    </path>
+  ) : (
+    <circle cx={px} cy={py} r={3} fill={fill}>
+      {children}
+    </circle>
   )
 }

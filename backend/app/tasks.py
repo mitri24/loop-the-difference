@@ -1,4 +1,5 @@
 import warnings
+from collections import Counter
 from concurrent.futures import ThreadPoolExecutor
 from itertools import combinations
 from pathlib import Path
@@ -36,7 +37,7 @@ SPECTRUM_SIZE_DEG = 0.03
 # cache still finishes within the spectrum job timeout while IRSA is slow.
 MAX_SPECTRUM_POINTS = 100
 # Bump whenever the photometry changes: the spectrum job key changes, so results are rebuilt.
-SPECTRUM_VERSION = 3
+SPECTRUM_VERSION = 4
 # Bump whenever the rendered output changes: the job key changes, so cached results are rebuilt,
 # and `warm` removes frame folders whose manifest carries an older version.
 PIPELINE_VERSION = 6
@@ -261,13 +262,14 @@ def build_spectrum(ra: float, dec: float) -> dict:
         )
     epoch_of = {o.obs_id: i for i, epoch in enumerate(group_epochs(selected)) for o in epoch}
 
-    points, skipped = [], 0
+    points, skipped = [], Counter[str]()
     for obs, url, path in downloaded:
         wavelength, bandwidth = wavelength_at(path, *position[obs.obs_id])
-        flux, error, flagged = forced_photometry(path, *position[obs.obs_id])
-        if wavelength is None or flux is None:
-            skipped += 1
+        measured = forced_photometry(path, *position[obs.obs_id])
+        if isinstance(measured, str) or wavelength is None:
+            skipped[measured if isinstance(measured, str) else "no WCS-WAVE table"] += 1
             continue
+        flux, error, flagged = measured
         points.append(
             SpectrumPoint(
                 obs_id=obs.obs_id,
@@ -299,8 +301,8 @@ def build_spectrum(ra: float, dec: float) -> dict:
                 code="SPECTRUM_POINTS_SKIPPED",
                 severity="info",
                 message="Some visits give no spectrum point",
-                detail=f"{skipped} visits skipped: target at the cutout edge, masked pixels "
-                "or no WCS-WAVE table",
+                detail=f"{skipped.total()} visits skipped: "
+                + ", ".join(f"{n} {reason}" for reason, n in skipped.most_common()),
             )
         )
     return Spectrum(

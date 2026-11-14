@@ -6,6 +6,7 @@ from app import tasks
 from app.catalogs import position_at
 from app.frames import target_grid
 from app.models import Observation, ProperMotion
+from app.photometry import SKIP_NAN
 from app.tasks import build_frames, build_spectrum, epoch_checks, stack_images, wavelength_checks
 
 RA, DEC, SIZE_DEG = 133.795, -7.245, 0.1
@@ -177,11 +178,18 @@ def test_matching_wavelengths_pass_without_a_check():
 
 
 def test_spectrum_has_one_point_per_visit_of_every_detector(monkeypatch, settings, tmp_path):
-    observations = [_observation(100), _observation(101), _observation(290)]
+    observations = [_observation(100), _observation(101), _observation(102), _observation(290)]
     observations[1] = observations[1].model_copy(update={"detector": 2})
     _offline_archive(monkeypatch, settings, tmp_path, observations)
-    fluxes = {"100": (50.0, 2.0, False), "101": (None, None, False), "290": (40.0, 3.0, True)}
+    fluxes = {"100": (50.0, 2.0, False), "101": SKIP_NAN, "102": (1.0, 1.0, False)}
+    fluxes["290"] = (40.0, 3.0, True)
     monkeypatch.setattr(tasks, "forced_photometry", lambda path, ra, dec: fluxes[path.stem])
+    wavelength = tasks.wavelength_at
+    monkeypatch.setattr(
+        tasks,
+        "wavelength_at",
+        lambda path, ra, dec: (None, None) if path.stem == "102" else wavelength(path, ra, dec),
+    )
     monkeypatch.setattr(tasks, "find_proper_motion", lambda ra, dec, strict: None)
 
     spectrum = build_spectrum(RA, DEC)
@@ -199,6 +207,9 @@ def test_spectrum_has_one_point_per_visit_of_every_detector(monkeypatch, setting
         "SPECTRUM_POINTS_FLAGGED",
         "SPECTRUM_POINTS_SKIPPED",
     ]
+    assert spectrum["checks"][-1]["detail"] == (
+        f"2 visits skipped: 1 {SKIP_NAN}, 1 no WCS-WAVE table"
+    )
 
 
 def test_spectrum_follows_a_star_with_proper_motion_to_each_visit(monkeypatch, settings, tmp_path):

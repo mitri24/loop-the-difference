@@ -1,7 +1,15 @@
 import { renderToStaticMarkup } from 'react-dom/server'
 import { describe, expect, it } from 'vitest'
 import type { Check, SpectrumPoint } from '../types'
-import { Plot, SpectrumChart, epochColour, ranges, scale, summarize } from './SpectrumChart'
+import {
+  Plot,
+  SpectrumChart,
+  epochColour,
+  offScale,
+  ranges,
+  scale,
+  summarize,
+} from './SpectrumChart'
 
 const point = (epoch: number, wavelength: number, flux: number, err: number): SpectrumPoint => ({
   obs_id: `obs-${epoch}-${wavelength}`,
@@ -89,5 +97,24 @@ describe('SpectrumChart', () => {
     expect(html.match(/fill="var\(--bg\)"/g)).toHaveLength(1)
     expect(html).toContain('flagged pixels in aperture, flux unreliable')
     expect(html).toContain('○ flagged pixels in aperture')
+  })
+
+  it('draws a point beyond the flux axis as an arrow on the edge and explains it', () => {
+    const saturated = { ...point(0, 3.0, 125000, 10), flagged: true }
+    const html = renderToStaticMarkup(<Plot points={[point(0, 2.0, 5, 1), saturated]} />)
+
+    expect(html.match(/<circle/g)).toHaveLength(1)
+    expect(html.match(/<path d="M[^"]+" fill="var\(--bg\)"/g)).toHaveLength(1)
+    expect(html).toContain('125000.0 ± 10.0 µJy')
+    expect(html).toContain('beyond the flux axis · open the cutout')
+    expect(html).toContain('▲▼ beyond the flux axis, value in the tooltip')
+  })
+
+  it('tells above from below the axes', () => {
+    expect([offScale(0), offScale(100), offScale(1000)]).toEqual(['above', null, 'below'])
+  })
+
+  it('shows no arrow legend when every point fits', () => {
+    expect(renderToStaticMarkup(<Plot points={[point(0, 2.0, 5, 1)]} />)).not.toContain('▲▼')
   })
 })
