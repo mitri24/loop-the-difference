@@ -23,11 +23,13 @@ describe('splitCoordinates', () => {
 describe('SearchBar and Dock', () => {
   it('shows the example targets and Share next to the search', () => {
     const html = renderToStaticMarkup(<SearchBar value="" onChange={() => undefined} draft={POLARIS} busy={false}
-      onShow={() => undefined} onFind={() => undefined} onShare={() => undefined} />)
+      onShow={() => undefined} onFind={() => undefined} onSurprise={() => undefined} onShare={() => undefined} />)
     for (const label of ["Barnard's Star", 'WISE 0855', 'Epsilon Indi B', 'RW Aurigae', 'R Draconis', 'Pluto', 'Polaris']) {
       expect(html).toContain(`>${label.replace("'", '&#x27;')}</button>`)
     }
     expect(html).toContain('>Share</button>')
+    expect(html).toContain('title="Open a random fast-moving nearby star from Gaia DR3 – a new region takes 1–3 minutes to load">Surprise me</button>')
+    expect(html.toLowerCase()).not.toContain('discover')
   })
   it('marks the open panel and names a blocking check on its badge', () => {
     const html = renderToStaticMarkup(<Dock open="evidence" onToggle={() => undefined} items={[

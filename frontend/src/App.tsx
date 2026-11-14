@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { AladinInstance } from 'aladin-lite'
-import { createFrames, getFrameJob, getObservations, resolveName } from './api'
+import { createFrames, getFrameJob, getObservations, getSurprise, resolveName } from './api'
 import { AboutPanel } from './components/AboutPanel'
 import { stampText, type BlinkLetter } from './blink'
 import { BlinkPlayer } from './components/BlinkPlayer'
@@ -211,6 +211,31 @@ export default function App() {
     void run(same ? next : { ...next, name: undefined }, undefined, same ? motion ?? undefined : undefined)
   }, [run, query, motion])
   const find = useCallback((target: string, base: TargetQuery) => void run(base, target), [run])
+  // The reason stays with the picked position, so it disappears when the user moves on.
+  const [surprise, setSurprise] = useState<{ ra: string, dec: string, reason: string } | null>(null)
+  const surpriseMe = useCallback(async () => {
+    controller.current?.abort()
+    const picking = new AbortController()
+    controller.current = picking
+    setBusy(true)
+    setError(null)
+    setJob(null)
+    // The status line and any error live in the viewer.
+    setStage('investigate')
+    setStatus('Picking a fast-moving nearby star from Gaia DR3…')
+    try {
+      const star = await getSurprise(picking.signal)
+      if (picking.signal.aborted) return
+      const ra = star.ra.toFixed(6), dec = star.dec.toFixed(6)
+      setSurprise({ ra, dec, reason: star.reason })
+      void run({ ...draft, name: star.name, ra, dec }, undefined, star.proper_motion)
+    } catch (cause) {
+      if (picking.signal.aborted) return
+      setBusy(false)
+      setError(cause instanceof Error ? cause.message : String(cause))
+      setStatus('Could not pick a star.')
+    }
+  }, [run, draft])
   const cancel = () => {
     controller.current?.abort()
     setBusy(false)
@@ -344,13 +369,14 @@ export default function App() {
   return (
     <div className="shell" data-testid="planet-x-shell">
       <a className="skip-link" href="#sky-map">Skip to the sky map</a>
-      <SearchBar value={name} onChange={setName} draft={draft} busy={busy} onShow={show} onFind={find} onShare={() => void share()} />
+      <SearchBar value={name} onChange={setName} draft={draft} busy={busy} onShow={show} onFind={find} onSurprise={() => void surpriseMe()} onShare={() => void share()} />
 
       <div className={`stage ${stage}`}>
         <section className="viewer" aria-label="SPHEREx images of the region" hidden={stage !== 'investigate'}>
           <div className="viewer-head">
             <button type="button" className="back-button" onClick={() => setStage('explore')}><span aria-hidden="true">←</span> Back to sky</button>
-            <div className="target-summary"><strong>{targetLabel}</strong><span>D{query.band} · {query.fov}° region</span></div>
+            <div className="target-summary"><strong>{targetLabel}</strong><span>D{query.band} · {query.fov}° region</span>
+              {surprise?.ra === query.ra && surprise.dec === query.dec && <span className="muted">{surprise.reason}</span>}</div>
             {modeSwitch}
           </div>
           <div className="viewer-body">

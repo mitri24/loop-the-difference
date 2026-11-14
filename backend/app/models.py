@@ -52,6 +52,14 @@ class ResolvedTarget(BaseModel):
     proper_motion: ProperMotion | None = None
 
 
+class SurpriseTarget(ResolvedTarget):
+    """A random fast-moving Gaia DR3 star, or an example target when Gaia is down."""
+
+    pm_mas_yr: float | None = None
+    g_mag: float | None = None
+    reason: str
+
+
 class FrameRequest(BaseModel):
     ra: str = Field(min_length=1, max_length=40)
     dec: str = Field(min_length=1, max_length=40)

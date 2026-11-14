@@ -19,11 +19,12 @@ interface Props {
   busy: boolean
   onShow: (query: TargetQuery) => void
   onFind: (name: string, base: TargetQuery) => void
+  onSurprise: () => void
   onShare: () => void
 }
 
 // Top of the workspace: one input for a name or "RA, Dec", the example targets, Surprise me and Share.
-export function SearchBar({ value, onChange, draft, busy, onShow, onFind, onShare }: Props) {
+export function SearchBar({ value, onChange, draft, busy, onShow, onFind, onSurprise, onShare }: Props) {
   const submit = () => {
     const position = splitCoordinates(value)
     if (position) onShow({ ...draft, ...position })
@@ -46,8 +47,8 @@ export function SearchBar({ value, onChange, draft, busy, onShow, onFind, onShar
           <button type="button" key={target.label} className="chip" disabled={busy} title={target.hint ?? target.label}
             onClick={() => openTarget(target, draft, { onShow, onFind })}>{target.label.split(' · ')[0]}</button>
         ))}
-        <button type="button" className="chip" disabled={busy} title="Open a random example target"
-          onClick={() => openTarget(CHALLENGE_TARGETS[Math.floor(Math.random() * CHALLENGE_TARGETS.length)], draft, { onShow, onFind })}>Surprise me</button>
+        <button type="button" className="chip" disabled={busy} onClick={onSurprise}
+          title="Open a random fast-moving nearby star from Gaia DR3 – a new region takes 1–3 minutes to load">Surprise me</button>
       </div>
     </header>
   )

@@ -20,6 +20,7 @@ from pathlib import Path
 
 from pydantic import ValidationError
 
+from app import surprise
 from app.archive import (
     collection_key,
     collections_cache_path,
@@ -131,11 +132,17 @@ def run(
         if stale:
             print(f"removed {len(stale)} frame folders from older pipeline versions")
 
+    failed = 0
     if args.force and not args.dry_run:
         collections_cache_path(settings.cache_dir).unlink(missing_ok=True)
+    if args.dry_run:
+        print("surprise · Gaia DR3 fast-moving star list")
+    else:
+        stars = surprise.candidates(settings, force=args.force)
+        print(f"surprise · {len(stars)} fast-moving Gaia stars" + ("" if stars else " · FAILED"))
+        failed += not stars
     collections = spherex_collections(settings)
     collection = collection_key(collections)
-    failed = 0
     resolved: dict[str, tuple[float, float]] = {}
     spectra: set[str] = set()
     for job in jobs:
