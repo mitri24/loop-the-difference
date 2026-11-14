@@ -5,6 +5,8 @@ from app.catalogs import match_gaia_csv, position_at
 
 # Real Gaia DR3 answer around Barnard's Star, trimmed to Barnard's Star and five neighbours.
 FIXTURE = (Path(__file__).parent / "fixtures" / "gaia_barnard.csv").read_text()
+# Real Gaia DR3 answer within 7″ of the M87 core: a proper motion, but no significant parallax.
+M87 = (Path(__file__).parent / "fixtures" / "gaia_m87.csv").read_text()
 BARNARD_J2000 = (269.452083, 4.693364)
 
 
@@ -30,7 +32,16 @@ def test_barnards_star_moves_about_98_arcsec_north_from_gaia_epoch_to_mid_2025()
 
 def test_no_star_at_the_position_means_no_match():
     assert match_gaia_csv(FIXTURE, 269.40, 4.60) is None
-    assert match_gaia_csv("source_id,ra,dec,pmra,pmdec,parallax,ref_epoch\n", 0.0, 0.0) is None
+    assert (
+        match_gaia_csv(
+            "source_id,ra,dec,pmra,pmdec,parallax,parallax_over_error,ref_epoch\n", 0.0, 0.0
+        )
+        is None
+    )
+
+
+def test_a_galaxy_core_without_significant_parallax_gets_no_marker():
+    assert match_gaia_csv(M87, 187.705931, 12.391123) is None
 
 
 def test_broken_rows_are_skipped():
