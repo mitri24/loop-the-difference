@@ -1,12 +1,17 @@
+import hashlib
 import io
+import json
+import os
 import re
 from collections import Counter
+from pathlib import Path
 
 import httpx
 import numpy as np
 from astropy.io.votable import parse
 from astropy.time import Time
 
+from app import names
 from app.config import Settings
 from app.models import Epoch, Observation, ObservationSummary
 
@@ -20,6 +25,10 @@ class ArchiveError(RuntimeError):
 
 
 def search_observations(ra: float, dec: float, settings: Settings) -> list[Observation]:
+    """Search IRSA once per position; the answer stays on disk so warmed targets need no network."""
+    cached = sia_cache_path(settings.cache_dir, settings.spherex_collection, ra, dec)
+    if cached.is_file():
+        return parse_sia_votable(cached.read_bytes())
     params = {
         "COLLECTION": settings.spherex_collection,
         "POS": f"CIRCLE {ra} {dec} 0.0005",
@@ -30,7 +39,41 @@ def search_observations(ra: float, dec: float, settings: Settings) -> list[Obser
         response.raise_for_status()
     except httpx.HTTPError as exc:
         raise ArchiveError("SPHEREx archive (IRSA) is not reachable") from exc
-    return parse_sia_votable(response.content)
+    observations = parse_sia_votable(response.content)
+    if observations:  # an empty answer may be a transient archive hiccup: ask again next time
+        _write_cached(cached, response.content)
+    return observations
+
+
+def sia_cache_path(cache_dir: Path, collection: str, ra: float, dec: float) -> Path:
+    # Same rounding as the frame job key, so a warmed position is hit by the UI request.
+    return cache_dir / "sia" / f"{collection}_{ra:.5f}_{dec:.5f}.xml"
+
+
+def resolve_position(name: str, settings: Settings) -> tuple[float, float]:
+    """Target name → (ra, dec) in degrees via names.resolve, cached on disk for offline demos.
+
+    Raises NameResolveError for unknown names and names.NameLookupTimeout on a slow Sesame.
+    """
+    cached = resolve_cache_path(settings.cache_dir, name)
+    if cached.is_file():
+        position = json.loads(cached.read_text())
+        return position["ra"], position["dec"]
+    ra, dec = names.resolve(name)
+    ra, dec = float(ra), float(dec)
+    _write_cached(cached, json.dumps({"name": name, "ra": ra, "dec": dec}).encode())
+    return ra, dec
+
+
+def resolve_cache_path(cache_dir: Path, name: str) -> Path:
+    return cache_dir / "resolve" / f"{hashlib.sha256(name.encode()).hexdigest()[:16]}.json"
+
+
+def _write_cached(path: Path, content: bytes) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    partial = path.with_name(f"{path.name}.{os.getpid()}.part")
+    partial.write_bytes(content)
+    partial.replace(path)
 
 
 def parse_sia_votable(content: bytes) -> list[Observation]:

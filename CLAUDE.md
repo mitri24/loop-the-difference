@@ -7,6 +7,7 @@ NASA Space Apps 2026, challenge "Planet X and SPHEREx": a public web tool. RA/De
 - `backend/` FastAPI (`app/main.py`) and an RQ worker (`app/worker.py`, job in `app/tasks.py`) on Redis; frames and cutouts are cached in the shared volume `/data/cache`.
 - Data: IRSA SIA2, collection from `SKYSHIFT_SPHEREX_COLLECTION` (default `spherex_dr1`; `spherex_qr3` returns nothing). Cutouts: `access_url?center=<ra>,<dec>&size=<deg>`; IRSA answers `503 Server busy` under load, so downloads retry.
 - `frontend/src/types.ts` mirrors `backend/app/models.py`: change both together.
+- `backend/app/warm.py` `TARGETS` mirrors `frontend/src/targets.ts`: change both together.
 
 ## Commands (Docker is the only requirement, on every OS)
 - Run everything: `docker compose up --build` → http://localhost:8080, API docs http://localhost:8000/docs
