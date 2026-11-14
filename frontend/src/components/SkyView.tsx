@@ -1,6 +1,7 @@
 import type { AladinInstance, GraphicOverlay, HiPSLayer } from 'aladin-lite'
 import type AladinModule from 'aladin-lite'
 import { useEffect, useRef, useState } from 'react'
+import { CatalogLegend } from './CatalogLegend'
 import { ALLWISE, SPHEREX, SURVEYS, footprintCorners, sliceForDetector, spherexLabel } from '../sky'
 
 interface Props {
@@ -9,6 +10,8 @@ interface Props {
   // Side of the frame in degrees; the view shows CONTEXT_ZOOM times as much sky.
   fov: number
   detector: number
+  // Epoch of the shown frame: Gaia stars are moved to it, SkyBoT is asked for it.
+  frameMjd?: number | null
   onReady?: (aladin: AladinInstance) => void
   onLayerChange?: (label: string) => void
   onUnavailable?: () => void
@@ -26,11 +29,21 @@ const CONTEXT_ZOOM = 4
 const SPHEREX_TIMEOUT_MS = 5000
 const FALLBACK_LABEL = 'AllWISE (fallback)'
 
-export function SkyView({ ra, dec, fov, detector, onReady, onLayerChange, onUnavailable }: Props) {
+export function SkyView({
+  ra,
+  dec,
+  fov,
+  detector,
+  frameMjd = null,
+  onReady,
+  onLayerChange,
+  onUnavailable,
+}: Props) {
   const container = useRef<HTMLDivElement>(null)
   const sky = useRef<Sky | null>(null)
   const latest = useRef({ ra, dec, fov, detector, onReady, onLayerChange, onUnavailable })
   const [unavailable, setUnavailable] = useState(false)
+  const [aladin, setAladin] = useState<AladinInstance | null>(null)
 
   useEffect(() => {
     latest.current = { ra, dec, fov, detector, onReady, onLayerChange, onUnavailable }
@@ -101,6 +114,7 @@ export function SkyView({ ra, dec, fov, detector, onReady, onLayerChange, onUnav
         aladin.addOverlay(footprint)
         sky.current = { A, aladin, spherex, footprint }
         place(sky.current, start.ra, start.dec, start.fov)
+        setAladin(aladin)
         latest.current.onReady?.(aladin)
       })
       .catch(() => {
@@ -118,7 +132,12 @@ export function SkyView({ ra, dec, fov, detector, onReady, onLayerChange, onUnav
   }, [])
 
   if (unavailable) return <p className="notice">The sky view needs WebGL2</p>
-  return <div ref={container} className="sky-view" />
+  return (
+    <>
+      <CatalogLegend aladin={aladin} ra={ra} dec={dec} sizeDeg={fov} frameMjd={frameMjd} />
+      <div ref={container} className="sky-view" />
+    </>
+  )
 }
 
 function place({ A, aladin, footprint }: Sky, ra: number, dec: number, fov: number) {

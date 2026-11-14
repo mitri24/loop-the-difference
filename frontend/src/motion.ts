@@ -1,7 +1,6 @@
+import { propagateGaia } from './catalogLayers'
 import type { ProperMotion } from './types'
 
-const MJD_J2000 = 51544.5
-const DAYS_PER_YEAR = 365.25
 const rad = (deg: number) => (deg * Math.PI) / 180
 
 // Where a Gaia star stands at a frame's date, as a fraction of the frame from its top left corner.
@@ -14,9 +13,13 @@ export function markerPosition(
   dec0: number,
   sizeDeg: number,
 ): { x: number; y: number } | null {
-  const years = 2000 + (mjd - MJD_J2000) / DAYS_PER_YEAR - star.ref_epoch
-  const dec = rad(star.dec + (star.pmdec_mas_yr * years) / 3.6e6)
-  const dRa = rad((star.pmra_mas_yr * years) / 3.6e6 / Math.cos(rad(star.dec)) + star.ra - ra0)
+  const now = propagateGaia(
+    { ra: star.ra, dec: star.dec, pmRa: star.pmra_mas_yr, pmDec: star.pmdec_mas_yr },
+    mjd,
+    star.ref_epoch,
+  )
+  const dec = rad(now.dec)
+  const dRa = rad(now.ra - ra0)
   const d0 = rad(dec0)
   const cosC = Math.sin(d0) * Math.sin(dec) + Math.cos(d0) * Math.cos(dec) * Math.cos(dRa)
   if (cosC <= 0) return null
