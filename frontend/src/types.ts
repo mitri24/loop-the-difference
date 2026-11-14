@@ -115,3 +115,39 @@ export interface FrameRequest {
   max_frames: number
   stack?: boolean
 }
+
+export interface SpectrumRequest {
+  ra: string
+  dec: string
+}
+
+export interface SpectrumPoint {
+  obs_id: string
+  date: string
+  mjd: number
+  detector: number
+  epoch: number
+  wavelength_um: number
+  bandwidth_um: number
+  flux_ujy: number
+  flux_err_ujy: number
+  source_url: string
+}
+
+export interface Spectrum {
+  collection: string
+  ra: number
+  dec: number
+  complete: boolean
+  points: SpectrumPoint[]
+  checks: Check[]
+}
+
+export interface SpectrumJob {
+  job_id: string
+  status: FrameJob['status']
+  progress: number
+  total: number
+  spectrum: Spectrum | null
+  error: string | null
+}
