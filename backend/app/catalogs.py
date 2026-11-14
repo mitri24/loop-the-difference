@@ -12,10 +12,11 @@ GAIA_TIMEOUT_S = 5.0
 SEARCH_RADIUS_DEG = 0.06
 MATCH_ARCSEC = 2.0
 J2000 = 2000.0
+MJD_J2000 = 51544.5
 
 
-def find_proper_motion(ra: float, dec: float) -> ProperMotion | None:
-    """Gaia DR3 star at the J2000 position of a resolved name; None when Gaia has none or fails."""
+def find_proper_motion(ra: float, dec: float, strict: bool = False) -> ProperMotion | None:
+    """Gaia DR3 star at a J2000 position; None when Gaia has none, or fails unless `strict`."""
     query = (
         "SELECT source_id, ra, dec, pmra, pmdec, parallax, ref_epoch FROM gaiadr3.gaia_source "
         f"WHERE 1=CONTAINS(POINT(ra, dec), CIRCLE({ra}, {dec}, {SEARCH_RADIUS_DEG})) "
@@ -26,6 +27,8 @@ def find_proper_motion(ra: float, dec: float) -> ProperMotion | None:
         response = httpx.post(GAIA_TAP_URL, data=params, timeout=GAIA_TIMEOUT_S)
         response.raise_for_status()
     except httpx.HTTPError:
+        if strict:
+            raise
         return None
     return match_gaia_csv(response.text, ra, dec)
 
@@ -49,11 +52,17 @@ def match_gaia_csv(content: str, ra: float, dec: float) -> ProperMotion | None:
             )
         except (KeyError, TypeError, ValueError):
             continue
-        years = J2000 - star.ref_epoch
-        dec_j2000 = star.dec + star.pmdec_mas_yr * years / 3.6e6
-        ra_j2000 = star.ra + star.pmra_mas_yr * years / 3.6e6 / math.cos(math.radians(star.dec))
+        ra_j2000, dec_j2000 = position_at(star, MJD_J2000)
         d_ra = (ra_j2000 - ra + 180) % 360 - 180
         sep = 3600 * math.hypot(d_ra * math.cos(math.radians(dec)), dec_j2000 - dec)
         if sep < best_sep:
             best, best_sep = star, sep
     return best
+
+
+def position_at(star: ProperMotion, mjd: float) -> tuple[float, float]:
+    """Gaia position moved to a visit's date, the same formula as the player (motion.ts)."""
+    years = J2000 + (mjd - MJD_J2000) / 365.25 - star.ref_epoch
+    dec = star.dec + star.pmdec_mas_yr * years / 3.6e6
+    ra = star.ra + star.pmra_mas_yr * years / 3.6e6 / math.cos(math.radians(star.dec))
+    return ra % 360, dec

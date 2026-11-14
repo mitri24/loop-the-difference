@@ -19,6 +19,8 @@ from app.tasks import (
 
 QUEUE_NAME = "frames"
 JOB_TIMEOUT_S = 900
+# A cold spectrum downloads up to MAX_SPECTRUM_POINTS cutouts; IRSA alone took ~30 min for 200.
+SPECTRUM_TIMEOUT_S = 1800
 
 
 class QueueFull(Exception):
@@ -93,7 +95,7 @@ def submit_spectrum(redis: Redis, settings: Settings, ra: float, dec: float) -> 
         build_spectrum,
         kwargs={"ra": ra, "dec": dec},
         job_id=job_id,
-        job_timeout=JOB_TIMEOUT_S,
+        job_timeout=SPECTRUM_TIMEOUT_S,
         result_ttl=86400,
         failure_ttl=600,
     )

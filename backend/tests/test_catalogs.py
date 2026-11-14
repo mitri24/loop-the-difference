@@ -1,7 +1,7 @@
 from pathlib import Path
 
 from app import main
-from app.catalogs import match_gaia_csv
+from app.catalogs import match_gaia_csv, position_at
 
 # Real Gaia DR3 answer around Barnard's Star, trimmed to Barnard's Star and five neighbours.
 FIXTURE = (Path(__file__).parent / "fixtures" / "gaia_barnard.csv").read_text()
@@ -16,6 +16,16 @@ def test_finds_barnards_star_by_moving_gaia_back_to_j2000():
     assert round(star.pmdec_mas_yr) == 10362
     assert round(star.parallax_mas) == 547
     assert star.ref_epoch == 2016.0
+
+
+def test_barnards_star_moves_about_98_arcsec_north_from_gaia_epoch_to_mid_2025():
+    star = match_gaia_csv(FIXTURE, *BARNARD_J2000)
+    mjd_2025_5 = 51544.5 + 25.5 * 365.25
+
+    ra, dec = position_at(star, mjd_2025_5)
+
+    assert round((dec - star.dec) * 3600, 1) == 98.4
+    assert ra < star.ra  # pmRA is negative: west
 
 
 def test_no_star_at_the_position_means_no_match():
