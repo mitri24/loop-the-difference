@@ -270,6 +270,7 @@ export default function App() {
                 fov={query.fov}
                 detector={query.band}
                 onReady={setSky}
+                frameMjd={manifest?.frames[frameIndex]?.mjd ?? null}
                 onLayerChange={setSkyLayer}
                 onUnavailable={() => setSkyUnavailable(true)}
               />
@@ -285,7 +286,7 @@ export default function App() {
         Data: SPHEREx ({summary?.collection ?? 'spherex_dr1'}), NASA/IPAC Infrared Science Archive
         (IRSA) ·{' '}
         {!EMBED &&
-          'Sky: SPHEREx DR1 (NASA/SPHEREx, Caltech/IPAC) · AllWISE (NASA/IPAC) via ESA ESDC HiPS mirrors · Aladin Lite (CDS, LGPL-3) · '}
+          'Sky: SPHEREx DR1 (NASA/SPHEREx, Caltech/IPAC) · AllWISE (NASA/IPAC) via ESA ESDC HiPS mirrors · Aladin Lite (CDS, LGPL-3) · Catalogues: Gaia DR3 (ESA), AllWISE (NASA/IPAC), SIMBAD and VizieR (CDS), SkyBoT (IMCCE, Observatoire de Paris) · '}
         Built for NASA Space Apps 2026
       </footer>
     </div>

@@ -65,7 +65,25 @@ declare module 'aladin-lite' {
     overlay?: GraphicOverlay
   }
 
+  export interface Catalog {
+    addSources(sources: unknown[]): void
+  }
+
+  export interface CatalogOptions {
+    name: string
+    shape: 'circle' | 'square' | 'triangle' | 'rhomb'
+    color: string
+    sourceSize: number
+    limit: number
+    onClick: 'showTable'
+  }
+
   export interface AladinInstance {
+    getRaDec(): SkyCoords
+    getFov(): [number, number]
+    addCatalog(catalog: Catalog): void
+    removeOverlay(overlay: Catalog): void
+    on(event: 'positionChanged' | 'zoomChanged', callback: () => void): void
     gotoRaDec(ra: number, dec: number): void
     setFoV(fovDegrees: number): void
     setBaseImageLayer(layer: HiPSLayer | string): HiPSLayer
@@ -91,6 +109,15 @@ declare module 'aladin-lite' {
       radiusDegrees: number,
       options?: { color?: string; lineWidth?: number },
     ): OverlayItem
+    catalog(options: CatalogOptions): Catalog
+    source(ra: number, dec: number, data: Record<string, string>): unknown
+    catalogFromURL(
+      url: string,
+      options: CatalogOptions,
+      onSuccess: (catalog: Catalog) => void,
+      onError: () => void,
+      useProxy: false,
+    ): void
   }
 
   export default A
