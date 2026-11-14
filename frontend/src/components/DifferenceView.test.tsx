@@ -28,6 +28,8 @@ const diff = (a: number, b: number, comparable: boolean, pct: number | null = 0.
   url: `/api/frames/job/diff_0${a}_0${b}.png`,
   comparable,
   delta_lambda_pct: pct,
+  obs_ids_a: [],
+  obs_ids_b: [],
 })
 
 const manifest = (differences: Difference[]): FrameManifest => ({

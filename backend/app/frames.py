@@ -103,3 +103,21 @@ def render_png(images: list[np.ndarray], directory: Path) -> list[str]:
         Image.fromarray(np.flipud(pixels)).save(directory / name)
         names.append(name)
     return names
+
+
+DIFF_GREY = np.array([128, 128, 128], dtype=np.float64)
+DIFF_EARLIER = np.array([214, 64, 48], dtype=np.float64)  # red: brighter in the earlier epoch
+DIFF_LATER = np.array([52, 112, 219], dtype=np.float64)  # blue: brighter in the later epoch
+DIFF_NO_DATA = np.array([40, 40, 40], dtype=np.uint8)
+
+
+def render_diff(earlier: np.ndarray, later: np.ndarray, directory: Path, name: str) -> None:
+    """Later minus earlier on a diverging scale, symmetric around grey at the 99th percentile."""
+    diff = later - earlier
+    covered = ~np.isnan(diff)
+    limit = float(np.percentile(np.abs(diff[covered]), 99)) if covered.any() else 0.0
+    v = np.clip(np.nan_to_num(diff) / (limit or 1.0), -1, 1)[..., None]
+    rgb = DIFF_GREY + np.abs(v) * (np.where(v < 0, DIFF_EARLIER, DIFF_LATER) - DIFF_GREY)
+    pixels = np.rint(rgb).astype(np.uint8)
+    pixels[~covered] = DIFF_NO_DATA
+    Image.fromarray(np.flipud(pixels)).save(directory / name)
