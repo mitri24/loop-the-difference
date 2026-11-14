@@ -8,8 +8,14 @@ from rq.exceptions import NoSuchJobError
 from rq.job import Job, JobStatus
 
 from app.config import Settings
-from app.models import FrameJob, FrameManifest
-from app.tasks import PIPELINE_VERSION, build_frames, manifest_path
+from app.models import FrameJob, FrameManifest, Spectrum, SpectrumJob
+from app.tasks import (
+    PIPELINE_VERSION,
+    SPECTRUM_VERSION,
+    build_frames,
+    build_spectrum,
+    manifest_path,
+)
 
 QUEUE_NAME = "frames"
 JOB_TIMEOUT_S = 900
@@ -63,6 +69,57 @@ def submit(redis: Redis, settings: Settings, job_id: str, **params: float | int 
         failure_ttl=600,
     )
     return FrameJob(job_id=job_id, status="queued")
+
+
+def spectrum_job_id(collection: str, ra: float, dec: float) -> str:
+    key = f"spectrum|{collection}|{ra:.5f}|{dec:.5f}|v{SPECTRUM_VERSION}"
+    return hashlib.sha256(key.encode()).hexdigest()[:16]
+
+
+def submit_spectrum(redis: Redis, settings: Settings, ra: float, dec: float) -> SpectrumJob:
+    """Like `submit`, but the spectrum is small: it lives in the job result, not in the cache."""
+    job_id = spectrum_job_id(settings.spherex_collection, ra, dec)
+    current = spectrum_status(redis, job_id)
+    if current.status in ("queued", "started"):
+        return current
+    if current.status == "finished" and current.spectrum and current.spectrum.complete:
+        return current
+    queue = Queue(QUEUE_NAME, connection=redis)
+    if queue.count > settings.max_queued:
+        raise QueueFull()
+    with suppress(NoSuchJobError):
+        Job.fetch(job_id, connection=redis).delete()
+    queue.enqueue(
+        build_spectrum,
+        kwargs={"ra": ra, "dec": dec},
+        job_id=job_id,
+        job_timeout=JOB_TIMEOUT_S,
+        result_ttl=86400,
+        failure_ttl=600,
+    )
+    return SpectrumJob(job_id=job_id, status="queued")
+
+
+def spectrum_status(redis: Redis, job_id: str) -> SpectrumJob:
+    try:
+        job = Job.fetch(job_id, connection=redis)
+    except NoSuchJobError:
+        return SpectrumJob(job_id=job_id, status="not_found")
+    state = job.get_status()
+    if state == JobStatus.FINISHED:
+        result = job.return_value()
+        if result is None:
+            return SpectrumJob(job_id=job_id, status="not_found")
+        return SpectrumJob(
+            job_id=job_id, status="finished", spectrum=Spectrum.model_validate(result)
+        )
+    if state in (JobStatus.QUEUED, JobStatus.STARTED):
+        running = "started" if state == JobStatus.STARTED else "queued"
+        progress, total = int(job.meta.get("progress", 0)), int(job.meta.get("total", 0))
+        return SpectrumJob(job_id=job_id, status=running, progress=progress, total=total)
+    # Failed, stopped or cancelled (e.g. a worker restart): the next request starts it again.
+    error = _last_error(job) if state == JobStatus.FAILED else f"Spectrum job {state.value}"
+    return SpectrumJob(job_id=job_id, status="failed", error=error)
 
 
 def status(redis: Redis, settings: Settings, job_id: str) -> FrameJob:

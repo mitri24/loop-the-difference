@@ -12,7 +12,14 @@ from app.archive import ArchiveError, resolve_position, search_observations, sum
 from app.catalogs import find_proper_motion
 from app.config import Settings, get_settings
 from app.coords import CoordinateError, parse_dec, parse_ra
-from app.models import FrameJob, FrameRequest, ObservationSummary, ResolvedTarget
+from app.models import (
+    FrameJob,
+    FrameRequest,
+    ObservationSummary,
+    ResolvedTarget,
+    SpectrumJob,
+    SpectrumRequest,
+)
 
 _JOB_ID = re.compile(r"^[0-9a-f]{16}$")
 _FRAME_FILE = re.compile(r"^(frame_\d{2}|diff_\d{2}_\d{2})\.png$")
@@ -121,3 +128,16 @@ def frame_file(job_id: str, filename: str, settings: SettingsDep) -> FileRespons
     return FileResponse(
         path, media_type="image/png", headers={"Cache-Control": "public, max-age=86400, immutable"}
     )
+
+
+@app.post("/api/spectrum")
+def create_spectrum(request: SpectrumRequest, settings: SettingsDep) -> SpectrumJob:
+    ra, dec = parse_ra(request.ra), parse_dec(request.dec)
+    return jobs.submit_spectrum(jobs.connect(settings.redis_url), settings, ra, dec)
+
+
+@app.get("/api/spectrum/{job_id}")
+def spectrum_job(job_id: str, settings: SettingsDep) -> SpectrumJob:
+    if not _JOB_ID.match(job_id):
+        raise HTTPException(status_code=404, detail="Unknown job")
+    return jobs.spectrum_status(jobs.connect(settings.redis_url), job_id)
