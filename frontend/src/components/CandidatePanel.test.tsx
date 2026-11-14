@@ -7,7 +7,8 @@ import { CandidatePanel } from './CandidatePanel'
 const mark = (obs_id: string, date: string): Mark =>
   ({ obs_id, mjd: 61000, date, ra: 308.52331, dec: -22.89019, sigma_arcsec: 3 })
 const render = (marks: Mark[], blocked: string | null = null, armed = false, track: PossibleTrack | null = null) => renderToStaticMarkup(
-  <CandidatePanel candidate={{ marks, notice: '', armed, setArmed: () => undefined, clear: () => undefined }} blocked={blocked} track={track} />,
+  <CandidatePanel candidate={{ marks, notice: '', armed, setArmed: () => undefined, clear: () => undefined }} blocked={blocked} track={track}
+    known={{ epochs: [], motion: null, detector: 3, target: 'Pluto' }} />,
 )
 
 describe('CandidatePanel', () => {

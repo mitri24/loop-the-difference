@@ -726,6 +726,13 @@ summary { cursor:pointer; min-height:32px; padding:5px 0; font-size:13px; }
 .track-numbers { font-variant-numeric:tabular-nums; overflow-wrap:anywhere; }
 .track-key.possible span, .track-regime span { color:var(--possible-track); }
 .search-area { position:absolute; min-width:6px; aspect-ratio:1; transform:translate(-50%,-50%); border:2px dashed var(--possible-track); border-radius:50%; pointer-events:none; }
+.known-check { display:grid; gap:8px; justify-items:start; }
+.known-check p { margin:0; }
+.known-evidence, .known-evidence ul { margin:0; padding-left:16px; font-size:13px; overflow-wrap:anywhere; }
+.known-error { color:var(--warning); }
+.verdict { display:grid; gap:4px; margin:0; padding:6px 10px; border:1px solid var(--border); border-radius:6px; font-size:13px; }
+.verdict label { display:flex; align-items:center; gap:6px; }
+.verdict input { width:auto; height:auto; margin:0; padding:0; }
 .source-rows li { display:flex; align-items:stretch; border-bottom:1px solid var(--border); }
 .source-rows li:last-child { border-bottom:0; }
 .source-rows li > button { flex:1; min-width:0; border-bottom:0; }

@@ -3,6 +3,7 @@ import {
   CANDIDATE_STATES, OUTSIDE_FRAME, VERDICTS, addMark, candidateState, insideFrame, markText, sigmaFor, snapMark,
   type Mark,
 } from './candidate'
+import { NOT_LISTED, NOT_REACHABLE } from './knownObjects'
 import type { DetectedSource, Frame } from './types'
 
 const SCALE = 6.15 // arcsec per pixel: snap radius 12.3″
@@ -97,6 +98,6 @@ it('candidate state precedence: known body > catalogue star (unless fast) > moti
 })
 
 it('no state or verdict claims a result', () => {
-  const words = [...Object.values(CANDIDATE_STATES).map((s) => s.word), ...VERDICTS]
+  const words = [...Object.values(CANDIDATE_STATES).map((s) => s.word), ...VERDICTS, NOT_LISTED, NOT_REACHABLE]
   for (const word of words) expect(word).not.toMatch(/\b(confirmed|real|discovery|new object)\b/i)
 })

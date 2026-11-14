@@ -36,14 +36,18 @@ export function markFromSource(frame: Frame, source: DetectedSource): Mark {
   return { obs_id, mjd, date, ra: source.ra, dec: source.dec, sigma_arcsec: sigmaFor(source.snr), source }
 }
 
+/** Small-angle separation in arcsec, RA wrapped at 0/360. */
+export function sepArcsec(ra1: number, dec1: number, ra2: number, dec2: number): number {
+  const dRa = ((ra2 - ra1 + 540) % 360) - 180
+  return Math.hypot(dRa * Math.cos((dec1 * Math.PI) / 180), dec2 - dec1) * 3600
+}
+
 /** The nearest detection within two pixels supplies the position; otherwise the click itself. */
 export function snapMark(frame: Frame, ra: number, dec: number, pixelScaleArcsec: number): Mark {
-  const cosDec = Math.cos((dec * Math.PI) / 180)
   let best: DetectedSource | null = null
   let bestSep = SNAP_PIXELS * pixelScaleArcsec
   for (const source of frame.sources ?? []) {
-    const dRa = ((source.ra - ra + 540) % 360) - 180
-    const sep = Math.hypot(dRa * cosDec, source.dec - dec) * 3600
+    const sep = sepArcsec(ra, dec, source.ra, source.dec)
     if (sep <= bestSep) [best, bestSep] = [source, sep]
   }
   if (best) return markFromSource(frame, best)
