@@ -6,7 +6,6 @@ import { stampText, type BlinkLetter } from './blink'
 import { BlinkPlayer } from './components/BlinkPlayer'
 import { BottomBar } from './components/BottomBar'
 import { CandidatePanel } from './components/CandidatePanel'
-import { TrackCheck } from './components/TrackCheck'
 import { useCandidate, useMarkLayer } from './candidate'
 import { DataLinks } from './components/DataLinks'
 import { EvidencePanel, hasBlocker, manifestChecks } from './components/EvidencePanel'
@@ -424,10 +423,9 @@ export default function App() {
           {manifest && hasFrames ? <CandidatePanel candidate={candidate} blocked={markBlocked} track={possible && { ...possible, predictions }}
             known={{ epochs: smallBodies.epochs, motion, detector: manifest.detector, target: targetLabel }}
             visits={summary && { observations: summary.observations, inBlink: [...manifest.frames.map((f) => f.obs_id),
-              ...manifest.differences.flatMap((d) => [...d.obs_ids_a, ...d.obs_ids_b])] }}>
-            {possible && predictions.length > 0 && <TrackCheck checks={checkFrames({ ...possible, predictions }, manifest.frames, candidate.marks, manifest)}
-              onShow={(index, p) => { setSeek({ index }); sky?.gotoRaDec(p.ra, p.dec) }} />}
-          </CandidatePanel> : loadFirst}
+              ...manifest.differences.flatMap((d) => [...d.obs_ids_a, ...d.obs_ids_b])] }}
+            lookBack={possible && predictions.length > 0 ? { checks: checkFrames({ ...possible, predictions }, manifest.frames, candidate.marks, manifest),
+              onShow: (index, p) => { setSeek({ index }); sky?.gotoRaDec(p.ra, p.dec) } } : null} /> : loadFirst}
           {!skyUnavailable && frame && !showDifference && <details className="disclosure">
             <summary>Detected sources{sourceSummary}</summary>
             <SourceList frame={frame} onSelect={(ra, dec) => sky?.gotoRaDec(ra, dec)} onMark={(source) => candidate.markSource(frame, source)} />

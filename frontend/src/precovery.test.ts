@@ -87,7 +87,7 @@ describe('where to look', () => {
     const html = renderToStaticMarkup(createElement(Precovery, {
       track: star, marks: STAR, observations: [obs('a', 60900)], inBlink: ['a'], detector: 3, followsTarget: 'Barnard’s Star',
     }))
-    expect(html).toContain('Where to look in older observations')
+    expect(html).toContain('Predicted positions to check')
     expect(html).toContain('Your marks follow Barnard’s Star')
     expect(html).toContain('in the blink')
     expect(html).toContain('Cutout at the predicted position (FITS, IRSA, ~4 MB+)')

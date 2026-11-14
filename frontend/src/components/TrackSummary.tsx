@@ -2,6 +2,11 @@ import { DAYS_PER_YEAR, REGIMES, SEARCH_AREA_LABEL, type PossibleTrack } from '.
 
 const num = (value: number, digits = 3) => Number(value.toPrecision(digits)).toString()
 
+// The collapsed step line, e.g. "Track: 0.21″/h ± 0.03, PA 172°".
+export const trackLine = ({ fit, regime }: PossibleTrack) => regime === 'none'
+  ? `Track: ${REGIMES.none.word.toLowerCase()}`
+  : `Track: ${num(fit.rate / 24)}″/h ± ${num(fit.sigmaRate / 24, 2)}, PA ${fit.pa.toFixed(0)}°`
+
 // What the marks say about motion: rate ± 1σ, direction and whether a straight line is valid.
 export function TrackSummary({ track: { fit, regime, predictions } }: { track: PossibleTrack }) {
   const kind = REGIMES[regime]

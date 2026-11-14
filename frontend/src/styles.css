@@ -562,6 +562,16 @@ summary { cursor:pointer; min-height:32px; padding:5px 0; font-size:13px; }
 .candidate-marks { margin:0; padding:0; list-style:none; font-size:13px; font-variant-numeric:tabular-nums; overflow-wrap:anywhere; }
 .candidate-glyph { color:var(--candidate); font-weight:700; }
 .candidate-state { padding:2px 8px; border:1px solid var(--candidate); border-radius:999px; font-size:13px; }
+.check-steps { margin:0; padding:0; list-style:none; display:grid; gap:4px; justify-self:stretch; }
+.check-step { border:1px solid var(--border); border-radius:var(--radius-sm); }
+.check-step-head { display:flex; flex-wrap:wrap; align-items:baseline; justify-content:flex-start; gap:0 8px; width:100%; padding:4px 8px; border:0; background:none; text-align:left; font-size:13px; }
+.check-step-title { font-weight:600; }
+.check-step-status { color:var(--muted); }
+.check-step.done .check-step-status span { color:var(--status-ok); }
+.check-step.blocked .check-step-status { color:var(--warning); }
+.check-step-summary { flex-basis:100%; font-variant-numeric:tabular-nums; overflow-wrap:anywhere; }
+.check-step-body { display:grid; gap:8px; justify-items:start; max-height:min(32vh, 260px); overflow-y:auto; padding:0 8px 8px; }
+.check-step-body[hidden] { display:none; }
 .track-check { display:grid; gap:6px; }
 .track-check-summary { font-weight:600; font-size:13px; }
 .track-check-rows { margin:0; padding:0; list-style:none; display:grid; gap:4px; font-size:13px; font-variant-numeric:tabular-nums; overflow-wrap:anywhere; }

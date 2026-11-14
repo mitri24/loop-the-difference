@@ -35,6 +35,9 @@ describe('KnownObjectCheck', () => {
     expect(html).toContain('◇ possible known Solar System body: (134340) Pluto · 0.1″ · moves 0.85″/h · class KBO')
     expect(html).toContain('position coincides with Gaia DR3 6845 (0.4″) – a positional coincidence')
     expect(html).toContain('SkyBoT: 2 of 2 checked')
+    // All marks answered: step 5 is done and collapses to its line, step 6 opens.
+    expect(html).toContain('<span class="check-step-summary">SkyBoT: 2 of 2 checked · ◇ possible known: (134340) Pluto</span>')
+    expect(html).toMatch(/aria-expanded="true" aria-controls="[^"]+"><span class="check-step-title">6 Your verdict/)
     expect(render([mark('a', '6845'), mark('b', '6845')])).toContain('Catalogue star at this position')
   })
 
@@ -43,5 +46,7 @@ describe('KnownObjectCheck', () => {
     expect(html).toContain(NOT_LISTED)
     expect(html).toContain(NOT_REACHABLE)
     expect(html).toContain('Unverified candidate')
+    // An unreachable service never reads as an empty field: step 5 says not possible.
+    expect(html).toContain(`⊘</span> not possible: ${NOT_REACHABLE}`)
   })
 })

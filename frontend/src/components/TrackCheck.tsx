@@ -23,15 +23,17 @@ function resultText({ frame, result, radius_arcsec }: FrameCheck): string {
   return RESULT_TEXT[result.kind]
 }
 
-// Look back within SPHEREx: every other loaded frame at the possible track's predicted position.
-export function TrackCheck({ checks, onShow }: { checks: FrameCheck[]; onShow: (index: number, prediction: Prediction) => void }) {
+export function lookBackLine(checks: FrameCheck[]): string {
   const checked = checks.filter((c) => c.result.kind === 'detection' || c.result.kind === 'nothing')
   const consistent = checked.filter((c) => c.result.kind === 'detection').length
+  return `Consistent with the possible track in ${consistent} of ${checked.length} other frames`
+}
+
+// Look back within SPHEREx: every other loaded frame at the possible track's predicted position.
+export function TrackCheck({ checks, onShow }: { checks: FrameCheck[]; onShow: (index: number, prediction: Prediction) => void }) {
   return (
     <div className="track-check">
-      <p className="track-check-summary">
-        Consistent with the possible track in {consistent} of {checked.length} other frames
-      </p>
+      <p className="track-check-summary">{lookBackLine(checks)}</p>
       <ol className="track-check-rows">
         {checks.map((check) => (
           <li key={check.frame.obs_id}>

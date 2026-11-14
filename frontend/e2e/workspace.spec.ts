@@ -426,6 +426,13 @@ test('fixture: Mark detected sources in two frames lists candidate marks A and B
     await page.getByRole('button', { name: /^Mark source at RA .* in frame 2$/ }).click()
     await expect(panel.locator('.candidate-marks li')).toHaveText([/^◎ A · 2026-03-10 12:00 UTC .*\(S\/N 122\)/, /^◎ B · 2026-09-10 12:00 UTC/])
     await expect(panel).toContainText('Unverified candidate – needs verification')
+    // Step 1 is done and collapses to one line; a click reopens it.
+    const markStep = panel.getByRole('button', { name: /^1 Mark A and B/ })
+    await expect(markStep).toHaveAttribute('aria-expanded', 'false')
+    await expect(markStep).toContainText('A 2026-03-10 12:00 · B 2026-09-10 12:00 UTC')
+    await markStep.click()
+    await expect(markStep).toHaveAttribute('aria-expanded', 'true')
+    await expect(panel.locator('.candidate-marks')).toBeVisible()
     await hitTarget(panel.getByRole('button', { name: 'Clear marks' }))
     const scroll = await page.evaluate(() => document.documentElement.scrollWidth)
     expect(scroll).toBeLessThanOrEqual(width + 1)

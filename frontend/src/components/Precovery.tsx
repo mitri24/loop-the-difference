@@ -38,8 +38,7 @@ export function Precovery({ track, marks, observations, inBlink, detector, follo
   const visits = track ? visitRows(observations, detector, inBlink, track, marks) : []
   const older = track ? historicalRows(track, detector) : []
   return (
-    <details className="disclosure precovery">
-      <summary>Where to look in older observations</summary>
+    <div className="precovery">
       {followsTarget && (
         <p className="candidate-hint">Your marks follow {followsTarget}: its path {TRACK_LABEL} is drawn on the sky.</p>
       )}
@@ -68,6 +67,6 @@ export function Precovery({ track, marks, observations, inBlink, detector, follo
             )}
           </>
         )}
-    </details>
+    </div>
   )
 }
