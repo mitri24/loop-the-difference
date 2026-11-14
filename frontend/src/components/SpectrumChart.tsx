@@ -157,10 +157,16 @@ export function Plot({ points }: { points: SpectrumPoint[] }) {
                 y1={y(p.flux_ujy - p.flux_err_ujy)}
                 y2={y(p.flux_ujy + p.flux_err_ujy)}
               />
-              <circle cx={x(p.wavelength_um)} cy={y(p.flux_ujy)} r={3}>
+              <circle
+                cx={x(p.wavelength_um)}
+                cy={y(p.flux_ujy)}
+                r={3}
+                fill={p.flagged ? 'var(--bg)' : undefined}
+              >
                 <title>
                   {`${p.date.slice(0, 10)} · D${p.detector} · ${p.wavelength_um.toFixed(3)} µm · ` +
                     `${p.flux_ujy.toFixed(1)} ± ${p.flux_err_ujy.toFixed(1)} µJy · ${p.obs_id} · ` +
+                    (p.flagged ? 'flagged pixels in aperture, flux unreliable · ' : '') +
                     'open the cutout'}
                 </title>
               </circle>
@@ -174,6 +180,7 @@ export function Plot({ points }: { points: SpectrumPoint[] }) {
             ● Epoch {e + 1} ({firstDate(e)})
           </span>
         ))}
+        {points.some((p) => p.flagged) && <span>○ flagged pixels in aperture</span>}
       </p>
     </>
   )

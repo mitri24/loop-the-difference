@@ -33,7 +33,7 @@ MIN_COVERAGE = 0.5
 SPECTRUM_SIZE_DEG = 0.03
 MAX_SPECTRUM_POINTS = 200
 # Bump whenever the photometry changes: the spectrum job key changes, so results are rebuilt.
-SPECTRUM_VERSION = 1
+SPECTRUM_VERSION = 2
 # Bump whenever the rendered output changes: the job key changes, so cached results are rebuilt,
 # and `warm` removes frame folders whose manifest carries an older version.
 PIPELINE_VERSION = 6
@@ -234,7 +234,7 @@ def build_spectrum(ra: float, dec: float) -> dict:
     points, skipped = [], 0
     for obs, url, path in downloaded:
         wavelength, bandwidth = wavelength_at(path, ra, dec)
-        flux, error = forced_photometry(path, ra, dec)
+        flux, error, flagged = forced_photometry(path, ra, dec)
         if wavelength is None or flux is None:
             skipped += 1
             continue
@@ -249,7 +249,18 @@ def build_spectrum(ra: float, dec: float) -> dict:
                 bandwidth_um=round(bandwidth, 4),
                 flux_ujy=round(flux, 2),
                 flux_err_ujy=round(error, 2),
+                flagged=flagged,
                 source_url=url,
+            )
+        )
+    if flagged_count := sum(point.flagged for point in points):
+        checks.append(
+            Check(
+                code="SPECTRUM_POINTS_FLAGGED",
+                severity="info",
+                message="Some points have flagged pixels in the aperture",
+                detail=f"{flagged_count} of {len(points)} points have flagged pixels in the "
+                "aperture (e.g. saturation): drawn hollow, their flux is unreliable",
             )
         )
     if skipped:

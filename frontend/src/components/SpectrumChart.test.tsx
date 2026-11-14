@@ -70,4 +70,14 @@ describe('SpectrumChart', () => {
 
     expect(renderToStaticMarkup(<Plot points={twice} />).match(/<circle/g)).toHaveLength(2)
   })
+
+  it('draws a point with flagged aperture pixels hollow and says so', () => {
+    const html = renderToStaticMarkup(
+      <Plot points={[point(0, 2.0, 5, 1), { ...point(0, 3.0, 5, 1), flagged: true }]} />,
+    )
+
+    expect(html.match(/fill="var\(--bg\)"/g)).toHaveLength(1)
+    expect(html).toContain('flagged pixels in aperture, flux unreliable')
+    expect(html).toContain('○ flagged pixels in aperture')
+  })
 })

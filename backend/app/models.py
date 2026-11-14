@@ -139,6 +139,8 @@ class SpectrumPoint(BaseModel):
     # Background-subtracted aperture flux at the target, no aperture correction (quick-look).
     flux_ujy: float
     flux_err_ujy: float
+    # Pixels the archive marks unusable lie in the aperture: the flux is unreliable.
+    flagged: bool = False
     source_url: str
 
 
