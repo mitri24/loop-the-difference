@@ -272,10 +272,21 @@ select {
   max-width: 68vh;
 }
 
-.sky-context {
+.sky-view {
   width: 100%;
-  aspect-ratio: 1;
+  height: 72vh;
+  min-height: 420px;
   border: 1px solid var(--border);
+  /* Aladin's hidden tooltips sit outside the box and would widen the page on phones. */
+  overflow: hidden;
+}
+
+.context .viewport {
+  width: 100%;
+}
+
+.context .caveat {
+  max-width: none;
 }
 
 .footer {
