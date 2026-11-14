@@ -13,7 +13,8 @@ import {
   type BlinkLetter,
   type BlinkPair,
 } from '../blink'
-import { markerPosition } from '../motion'
+import { markerPosition, skyToFrame } from '../motion'
+import { SEARCH_AREA_LABEL, type Prediction } from '../track'
 import type { Check, Frame, FrameManifest, ProperMotion } from '../types'
 import { CheckBadge, checksForFrame } from './EvidencePanel'
 import { ObservationImage } from './ObservationImage'
@@ -23,6 +24,8 @@ interface Props {
   checks?: Check[]
   grid: Pick<FrameManifest, 'ra' | 'dec' | 'size_deg' | 'collection'>
   motion: ProperMotion | null
+  // Possible track from the user's marks, at the frame dates where a straight line is valid.
+  predictions?: Prediction[]
   onIndexChange?: (index: number, letter: BlinkLetter | null) => void
   // Playback and shortcuts pause while the player and the sky are covered by another panel.
   active?: boolean
@@ -35,6 +38,7 @@ export function BlinkPlayer({
   checks = [],
   grid,
   motion,
+  predictions = [],
   onIndexChange,
   active = true,
   showShare = true,
@@ -113,6 +117,8 @@ export function BlinkPlayer({
 
   const frame = frames[index]
   const marker = motion && markerPosition(motion, frame.mjd, grid.ra, grid.dec, grid.size_deg)
+  const predicted = predictions.find((p) => p.mjd === frame.mjd)
+  const searchArea = predicted && skyToFrame(predicted.ra, predicted.dec, grid.ra, grid.dec, grid.size_deg)
   const copyLink = async () => {
     try {
       await navigator.clipboard.writeText(window.location.href)
@@ -155,6 +161,13 @@ export function BlinkPlayer({
             className="marker"
             style={{ left: `${marker.x * 100}%`, top: `${marker.y * 100}%` }}
             title="Predicted position from Gaia DR3 proper motion"
+          />
+        )}
+        {searchArea && predicted && (
+          <div
+            className="search-area"
+            style={{ left: `${searchArea.x * 100}%`, top: `${searchArea.y * 100}%`, width: `${(predicted.radius_arcsec / 1800 / grid.size_deg) * 100}%` }}
+            title={`Possible track, search area ${SEARCH_AREA_LABEL}`}
           />
         )}
         <span className="stamp">{stampText(frame, letter)}</span>
@@ -261,6 +274,12 @@ export function BlinkPlayer({
               {motion.parallax_mas !== null && ` · ϖ ${motion.parallax_mas.toFixed(1)} mas`} ·{' '}
               {marker ? '○ predicted position' : 'predicted position outside this frame'}
             </dd>
+          </>
+        )}
+        {predicted && (
+          <>
+            <dt>Possible track</dt>
+            <dd>{searchArea ? `dashed circle: search area, ${SEARCH_AREA_LABEL}` : 'predicted position outside this frame'}</dd>
           </>
         )}
         <dt>Source</dt>

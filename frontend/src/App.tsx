@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { AladinInstance } from 'aladin-lite'
 import { createFrames, getFrameJob, getObservations, resolveName } from './api'
 import { AboutPanel } from './components/AboutPanel'
@@ -20,6 +20,8 @@ import { WavelengthStrip } from './components/WavelengthStrip'
 import { useFrameLayers } from './frameLayers'
 import { usePlateLayer } from './historicalPlate'
 import { useMotionTrack } from './motionTrack'
+import { possibleTrack } from './track'
+import { useTrackLayer } from './trackLayer'
 import { sliceForDetector } from './sky'
 import { sliceText, useCubeWavelengths, useSkySlice } from './skyCube'
 import { useSmallBodyLayer } from './smallBodyLayer'
@@ -265,6 +267,9 @@ export default function App() {
     : !frameOnSky ? 'Turn on "SPHEREx frames on the sky" in Layers to mark by clicking.' : null
   const candidate = useCandidate(job?.job_id ?? null, !markBlocked && panel === 'compare')
   useMarkLayer(sky, candidate.marks)
+  const possible = useMemo(() => manifest ? possibleTrack(candidate.marks, manifest, manifest.frames.map((f) => f.mjd)) : null, [candidate.marks, manifest])
+  const predictions = useMemo(() => (showDifference ? [] : possible?.predictions ?? []), [possible, showDifference])
+  useTrackLayer(sky, predictions)
   // JPL SBIdent takes about a minute per time: one time per epoch, its first frame's.
   // A stack mixes exposures from up to 30 days: moving asteroids are looked up for single exposures.
   const smallBodies = useSmallBodies(manifest && hasFrames && !manifest.stacked ? {
@@ -311,15 +316,15 @@ export default function App() {
         </>
       )}
       {manifest && hasFrames && showDifference && <DifferenceView key={job.job_id} manifest={manifest} />}
-      {manifest && hasFrames && !showDifference && <BlinkPlayer key={job.job_id} frames={manifest.frames} checks={checks} grid={manifest} motion={motion}
+      {manifest && hasFrames && !showDifference && <BlinkPlayer key={job.job_id} frames={manifest.frames} checks={checks} grid={manifest} motion={motion} predictions={predictions}
         onIndexChange={showFrame} active={EMBED || panel === 'compare' || !panel} showShare={EMBED} />}
-      {!EMBED && manifest && hasFrames && <CandidatePanel candidate={candidate} blocked={markBlocked} />}
+      {!EMBED && manifest && hasFrames && <CandidatePanel candidate={candidate} blocked={markBlocked} track={possible && { ...possible, predictions }} />}
       {!EMBED && manifest && hasFrames && <details className="disclosure"><summary>Data & cross-check links</summary>
         <DataLinks manifest={manifest} frame={showDifference ? null : frame} /></details>}
       {!EMBED && manifest && frame && !showDifference && <WavelengthStrip detector={manifest.detector} frame={frame} />}
       {!EMBED && !skyUnavailable && <LayersSection aladin={sky} sizeDeg={query.fov} frame={frame}
         framesOnSky={framesOnSky} onFramesOnSkyChange={setFramesOnSky} sourcesOnSky={sourcesOnSky} onSourcesOnSkyChange={setSourcesOnSky}
-        trackShown={track.length > 0} skySlice={skySlice} onSkySliceChange={setSkySlice} cubeActive={cubeActive}
+        trackShown={track.length > 0} possibleTrackShown={predictions.length > 0} skySlice={skySlice} onSkySliceChange={setSkySlice} cubeActive={cubeActive}
         smallBodyEpochs={smallBodies.epochs} smallBodiesOnSky={smallBodiesOnSky} onSmallBodiesOnSkyChange={setSmallBodiesOnSky}
         plateAvailable={!!motion} plateOnSky={plateOnSky} onPlateOnSkyChange={setPlateOnSky} plate={plate}
         framesBlocked={showDifference ? 'The difference image is shown in this panel. Frames and their detected sources go back on the sky in the other modes.' : undefined} />}

@@ -1,12 +1,13 @@
 import { renderToStaticMarkup } from 'react-dom/server'
 import { describe, expect, it } from 'vitest'
 import type { Mark } from '../candidate'
+import { possibleTrack, type PossibleTrack } from '../track'
 import { CandidatePanel } from './CandidatePanel'
 
 const mark = (obs_id: string, date: string): Mark =>
   ({ obs_id, mjd: 61000, date, ra: 308.52331, dec: -22.89019, sigma_arcsec: 3 })
-const render = (marks: Mark[], blocked: string | null = null, armed = false) => renderToStaticMarkup(
-  <CandidatePanel candidate={{ marks, notice: '', armed, setArmed: () => undefined, clear: () => undefined }} blocked={blocked} />,
+const render = (marks: Mark[], blocked: string | null = null, armed = false, track: PossibleTrack | null = null) => renderToStaticMarkup(
+  <CandidatePanel candidate={{ marks, notice: '', armed, setArmed: () => undefined, clear: () => undefined }} blocked={blocked} track={track} />,
 )
 
 describe('CandidatePanel', () => {
@@ -33,5 +34,19 @@ describe('CandidatePanel', () => {
     expect(html).toMatch(/<button type="button" aria-pressed="false" disabled="">/)
     expect(html).toContain('Not on the sky.')
     expect(html).toContain('Clear marks')
+  })
+
+  it('shows the possible track of Pluto frames 7 and 10 as possible motion', () => {
+    const marks: Mark[] = [
+      { obs_id: 'a', mjd: 61155.913413, date: '2026-04-25T21:55:00Z', ra: 308.523308, dec: -22.890191, sigma_arcsec: 1 },
+      { obs_id: 'b', mjd: 61157.882123, date: '2026-04-27T21:10:00Z', ra: 308.533543, dec: -22.894745, sigma_arcsec: 1 },
+    ]
+    const html = render(marks, null, false, possibleTrack(marks, { ra: 308.5283, dec: -22.8925 }, [61156.323055]))
+    expect(html).toContain('Possible motion – needs verification')
+    expect(html).toContain('Faster than any star')
+    expect(html).toMatch(/0\.798 ± 0\.03″\/h/)
+    expect(html).toContain('PA 116°')
+    expect(html).toContain('2σ, from mark precision only')
+    expect(html).not.toMatch(/orbit|trajectory found|confirmed/i)
   })
 })

@@ -709,7 +709,7 @@ summary { cursor:pointer; min-height:32px; padding:5px 0; font-size:13px; }
 }
 
 /* Candidate check (NAS-62): ◎ marks A and B, always with letter and word. */
-:root { --candidate: #ffb454; }
+:root { --candidate: #ffb454; --possible-track: #4dffd2; }
 .candidate-check { display:grid; gap:8px; justify-items:start; padding-top:12px; border-top:1px solid var(--border); }
 .candidate-check h3, .candidate-check p { margin:0; }
 .candidate-next { font-weight:600; }
@@ -720,6 +720,12 @@ summary { cursor:pointer; min-height:32px; padding:5px 0; font-size:13px; }
 .candidate-marks { margin:0; padding:0; list-style:none; font-size:13px; font-variant-numeric:tabular-nums; overflow-wrap:anywhere; }
 .candidate-glyph { color:var(--candidate); font-weight:700; }
 .candidate-state { padding:2px 8px; border:1px solid var(--candidate); border-radius:999px; font-size:13px; }
+.track-summary { display:grid; gap:4px; font-size:13px; }
+.track-summary p { margin:0; }
+.track-regime { font-weight:600; }
+.track-numbers { font-variant-numeric:tabular-nums; overflow-wrap:anywhere; }
+.track-key.possible span, .track-regime span { color:var(--possible-track); }
+.search-area { position:absolute; min-width:6px; aspect-ratio:1; transform:translate(-50%,-50%); border:2px dashed var(--possible-track); border-radius:50%; pointer-events:none; }
 .source-rows li { display:flex; align-items:stretch; border-bottom:1px solid var(--border); }
 .source-rows li:last-child { border-bottom:0; }
 .source-rows li > button { flex:1; min-width:0; border-bottom:0; }
