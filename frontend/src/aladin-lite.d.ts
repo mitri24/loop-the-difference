@@ -20,6 +20,18 @@ declare module 'aladin-lite' {
     errorCallback?: (error: unknown) => void
   }
 
+  export interface ImageLayer {
+    setOpacity(opacity: number): void
+  }
+
+  export interface ImageOptions {
+    imgFormat: 'png' | 'jpeg' | 'fits'
+    name?: string
+    wcs?: Record<string, number | string>
+    successCallback?: (ra: number, dec: number, fov: number, layer: ImageLayer) => void
+    errorCallback?: (error: unknown) => void
+  }
+
   export interface OverlayItem {
     setOverlay(overlay: GraphicOverlay): void
   }
@@ -59,6 +71,9 @@ declare module 'aladin-lite' {
     setBaseImageLayer(layer: HiPSLayer | string): HiPSLayer
     getBaseImageLayer(): HiPSLayer
     addOverlay(overlay: GraphicOverlay): void
+    setOverlayImageLayer(layer: ImageLayer, name: string): ImageLayer
+    getOverlayImageLayer(name: string): ImageLayer | undefined
+    removeImageLayer(name: string): void
     customizeShareURLFunction(fn: () => string): void
     on(event: 'stackChanged', callback: (change: StackChange) => void): void
   }
@@ -67,6 +82,7 @@ declare module 'aladin-lite' {
     init: Promise<void>
     aladin(element: HTMLElement | string, options?: AladinOptions): AladinInstance
     imageHiPS(url: string, options?: HiPSOptions): HiPSLayer
+    image(url: string, options: ImageOptions): ImageLayer
     graphicOverlay(options?: { name?: string; color?: string; lineWidth?: number }): GraphicOverlay
     polygon(corners: SkyCoords[], options?: { color?: string; lineWidth?: number }): OverlayItem
     circle(

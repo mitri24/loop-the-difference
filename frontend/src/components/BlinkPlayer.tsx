@@ -8,15 +8,18 @@ interface Props {
   checks?: Check[]
   grid: Pick<FrameManifest, 'ra' | 'dec' | 'size_deg'>
   motion: ProperMotion | null
+  onIndexChange?: (index: number) => void
 }
 
 // Remount with a new key for new frames: playback state then starts fresh.
-export function BlinkPlayer({ frames, checks = [], grid, motion }: Props) {
+export function BlinkPlayer({ frames, checks = [], grid, motion, onIndexChange }: Props) {
   const [index, setIndex] = useState(0)
   const [playing, setPlaying] = useState(true)
   const [delayMs, setDelayMs] = useState(500)
   const [copyState, setCopyState] = useState<'idle' | 'copied' | 'failed'>('idle')
   const count = frames.length
+
+  useEffect(() => onIndexChange?.(index), [index, onIndexChange])
 
   useEffect(() => {
     if (!playing || count < 2) return
