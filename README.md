@@ -67,4 +67,17 @@ docker compose -f docker-compose.yml -f docker-compose.prod.yml logs -f caddy ap
 
 ## Data and credits
 
-SPHEREx data: NASA/IPAC Infrared Science Archive (IRSA), Caltech/IPAC. Sky context: Aladin Lite, CDS Strasbourg. Target names: Sesame, CDS. Loop the Difference is a discovery aid – every change it shows needs checking before it counts as a candidate.
+Loop the Difference is a discovery aid – every change it shows is a candidate that needs checking against the catalogues before it counts as anything. It never claims a discovery.
+
+- **SPHEREx images** – NASA/IPAC Infrared Science Archive (IRSA), via the IRSA SIA2 search and cutout services. "This publication makes use of data products from the Spectro-Photometer for the History of the Universe, Epoch of Reionization and Ices Explorer (SPHEREx), which is a joint project of the Jet Propulsion Laboratory and the California Institute of Technology, and is funded by the National Aeronautics and Space Administration." – "This research has made use of the NASA/IPAC Infrared Science Archive, which is funded by the National Aeronautics and Space Administration and operated by the California Institute of Technology." [SPHEREx at IRSA](https://irsa.ipac.caltech.edu/Missions/spherex.html) · [IRSA acknowledgements](https://irsa.ipac.caltech.edu/ack.html)
+- **Sky context** – [Aladin Lite](https://aladin.cds.unistra.fr/AladinLite/), developed at CDS, Strasbourg Observatory, France (Boch & Fernique 2014; Baumann et al. 2022), LGPL-3.0-or-later. Target names are resolved with Sesame (CDS). HiPS sky surveys come from CDS and the mirrors at ESA ESDC and NASA/IPAC IRSA.
+- **AllWISE sky layer** – "This publication makes use of data products from the Wide-field Infrared Survey Explorer, which is a joint project of the University of California, Los Angeles, and the Jet Propulsion Laboratory/California Institute of Technology, funded by the National Aeronautics and Space Administration."
+- **ESA Gaia DR3** (proper motions, when a named target is looked up) – "This work has made use of data from the European Space Agency (ESA) mission Gaia (https://www.cosmos.esa.int/gaia), processed by the Gaia Data Processing and Analysis Consortium (DPAC, https://www.cosmos.esa.int/web/gaia/dpac/consortium). Funding for the DPAC has been provided by national institutions, in particular the institutions participating in the Gaia Multilateral Agreement."
+
+## Use of AI
+
+The code in this repository was written with Claude Code (Anthropic) under human review: the team wrote the tickets, decided the architecture and reviewed every pull request. Texts in this README and in the app were drafted the same way and reviewed by the team. There are no AI-generated images, audio or video in the project; the demo video is produced by the team.
+
+## License
+
+Loop the Difference is free software under the [GNU General Public License v3.0](LICENSE). SPHEREx, AllWISE and Gaia data stay under the terms of their archives (IRSA, ESA); Aladin Lite is LGPL-3.0-or-later.
