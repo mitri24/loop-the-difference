@@ -64,7 +64,8 @@ export function useCubeWavelengths(): { status: CubeStatus; wavelengths: number[
 export function useSkySlice(aladin: AladinInstance | null, slice: number): boolean {
   const active = aladin?.getBaseImageLayer()?.name === SPHEREX.name
   useEffect(() => {
-    if (aladin && active) aladin.getBaseImageLayer().setSliceNumber(slice)
+    // The base is briefly missing while Aladin swaps in the AllWISE fallback.
+    if (aladin && active) aladin.getBaseImageLayer()?.setSliceNumber(slice)
   }, [aladin, active, slice])
   return active
 }

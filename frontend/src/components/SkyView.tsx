@@ -54,6 +54,7 @@ export function SkyView({ ra, dec, fov, detector, revision, onReady, onLayerChan
     let cancelled = false
     let timer = 0
     let spherexReady = false
+    let fallback: HiPSLayer | null = null
     // Loaded on demand: the engine is large and not needed for the first paint.
     import('aladin-lite')
       .then(async ({ default: A }) => {
@@ -76,6 +77,8 @@ export function SkyView({ ra, dec, fov, detector, revision, onReady, onLayerChan
           showLayersControl: true,
           showFullscreenControl: true,
           showStatusBar: true,
+          // No start-up ping to CDS: it sends the page URL and CDS is down today.
+          log: false,
         })
         const spherex = A.imageHiPS(SPHEREX.url, {
           name: SPHEREX.name,
@@ -96,16 +99,18 @@ export function SkyView({ ra, dec, fov, detector, revision, onReady, onLayerChan
         const activateFallback = () => {
           // Never replace a layer the user deliberately selected while loading.
           if (cancelled || aladin.getBaseImageLayer() !== spherex) return
-          aladin.setBaseImageLayer(A.imageHiPS(ALLWISE.url, { name: ALLWISE.name }))
+          fallback = aladin.setBaseImageLayer(A.imageHiPS(ALLWISE.url, { name: ALLWISE.name }))
           latest.current.onLayerChange?.(FALLBACK_LABEL)
         }
         timer = window.setTimeout(() => { if (!spherexReady) activateFallback() }, SPHEREX_TIMEOUT_MS)
-        // Fires when a layer lands or the user picks another survey in the layer box.
+        // Fires when a layer lands or the user picks another survey in the layer box; overlay
+        // layers (the frames) leave the heading alone, so "AllWISE (fallback)" stays.
         aladin.on('stackChanged', ({ layer }) => {
-          if (!layer || cancelled) return
           const base = aladin.getBaseImageLayer()
+          if (!layer || cancelled || layer !== base) return
           latest.current.onLayerChange?.(
-            base === spherex ? spherexReady ? spherexLabel(latest.current.detector) : 'SPHEREx survey loading…' : base.name,
+            base === spherex ? spherexReady ? spherexLabel(latest.current.detector) : 'SPHEREx survey loading…'
+              : base === fallback ? FALLBACK_LABEL : base.name,
           )
         })
         // aladin.on replaces the previous callback of that name: the only 'click' handler.
