@@ -1,3 +1,4 @@
+import type { AladinInstance } from 'aladin-lite'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { createFrames, getFrameJob, getObservations, resolveName } from './api'
 import { AboutPanel } from './components/AboutPanel'
@@ -8,6 +9,7 @@ import { ModeSwitch } from './components/ModeSwitch'
 import { ObservationInfo } from './components/ObservationInfo'
 import { SkyView } from './components/SkyView'
 import { TargetForm } from './components/TargetForm'
+import { useFrameLayers } from './frameLayers'
 import type { FrameJob, ObservationSummary, ProperMotion } from './types'
 import { POLARIS, readEmbed, readQuery, toSearch, type TargetQuery, type ViewMode } from './url'
 
@@ -35,6 +37,9 @@ export default function App() {
   const [about, setAbout] = useState(false)
   const [skyLayer, setSkyLayer] = useState('AllWISE')
   const [skyUnavailable, setSkyUnavailable] = useState(false)
+  const [sky, setSky] = useState<AladinInstance | null>(null)
+  const [frameIndex, setFrameIndex] = useState(0)
+  const [framesOnSky, setFramesOnSky] = useState(true)
   const latestRun = useRef(0)
 
   const show = useCallback(async (next: TargetQuery, nextMotion: ProperMotion | null = null) => {
@@ -142,6 +147,7 @@ export default function App() {
   // Until the worker delivers difference images (NAS-13) the stacks play with a note instead.
   const showDifference =
     query.mode === 'difference' && !differenceBlocked && (manifest?.differences.length ?? 0) > 0
+  useFrameLayers(sky, manifest, frameIndex, framesOnSky && !showDifference)
 
   // Notices, progress and the blink player: beside the sky, or alone without it.
   const player = (
@@ -184,6 +190,7 @@ export default function App() {
           checks={checks}
           grid={manifest}
           motion={motion}
+          onIndexChange={setFrameIndex}
         />
       )}
       {!busy && !job && !error && (
@@ -235,12 +242,26 @@ export default function App() {
         <section className="stage">
           {!EMBED && (
             <>
-              {!skyUnavailable && <h2>Sky · {skyLayer}</h2>}
+              {!skyUnavailable && (
+                <div className="sky-head">
+                  <h2>Sky · {skyLayer}</h2>
+                  <label>
+                    <input
+                      type="checkbox"
+                      checked={framesOnSky}
+                      disabled={showDifference}
+                      onChange={(event) => setFramesOnSky(event.target.checked)}
+                    />{' '}
+                    SPHEREx frames on the sky
+                  </label>
+                </div>
+              )}
               <SkyView
                 ra={center.ra}
                 dec={center.dec}
                 fov={query.fov}
                 detector={query.band}
+                onReady={setSky}
                 onLayerChange={setSkyLayer}
                 onUnavailable={() => setSkyUnavailable(true)}
               />

@@ -173,6 +173,19 @@ select {
   min-width: 0;
 }
 
+.sky-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 0.5rem 1rem;
+  font-size: 0.85rem;
+}
+
+.sky-head input {
+  width: auto;
+}
+
 .notice {
   margin: 0;
   padding: 0.5rem 0.75rem;
