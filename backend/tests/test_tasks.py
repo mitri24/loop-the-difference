@@ -60,7 +60,7 @@ def _png(settings, frame: dict) -> np.ndarray:
     return np.asarray(Image.open(settings.cache_dir / "frames" / "job" / name))
 
 
-def _offline_archive(monkeypatch, settings, tmp_path, observations):
+def _offline_archive(monkeypatch, settings, tmp_path, observations, flagged_target=False):
     """Three synthetic epochs on the target grid itself; one exposure carries a cosmic ray."""
     target, shape = target_grid(RA, DEC, SIZE_DEG)
     monkeypatch.setattr(tasks, "get_settings", lambda: settings)
@@ -75,7 +75,11 @@ def _offline_archive(monkeypatch, settings, tmp_path, observations):
         data = np.full(shape, 5.0)
         if path.name == "100.fits":
             data[shape[0] // 2, shape[1] // 2] = 5000.0
-        return data, target
+        unusable = np.zeros(shape, dtype=bool)
+        unusable[:3] = True
+        if flagged_target and path.name == "100.fits":
+            unusable[shape[0] // 2, shape[1] // 2] = True
+        return data, target, unusable
 
     monkeypatch.setattr(tasks, "read_image", read_image)
     # Each visit sees the target through another part of the filter: λ grows with the MJD.
@@ -135,7 +139,7 @@ def test_one_epoch_gives_no_difference_and_blocks_it(monkeypatch, settings, tmp_
 
 def test_exposure_job_numbers_the_epoch_of_every_frame(monkeypatch, settings, tmp_path):
     observations = [_observation(start + i) for start in (100, 290) for i in range(2)]
-    _offline_archive(monkeypatch, settings, tmp_path, observations)
+    _offline_archive(monkeypatch, settings, tmp_path, observations, flagged_target=True)
 
     manifest = build_frames("job", RA, DEC, SIZE_DEG, 6, 12, stack=False)
 
@@ -148,6 +152,10 @@ def test_exposure_job_numbers_the_epoch_of_every_frame(monkeypatch, settings, tm
         (1, 1, None),
     ]
     assert [f["obs_id"] for f in frames] == [o.obs_id for o in observations]
+    rows = target_grid(RA, DEC, SIZE_DEG)[1][0]
+    assert all(f["masked_fraction"] == round(3 / rows, 3) for f in frames)
+    flagged = [c for c in manifest["checks"] if c["code"] == "FLAGGED_PIXELS"]
+    assert [(c["severity"], c["affects"]) for c in flagged] == [("warning", ["obs:obs-100"])]
     # Without stacking the cosmic ray in exposure 100 stays visible.
     pixels = [_png(settings, f) for f in frames]
     assert (pixels[0] != pixels[1]).any()

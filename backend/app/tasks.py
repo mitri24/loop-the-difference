@@ -12,6 +12,7 @@ from app.config import get_settings
 from app.frames import (
     R_BY_DETECTOR,
     SPHEREX_PIXEL_SCALE_ARCSEC,
+    TARGET_FLAG_RADIUS_PX,
     align,
     comparable_wavelengths,
     cutout_url,
@@ -21,6 +22,7 @@ from app.frames import (
     render_diff,
     render_png,
     target_grid,
+    target_is_flagged,
     wavelength_at,
 )
 from app.models import Check, Difference, Frame, FrameManifest, Observation
@@ -28,7 +30,7 @@ from app.models import Check, Difference, Frame, FrameManifest, Observation
 MIN_COVERAGE = 0.5
 # Bump whenever the rendered output changes: the job key changes, so cached results are rebuilt,
 # and `warm` removes frame folders whose manifest carries an older version.
-PIPELINE_VERSION = 5
+PIPELINE_VERSION = 6
 
 
 def manifest_path(cache_dir: Path, key: str) -> Path:
@@ -125,7 +127,7 @@ def build_frames(
     target, shape = target_grid(ra, dec, size_deg)
     kept, images = [], []
     for obs, url, path in downloaded:
-        data, wcs = read_image(path)
+        data, wcs, unusable = read_image(path)
         image, coverage = align(data, wcs, target, shape)
         if coverage < MIN_COVERAGE:
             checks.append(
@@ -138,8 +140,19 @@ def build_frames(
                 )
             )
             continue
+        if target_is_flagged(unusable, wcs, ra, dec):
+            checks.append(
+                Check(
+                    code="FLAGGED_PIXELS",
+                    severity="warning",
+                    message="Flagged pixels next to the target",
+                    detail=f"{obs.obs_id}: unusable pixels within {TARGET_FLAG_RADIUS_PX} px "
+                    "of the target, treat changes at the target in this frame with care",
+                    affects=[f"obs:{obs.obs_id}"],
+                )
+            )
         wavelength, bandwidth = wavelength_at(path, ra, dec)
-        kept.append((obs, url, coverage, wavelength, bandwidth))
+        kept.append((obs, url, coverage, wavelength, bandwidth, float(unusable.mean())))
         images.append(image)
 
     epochs = _epoch_groups(kept)
@@ -218,8 +231,9 @@ def stack_images(images: list[np.ndarray]) -> np.ndarray:
         return np.nanmedian(np.stack(images), axis=0)
 
 
-# One usable exposure: observation, cutout URL, coverage, wavelength and bandwidth at the target.
-KeptFrame = tuple[Observation, str, float, float | None, float | None]
+# One usable exposure: observation, cutout URL, coverage, wavelength and bandwidth at the
+# target, share of unusable pixels.
+KeptFrame = tuple[Observation, str, float, float | None, float | None, float]
 
 
 def _epoch_groups(kept: list[KeptFrame]) -> list[list[int]]:
@@ -232,8 +246,8 @@ def _frame(index: int, url: str, epoch: int, members: list[KeptFrame]) -> Frame:
     """One frame from a single exposure or from all exposures of one epoch stacked together."""
     observations = [obs for obs, *_ in members]
     first, last = observations[0], observations[-1]
-    wavelengths = [w for *_, w, _ in members if w is not None]
-    bandwidths = [b for *_, b in members if b is not None]
+    wavelengths = [w for *_, w, _, _ in members if w is not None]
+    bandwidths = [b for *_, b, _ in members if b is not None]
     return Frame(
         index=index,
         url=url,
@@ -250,6 +264,7 @@ def _frame(index: int, url: str, epoch: int, members: list[KeptFrame]) -> Frame:
         date_end=last.date if len(members) > 1 else None,
         wavelength_um=round(float(np.median(wavelengths)), 4) if wavelengths else None,
         bandwidth_um=round(float(np.median(bandwidths)), 4) if bandwidths else None,
+        masked_fraction=round(float(np.mean([masked for *_, masked in members])), 3),
     )
 
 

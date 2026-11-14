@@ -24,6 +24,34 @@ _RETRY_STATUS = {429, 500, 502, 503, 504}
 # Spectral resolving power per detector (SPHEREx instrument design): one resolution element is λ/R.
 R_BY_DETECTOR = {1: 41, 2: 41, 3: 41, 4: 35, 5: 110, 6: 130}
 _SIP_CARD = re.compile(r"(A|B|AP|BP)_(ORDER|\d+_\d+)")
+# Mask planes of the cutout's FLAGS extension whose pixels are unusable for blinking
+# (bad detector pixels, saturation, cosmic rays and other per-exposure artefacts). Names
+# and bit numbers come from the FLAGS header (MSKNnnnn); meanings: Table 16 of the SPHEREx
+# Explanatory Supplement, https://irsa.ipac.caltech.edu/data/SPHEREx/docs/SPHEREx_Expsupp.pdf,
+# via https://caltech-ipac.github.io/spherex-archive-documentation/spherex-data-products
+# Informative planes stay (SOURCE, DICHROIC, FULLSAMPLE, PHANMISS, CROSSTALK, GHOST*).
+UNUSABLE_FLAGS = frozenset(
+    {
+        "TRANSIENT",
+        "OVERFLOW",
+        "SUR_ERROR",
+        "NONFUNC",
+        "MISSING_DATA",
+        "HOT",
+        "COLD",
+        "NONLINEAR",
+        "PERSIST",
+        "OUTLIER",
+        "STREAK",
+        "BLOOM",
+        "SNOWBALL",
+        "HALO",
+    }
+)
+# A flagged pixel this close to the target (in pixels) makes the frame unreliable there.
+TARGET_FLAG_RADIUS_PX = 2
+# Unusable pixels take the median of their neighbours in this window, so the blink shows no holes.
+FILL_RADIUS_PX = 2
 
 
 def cutout_url(access_url: str, ra: float, dec: float, size_deg: float) -> str:
@@ -59,12 +87,58 @@ def _retryable(exc: httpx.HTTPError) -> bool:
     return isinstance(exc, httpx.TransportError)
 
 
-def read_image(path: Path) -> tuple[np.ndarray, WCS]:
+def unusable_bits(flags_header: fits.Header) -> int:
+    """Bitmask of the UNUSABLE_FLAGS planes, read from the header's mask-plane names."""
+    bits = 0
+    for key, name in flags_header.items():
+        if key.startswith("MSKN") and name in UNUSABLE_FLAGS:
+            bits |= int(flags_header[f"MSKM{key[4:]}"])
+    return bits
+
+
+def read_image(path: Path) -> tuple[np.ndarray, WCS, np.ndarray]:
+    """Image with unusable pixels filled from their neighbours, its WCS and the mask of those."""
     with warnings.catch_warnings():
         warnings.simplefilter("ignore", FITSFixedWarning)
         with fits.open(path) as hdul:
             hdu = hdul["IMAGE"]
-            return hdu.data.astype(np.float64), WCS(hdu.header)
+            data = hdu.data.astype(np.float64)
+            unusable = np.zeros(data.shape, dtype=bool)
+            if "FLAGS" in hdul:
+                flags = hdul["FLAGS"]
+                unusable = (flags.data & unusable_bits(flags.header)) != 0
+                fill_with_local_median(data, unusable)
+            return data, WCS(hdu.header), unusable
+
+
+def fill_with_local_median(
+    data: np.ndarray, unusable: np.ndarray, radius_px: int = FILL_RADIUS_PX
+) -> None:
+    """Replace unusable pixels in place by the median of their usable neighbours.
+
+    A pixel whose whole neighbourhood is unusable stays NaN and renders black.
+    """
+    rows, cols = np.nonzero(unusable)
+    if rows.size == 0:
+        return
+    padded = np.pad(np.where(unusable, np.nan, data), radius_px, constant_values=np.nan)
+    size = 2 * radius_px + 1
+    windows = np.lib.stride_tricks.sliding_window_view(padded, (size, size))[rows, cols]
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore", RuntimeWarning)
+        data[rows, cols] = np.nanmedian(windows.reshape(len(rows), -1), axis=1)
+
+
+def target_is_flagged(
+    unusable: np.ndarray, wcs: WCS, ra: float, dec: float, radius_px: int = TARGET_FLAG_RADIUS_PX
+) -> bool:
+    """True when an unusable pixel lies within radius_px of the target in this exposure."""
+    x, y = wcs.all_world2pix([[ra, dec]], 0)[0]
+    if not (np.isfinite(x) and np.isfinite(y)):
+        return False
+    rows = slice(max(int(np.floor(y - radius_px)), 0), max(int(np.ceil(y + radius_px)) + 1, 0))
+    cols = slice(max(int(np.floor(x - radius_px)), 0), max(int(np.ceil(x + radius_px)) + 1, 0))
+    return bool(unusable[rows, cols].any())
 
 
 def wavelength_at(path: Path, ra: float, dec: float) -> tuple[float, float] | tuple[None, None]:

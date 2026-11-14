@@ -11,9 +11,11 @@ from app import frames
 from app.frames import (
     align,
     comparable_wavelengths,
+    read_image,
     render_diff,
     render_png,
     target_grid,
+    target_is_flagged,
     wavelength_at,
 )
 
@@ -153,3 +155,70 @@ def test_missing_file_is_not_retried(tmp_path, monkeypatch):
 
     assert len(calls) == 1
     assert not list(tmp_path.iterdir())
+
+
+def _cutout(path, flags: np.ndarray | None, data: np.ndarray | None = None) -> None:
+    """Minimal SPHEREx-like cutout: IMAGE plus an optional FLAGS plane with named mask bits."""
+    _, wcs = _rotated_image_with_star(0, size=8)
+    if data is None:
+        data = np.ones((8, 8))
+    hdus = [fits.PrimaryHDU(), fits.ImageHDU(data.astype(np.float32), wcs.to_header())]
+    hdus[1].name = "IMAGE"
+    if flags is not None:
+        header = fits.Header()
+        for plane, name in ((0, "TRANSIENT"), (10, "HOT"), (21, "SOURCE")):
+            header[f"MSKN{plane:04d}"] = name
+            header[f"MSKM{plane:04d}"] = 1 << plane
+        hdus.append(fits.ImageHDU(flags.astype(np.int32), header, name="FLAGS"))
+    fits.HDUList(hdus).writeto(path)
+
+
+def test_unusable_flagged_pixels_take_the_median_of_their_neighbours(tmp_path):
+    data = np.ones((8, 8))
+    flags = np.zeros((8, 8), dtype=np.int32)
+    for row, col, flag in ((1, 2, 1 << 0), (5, 5, 1 << 10), (6, 1, (1 << 21) | (1 << 0))):
+        data[row, col] = 100.0  # transient, hot pixel, known source hit by a transient
+        flags[row, col] = flag
+    data[3, 3], flags[3, 3] = 100.0, 1 << 21  # SOURCE: informative, stays
+    _cutout(tmp_path / "cutout.fits", flags, data)
+
+    image, _, unusable = read_image(tmp_path / "cutout.fits")
+
+    assert np.argwhere(unusable).tolist() == [[1, 2], [5, 5], [6, 1]]
+    assert image[1, 2] == image[5, 5] == image[6, 1] == 1.0
+    assert image[3, 3] == 100.0
+    assert not np.isnan(image).any()
+
+
+def test_pixel_without_usable_neighbours_stays_nan(tmp_path):
+    flags = np.zeros((8, 8), dtype=np.int32)
+    flags[1:6, 1:6] = 1 << 10
+    _cutout(tmp_path / "cutout.fits", flags)
+
+    image, _, unusable = read_image(tmp_path / "cutout.fits")
+
+    assert np.isnan(image[3, 3])
+    assert np.isnan(image).sum() == 1
+    assert unusable.sum() == 25
+
+
+def test_cutout_without_flags_is_left_untouched(tmp_path):
+    _cutout(tmp_path / "cutout.fits", None)
+
+    image, _, unusable = read_image(tmp_path / "cutout.fits")
+
+    assert (image == 1.0).all()
+    assert not unusable.any()
+
+
+def test_target_is_flagged_only_within_two_pixels_of_the_target():
+    _, wcs = _rotated_image_with_star(30, size=21)
+    unusable = np.zeros((21, 21), dtype=bool)
+    assert not target_is_flagged(unusable, wcs, RA, DEC)
+
+    unusable[10 + 2, 10] = True
+    assert target_is_flagged(unusable, wcs, RA, DEC)
+    assert not target_is_flagged(unusable, wcs, RA + 1.0, DEC)
+
+    unusable[10 + 2, 10], unusable[10 + 3, 10] = False, True
+    assert not target_is_flagged(unusable, wcs, RA, DEC)
