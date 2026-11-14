@@ -124,6 +124,10 @@ export function AboutPanel({ open, onClose }: Props) {
             and compared with ESA Gaia DR3 and with AllWISE from NASA/IPAC IRSA.
           </li>
           <li>
+            <strong>Known asteroids and comets</strong> – NASA/JPL Solar System Dynamics,
+            Small-Body Identification API (SBIdent).
+          </li>
+          <li>
             <strong>Code</strong> – free software under the GNU General Public License v3.0, written
             with Claude Code (Anthropic) under human review. Built for NASA Space Apps 2026.{' '}
             <a href={REPO_URL} target="_blank" rel="noreferrer">
