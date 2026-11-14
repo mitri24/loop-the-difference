@@ -41,3 +41,8 @@ def _parse(text: str, unit: u.Unit, message: str) -> float:
         raise CoordinateError(message)
     # Sexagesimal conversion can land a hair below a limit (24h -> 359.99999999999994).
     return round(value, 9)
+
+
+def parse_jpl_dec(text: str) -> float:
+    """Declination as NASA/JPL SBIdent writes it: +dd mm'ss.s\"."""
+    return parse_dec(text.replace("'", " ").replace('"', ""))

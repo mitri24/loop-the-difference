@@ -1,4 +1,4 @@
-from typing import Literal
+from typing import Annotated, Literal
 
 from pydantic import BaseModel, Field
 
@@ -194,3 +194,46 @@ class DetectedSource(BaseModel):
 Frame.model_rebuild()
 FrameManifest.model_rebuild()
 FrameJob.model_rebuild()
+
+
+# One time per epoch; 1995–2077, because SBIdent times out for dates decades back.
+SmallBodyMjd = Annotated[float, Field(ge=50000, le=80000)]
+
+
+class SmallBodiesRequest(BaseModel):
+    ra: str = Field(min_length=1, max_length=40)
+    dec: str = Field(min_length=1, max_length=40)
+    size_deg: float = Field(default=0.2, gt=0, le=1.0)
+    mjds: list[SmallBodyMjd] = Field(min_length=1, max_length=6)
+
+
+class SmallBody(BaseModel):
+    """Known asteroid or comet from NASA/JPL SBIdent, seen from the geocentre."""
+
+    name: str
+    ra: float
+    dec: float
+    vmag: float | None = None
+    # Apparent motion in arcsec per hour; the RA rate is on the sky (dRA·cos dec).
+    ra_rate: float
+    dec_rate: float
+    # Separation from the field centre.
+    distance_arcsec: float
+
+
+class SmallBodyEpoch(BaseModel):
+    mjd: float
+    date: str
+    bodies: list[SmallBody] = []
+    error: str | None = None
+    # The SBIdent request itself, so every listed body can be checked at the source.
+    source_url: str
+
+
+class SmallBodiesJob(BaseModel):
+    job_id: str
+    status: Literal["queued", "started", "finished", "failed", "not_found"]
+    progress: int = 0
+    total: int = 0
+    epochs: list[SmallBodyEpoch] = []
+    error: str | None = None

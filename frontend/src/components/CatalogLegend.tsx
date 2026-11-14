@@ -1,11 +1,13 @@
 import type { AladinInstance } from 'aladin-lite'
-import { useState } from 'react'
+import { type ReactNode, useState } from 'react'
 import { type LayerKey, MAX_SOURCES, NEAR_DEG, useCatalogLayers } from '../catalogLayers'
 
 interface Props {
   aladin: AladinInstance | null
   sizeDeg: number
   frameMjd: number | null
+  // More layers of known sources, listed after SkyBoT.
+  children?: ReactNode
 }
 
 const LABELS: Record<LayerKey, { name: string; shape: string; what: string }> = {
@@ -17,7 +19,7 @@ const LABELS: Record<LayerKey, { name: string; shape: string; what: string }> = 
 const KEYS = Object.keys(LABELS) as LayerKey[]
 
 // Catalogue overlays, all off by default: every marker is a known source, nothing more.
-export function CatalogLegend({ aladin, sizeDeg, frameMjd }: Props) {
+export function CatalogLegend({ aladin, sizeDeg, frameMjd, children }: Props) {
   const [enabled, setEnabled] = useState({ gaia: false, wise: false, simbad: false, skybot: false })
   const { status, skybotDate } = useCatalogLayers(aladin, enabled, sizeDeg, frameMjd)
   return (
@@ -49,6 +51,7 @@ export function CatalogLegend({ aladin, sizeDeg, frameMjd }: Props) {
           </label>
         )
       })}
+      {children}
       <p className="hint">
         A blinking source without a marker needs verification — it is not a discovery.
         {` Gaia DR3 and SIMBAD search within ${NEAR_DEG}° of the centre; Gaia DR3 and AllWISE show their ${MAX_SOURCES} brightest sources at most.`}
