@@ -1,8 +1,10 @@
 import { describe, expect, it } from 'vitest'
 import {
   catalogRadius,
+  gaiaSources,
   gaiaUrl,
   isoDate,
+  parseVotableRows,
   propagateGaia,
   simbadUrl,
   skybotUrl,
@@ -11,7 +13,11 @@ import {
 
 describe('catalogue URLs', () => {
   it('encodes the cone centre with %20, never +', () => {
-    for (const url of [gaiaUrl(269.45, 4.69, 0.2), wiseUrl(269.45, 4.69, 0.2), simbadUrl(269.45, 4.69, 0.2)]) {
+    for (const url of [
+      gaiaUrl(269.45, 4.69, 0.2),
+      wiseUrl(269.45, 4.69, 0.2),
+      simbadUrl(269.45, 4.69, 0.2),
+    ]) {
       expect(url).toContain('269.45%204.69')
       expect(url).not.toContain('+')
     }
@@ -62,7 +68,7 @@ describe('Gaia proper motion', () => {
   const barnard = { ra: 269.44850252543, dec: 4.73942005111, pmRa: -801.551, pmDec: 10362.394 }
   const mjd2025_5 = 51544.5 + 25.5 * 365.25
 
-  it('moves Barnard\'s Star ~98.4″ north by 2025.5', () => {
+  it("moves Barnard's Star ~98.4″ north by 2025.5", () => {
     const { ra, dec } = propagateGaia(barnard, mjd2025_5)
     expect((dec - barnard.dec) * 3600).toBeCloseTo(98.44, 1)
     const dRaCosDec = (ra - barnard.ra) * 3600 * Math.cos((barnard.dec * Math.PI) / 180)
@@ -73,5 +79,67 @@ describe('Gaia proper motion', () => {
     const { ra, dec } = propagateGaia(barnard, 51544.5 + 16 * 365.25)
     expect(ra).toBeCloseTo(barnard.ra, 10)
     expect(dec).toBeCloseTo(barnard.dec, 10)
+  })
+})
+
+describe('VOTable rows', () => {
+  const votable = (rows: string) =>
+    `<?xml version="1.0"?><VOTABLE><RESOURCE><TABLE><DATA><TABLEDATA>${rows}</TABLEDATA></DATA></TABLE></RESOURCE></VOTABLE>`
+
+  it('reads cells in field order, empty cells as empty strings', () => {
+    expect(
+      parseVotableRows(
+        votable('<TR><TD>1</TD><TD/><TD> 3 </TD></TR><TR><TD>4</TD><TD></TD><TD>6</TD></TR>'),
+      ),
+    ).toEqual([
+      ['1', '', '3'],
+      ['4', '', '6'],
+    ])
+  })
+
+  it('returns no rows for an empty answer', () => {
+    expect(parseVotableRows('<VOTABLE><RESOURCE/></VOTABLE>')).toEqual([])
+  })
+
+  it('throws on an error answer or something that is not a VOTable', () => {
+    expect(() => parseVotableRows('<html>busy</html>')).toThrow()
+    expect(() =>
+      parseVotableRows('<VOTABLE><INFO name="QUERY_STATUS" value="ERROR">bad</INFO></VOTABLE>'),
+    ).toThrow()
+  })
+})
+
+describe('Gaia sources at the frame epoch', () => {
+  const mjd2025_5 = 51544.5 + 25.5 * 365.25
+
+  it('moves stars with proper motion and keeps id and magnitude', () => {
+    const [star] = gaiaSources(
+      [
+        [
+          '4472832130942575872',
+          '269.44850252543',
+          '4.73942005111',
+          '546.9759',
+          '-801.551',
+          '10362.394',
+          '8.1940',
+        ],
+      ],
+      mjd2025_5,
+    )
+    expect((star.dec - 4.73942005111) * 3600).toBeCloseTo(98.44, 1)
+    expect(star.data).toMatchObject({ Source: '4472832130942575872', Gmag: '8.1940' })
+  })
+
+  it('keeps the J2016.0 position without proper motion and drops rows without a position', () => {
+    const sources = gaiaSources(
+      [
+        ['1', '10.5', '-20.25', '', '', '', '19.1'],
+        ['2', '', '', '', '', '', ''],
+      ],
+      mjd2025_5,
+    )
+    expect(sources).toHaveLength(1)
+    expect(sources[0]).toMatchObject({ ra: 10.5, dec: -20.25 })
   })
 })
