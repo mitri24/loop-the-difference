@@ -80,7 +80,14 @@ export function WavelengthStrip({
               height={ROW_Y.even + BAR - ROW_Y.odd + 12}
             />
             <text x={x(centre)} y={ROW_Y.odd - 10} textAnchor="middle">
-              ▼ {centre.toFixed(3)} µm
+              ▼
+            </text>
+            <text
+              x={x(centre) + (x(centre) > W / 2 ? -9 : 9)}
+              y={ROW_Y.odd - 10}
+              textAnchor={x(centre) > W / 2 ? 'end' : 'start'}
+            >
+              {centre.toFixed(3)} µm
             </text>
           </g>
         )}

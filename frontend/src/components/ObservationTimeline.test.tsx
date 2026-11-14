@@ -46,6 +46,10 @@ describe('ObservationTimeline', () => {
       60796, 60798,
     ])
     expect(frameSpan(frame('e', 60796))).toEqual([60796, 60796])
+    // A stack's mjd is the mean of its exposures: the span still starts at the first one.
+    expect(frameSpan(frame('m', 60797, { date_end: '2025-05-03T00:00:00' }))).toEqual([
+      60796, 60798,
+    ])
   })
 
   it('draws one dot per observation and marks the frames and the shown frame', () => {

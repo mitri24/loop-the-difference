@@ -28,10 +28,11 @@ describe('BrightnessChart', () => {
     expect(R_BY_DETECTOR).toEqual({ 1: 41, 2: 41, 3: 41, 4: 35, 5: 110, 6: 130 })
   })
 
-  it('takes ±1/R around the centre, R from the given detector or its range', () => {
+  it('takes one resolution element around the centre, R from the given detector or its range', () => {
     const w = wavelengthWindow(2.0, 3)!
-    expect(w.lo).toBeCloseTo(2.0 * (1 - 1 / 41))
-    expect(w.hi).toBeCloseTo(2.0 * (1 + 1 / 41))
+    expect(w.lo).toBeCloseTo(2.0 * (1 - 1 / 82))
+    expect(w.hi).toBeCloseTo(2.0 * (1 + 1 / 82))
+    expect((w.hi - w.lo) / 2.0).toBeCloseTo(1 / 41)
     expect(wavelengthWindow(4.6)!.r).toBe(130)
     expect(wavelengthWindow(7)).toBeNull()
   })
@@ -56,14 +57,14 @@ describe('BrightnessChart', () => {
     )
     expect(html.match(/class="viz-point"/g)).toHaveLength(1)
     expect(html.match(/class="viz-point flagged"/g)).toHaveLength(1)
-    expect(html).toContain('Quick-look aperture photometry, not calibrated, wavelength window 1.951–2.049 µm')
+    expect(html).toContain('Quick-look aperture photometry, not calibrated, wavelength window 1.976–2.024 µm')
     expect(html).toContain('Date (UTC)')
     expect(html).toContain('href="https://irsa.example/cutout"')
   })
 
   it('says so when too few visits fall into the window or the wavelength is unknown', () => {
     const one = renderToStaticMarkup(<BrightnessChart points={[point(60796, 2.0, 5)]} centerUm={2.0} />)
-    expect(one).toContain('Only one visit measured the target within 1.951–2.049 µm')
+    expect(one).toContain('Only one visit measured the target within 1.976–2.024 µm')
     expect(one).not.toContain('<svg')
     expect(renderToStaticMarkup(<BrightnessChart points={[]} />)).toContain(
       'has no known wavelength',

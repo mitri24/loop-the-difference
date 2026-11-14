@@ -28,11 +28,11 @@ export function epochRows(observations: Observation[]): EpochRow[] {
   })
 }
 
-// A stack spans its exposures: from its first date to date_end.
-export const frameSpan = (f: FrameMark): [number, number] => [
-  f.mjd,
-  f.date_end ? Math.max(f.mjd, isoToMjd(f.date_end)) : f.mjd,
-]
+// A stack spans its exposures: from its first date to date_end (its mjd is their mean).
+export const frameSpan = (f: FrameMark): [number, number] =>
+  f.date_end
+    ? [Math.min(f.mjd, isoToMjd(f.date)), Math.max(f.mjd, isoToMjd(f.date_end))]
+    : [f.mjd, f.mjd]
 
 export function timelineSummary(
   observations: Observation[],
@@ -167,7 +167,8 @@ export function ObservationTimeline({
         </li>
         {selected && <li>outlined row: selected detector D{selected}</li>}
       </ul>
-      <table className="viz-table">
+      <div className="viz-table">
+      <table>
         <caption>SPHEREx observations per epoch and detector</caption>
         <thead>
           <tr>
@@ -194,6 +195,7 @@ export function ObservationTimeline({
           ))}
         </tbody>
       </table>
+      </div>
       {frames.length > 0 && (
         <ol className="viz-table" aria-label="Frames in this comparison">
           {frames.map((f, i) => (

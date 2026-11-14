@@ -19,7 +19,8 @@ export interface WavelengthWindow {
   r: number
 }
 
-// ±1/R around the centre: the same "one resolution element" rule as comparable_wavelengths.
+// ±1/(2R) around the centre: the window is one resolution element wide, so every two points in it
+// pass the comparable_wavelengths rule (|Δλ|/λ ≤ 1/R) with each other, not only with the centre.
 export function wavelengthWindow(centerUm: number, detector?: number): WavelengthWindow | null {
   const d =
     detector ??
@@ -28,7 +29,7 @@ export function wavelengthWindow(centerUm: number, detector?: number): Wavelengt
     )
   const r = R_BY_DETECTOR[d]
   if (!r) return null
-  return { lo: centerUm * (1 - 1 / r), hi: centerUm * (1 + 1 / r), detector: d, r }
+  return { lo: centerUm * (1 - 1 / (2 * r)), hi: centerUm * (1 + 1 / (2 * r)), detector: d, r }
 }
 
 export const inWindow = (points: SpectrumPoint[], w: WavelengthWindow) =>
@@ -54,7 +55,7 @@ export function niceTicks([lo, hi]: [number, number], count = 5) {
 }
 
 export const windowText = (w: WavelengthWindow) =>
-  `wavelength window ${w.lo.toFixed(3)}–${w.hi.toFixed(3)} µm (±1/R around the frame, R = ${w.r} for D${w.detector})`
+  `wavelength window ${w.lo.toFixed(3)}–${w.hi.toFixed(3)} µm (one resolution element around the frame, R = ${w.r} for D${w.detector})`
 
 export function BrightnessChart({
   points,
@@ -166,7 +167,8 @@ function Plot({ points }: { points: SpectrumPoint[] }) {
           </li>
         </ul>
       )}
-      <table className="viz-table">
+      <div className="viz-table">
+      <table>
         <caption>Flux per visit</caption>
         <thead>
           <tr>
@@ -192,6 +194,7 @@ function Plot({ points }: { points: SpectrumPoint[] }) {
           ))}
         </tbody>
       </table>
+      </div>
     </>
   )
 }

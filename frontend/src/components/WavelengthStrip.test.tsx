@@ -30,7 +30,11 @@ describe('WavelengthStrip', () => {
       <WavelengthStrip detector={6} frame={{ wavelength_um: 4.601, bandwidth_um: 0.035 }} />,
     )
     expect(html.match(/class="viz-band selected"/g)).toHaveLength(1)
-    expect(html).toContain('▼ 4.601 µm')
+    expect(html).toContain('4.601 µm')
+    // ▼ sits exactly over the middle of the marked passband.
+    const band = html.match(/class="viz-marker"><rect x="([\d.]+)" y="[\d.]+" width="([\d.]+)"/)!
+    const arrow = html.match(/<text x="([\d.]+)"[^>]*>▼<\/text>/)!
+    expect(Number(arrow[1])).toBeCloseTo(Number(band[1]) + Number(band[2]) / 2, 1)
     expect(html).toContain('selected D6 4.41–5.01 µm')
   })
 
