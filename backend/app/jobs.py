@@ -14,7 +14,7 @@ from app.tasks import build_frames, manifest_path
 QUEUE_NAME = "frames"
 JOB_TIMEOUT_S = 900
 # Bump whenever the rendered output changes: cached results are then rebuilt, not served stale.
-PIPELINE_VERSION = 2
+PIPELINE_VERSION = 3
 
 
 class QueueFull(Exception):
