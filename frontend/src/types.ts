@@ -7,6 +7,7 @@ export interface Observation {
   mjd: number
   date: string
   access_url: string
+  cloud_url?: string | null // the whole Level-2 file on AWS S3
 }
 
 export interface Epoch {
@@ -53,12 +54,14 @@ export interface Frame {
   wavelength_max_um: number
   coverage: number
   source_url: string
+  cloud_url?: string | null // absent in manifests cached before NAS-54
   epoch: number
   n_combined: number
   date_end: string | null
   masked_fraction: number | null
   wavelength_um: number | null
   bandwidth_um: number | null
+  sources?: DetectedSource[]
 }
 
 export type CheckSeverity = 'error' | 'blocker' | 'warning' | 'info'
@@ -151,4 +154,69 @@ export interface SpectrumJob {
   total: number
   spectrum: Spectrum | null
   error: string | null
+}
+
+// Sources detected in one frame (backend/app/sources.py); a match is a positional coincidence.
+export type SourceMatch = 'gaia' | 'allwise' | 'none' | 'unknown'
+
+export interface DetectedSource {
+  ra: number
+  dec: number
+  // 0-based pixel centre in the frame PNG: x to the right, y down from the top row (north).
+  x: number
+  y: number
+  peak_mjy_sr: number
+  snr: number
+  match: SourceMatch
+  catalog_id: string | null
+  separation_arcsec: number | null
+  catalog_mag: number | null
+  catalog_band: 'G' | 'W1' | null
+}
+
+// Known asteroids and comets per epoch from NASA/JPL SBIdent (backend/app/smallbodies.py).
+export interface SmallBodiesRequest {
+  ra: string
+  dec: string
+  size_deg: number
+  mjds: number[]
+}
+
+export interface SmallBody {
+  name: string
+  ra: number
+  dec: number
+  vmag: number | null
+  // Arcsec per hour; the RA rate is on the sky (dRA·cos dec).
+  ra_rate: number
+  dec_rate: number
+  distance_arcsec: number
+}
+
+export interface SmallBodyEpoch {
+  mjd: number
+  date: string
+  bodies: SmallBody[]
+  error: string | null
+  source_url: string
+}
+
+export interface SmallBodiesJob {
+  job_id: string
+  status: FrameJob['status']
+  progress: number
+  total: number
+  epochs: SmallBodyEpoch[]
+  error: string | null
+}
+
+export interface NeossatCoverage {
+  collection: string
+  ra: number
+  dec: number
+  count: number
+  first_date: string | null
+  last_date: string | null
+  search_url: string
+  note: string
 }

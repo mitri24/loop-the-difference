@@ -1,5 +1,5 @@
 import type { AladinInstance, ImageLayer } from 'aladin-lite'
-import { useEffect, useRef } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import type { FrameManifest } from './types'
 
 export const MAX_LAYERS = 12
@@ -43,18 +43,25 @@ async function pngSize(url: string) {
   }
 }
 
+export type LayerState = 'loaded' | 'failed'
+
 // One image layer per frame (or difference), all loaded once; `index` only switches opacity.
+// Returns per index whether its layer reached the sky, so a caption never names a missing frame.
 export function useFrameLayers(
   aladin: AladinInstance | null,
   manifest: FrameManifest | null | undefined,
   index: number,
   enabled: boolean,
   kind: 'frames' | 'differences' = 'frames',
-) {
+): Partial<Record<number, LayerState>> {
   const indexRef = useRef(index)
   const layers = useRef<ImageLayer[]>([])
   // Runs are chained, so an old run's late layers never collide with the same names of a new run.
   const queue = useRef(Promise.resolve())
+  const [states, setStates] = useState<{
+    manifest: FrameManifest | null | undefined
+    byIndex: Partial<Record<number, LayerState>>
+  }>({ manifest: null, byIndex: {} })
 
   useEffect(() => {
     indexRef.current = index
@@ -68,12 +75,20 @@ export function useFrameLayers(
     const loaded: ImageLayer[] = []
     let disposed = false
 
+    const report = (i: number, state: LayerState) => {
+      if (disposed) return
+      setStates((old) => ({
+        manifest,
+        byIndex: { ...(old.manifest === manifest ? old.byIndex : {}), [i]: state },
+      }))
+    }
     const run = async () => {
       const { default: A } = await import('aladin-lite')
       await Promise.all(
         urls.map(async (url, i) => {
           const size = await pngSize(url)
-          if (!size || disposed) return
+          if (!size) return report(i, 'failed')
+          if (disposed) return
           await new Promise<void>((resolve) => {
             const layer = A.image(url, {
               imgFormat: 'png',
@@ -83,9 +98,13 @@ export function useFrameLayers(
               successCallback: (_ra, _dec, _fov, added) => {
                 added.setOpacity(i === indexRef.current ? 1 : 0)
                 loaded[i] = added
+                report(i, 'loaded')
                 resolve()
               },
-              errorCallback: () => resolve(),
+              errorCallback: () => {
+                report(i, 'failed')
+                resolve()
+              },
             })
             aladin.setOverlayImageLayer(layer, names[i])
           })
@@ -105,4 +124,6 @@ export function useFrameLayers(
       names.forEach((name) => aladin.removeImageLayer(name))
     }
   }, [aladin, manifest, enabled, kind])
+
+  return states.manifest === manifest ? states.byIndex : {}
 }

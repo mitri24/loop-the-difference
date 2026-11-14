@@ -57,6 +57,7 @@ docker run --rm -v skyshift_cache:/data -v "$PWD":/backup alpine tar xzf /backup
 
 - Backend with live reload is the default (`docker-compose.override.yml`); API docs at http://localhost:8000/docs
 - Frontend with hot reload: `cd frontend && npm ci && npm run dev` → http://localhost:5173
+- Browser tests against the running stack: `cd frontend && npm run test:e2e`. They use the installed Chrome on macOS; elsewhere run `npx playwright install chromium` once, or point `CHROME_PATH` at a Chrome. `SKYSHIFT_BASE_URL` tests another address (default http://localhost:8080).
 - Checks: see `CLAUDE.md`, they also run in CI on every push and pull request.
 
 ## Deploy

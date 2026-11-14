@@ -1,4 +1,3 @@
-import { useState } from 'react'
 import { CHALLENGE_TARGETS, DETECTORS, FIELDS_OF_VIEW } from '../targets'
 import type { TargetQuery } from '../url'
 
@@ -7,102 +6,53 @@ interface Props {
   busy: boolean
   onShow: (query: TargetQuery) => void
   onFind: (name: string, base: TargetQuery) => void
+  onChange: (query: TargetQuery) => void
 }
 
-export function TargetForm({ value, busy, onShow, onFind }: Props) {
-  const [draft, setDraft] = useState(value)
-  const [name, setName] = useState('')
+export function TargetForm({ value: draft, busy, onShow, onFind, onChange: setDraft }: Props) {
 
   return (
-    <form
-      className="target-form"
-      onSubmit={(event) => {
-        event.preventDefault()
-        onShow(draft)
-      }}
-    >
-      <label>
-        Right ascension
-        <input
-          value={draft.ra}
-          onChange={(event) => setDraft({ ...draft, ra: event.target.value })}
-          placeholder="08h55m10.8s or 133.795"
-          required
-        />
-      </label>
-      <label>
-        Declination
-        <input
-          value={draft.dec}
-          onChange={(event) => setDraft({ ...draft, dec: event.target.value })}
-          placeholder="-7d14m42.5s or -7.245"
-          required
-        />
-      </label>
+    <form id="region-form" className="target-form" onSubmit={(event) => { event.preventDefault(); onShow(draft) }}>
+      <fieldset className="preset-group">
+        <legend>Explore a target</legend>
+        <p className="muted">Coverage is checked when you select a target.</p>
+        <div className="target-presets">
+          {CHALLENGE_TARGETS.map((target) => (
+            <button type="button" key={target.label} disabled={busy}
+              onClick={() => 'name' in target ? onFind(target.name, draft)
+                : onShow({ ...draft, ra: target.ra, dec: target.dec })}>
+              <span>{target.label}</span><span aria-hidden="true">↗</span>
+            </button>
+          ))}
+        </div>
+      </fieldset>
+      <details className="coordinate-disclosure">
+        <summary>Enter precise coordinates</summary>
+        <fieldset className="coordinate-group">
+        <legend>Or enter a sky position</legend>
+        <label>Right ascension <span className="field-hint">Degrees or h:m:s</span>
+          <input value={draft.ra} onChange={(event) => setDraft({ ...draft, ra: event.target.value })}
+            placeholder="02:31:49.09" required />
+        </label>
+        <label>Declination <span className="field-hint">Degrees or ±d:m:s</span>
+          <input value={draft.dec} onChange={(event) => setDraft({ ...draft, dec: event.target.value })}
+            placeholder="+89:15:50.8" required />
+        </label>
+        </fieldset>
+      </details>
       <div className="form-row">
-        <label>
-          Field of view
-          <select
-            value={draft.fov}
-            onChange={(event) => setDraft({ ...draft, fov: Number(event.target.value) })}
-          >
-            {FIELDS_OF_VIEW.map((fov) => (
-              <option key={fov} value={fov}>
-                {fov}° ({Math.round(fov * 60)}′)
-              </option>
+        <label>Region size
+          <select value={draft.fov} onChange={(event) => setDraft({ ...draft, fov: Number(event.target.value) })}>
+            {[...new Set([...FIELDS_OF_VIEW, draft.fov])].sort((a, b) => a - b).map((fov) => (
+              <option key={fov} value={fov}>{fov}° ({Math.round(fov * 60)}′)</option>
             ))}
           </select>
         </label>
-        <label>
-          Detector
-          <select
-            value={draft.band}
-            onChange={(event) => setDraft({ ...draft, band: Number(event.target.value) })}
-          >
-            {DETECTORS.map((detector) => (
-              <option key={detector.band} value={detector.band}>
-                {detector.label}
-              </option>
-            ))}
+        <label>Observation detector
+          <select value={draft.band} onChange={(event) => setDraft({ ...draft, band: Number(event.target.value) })}>
+            {DETECTORS.map((detector) => <option key={detector.band} value={detector.band}>{detector.label}</option>)}
           </select>
         </label>
-      </div>
-      <button type="submit" className="primary" disabled={busy}>
-        Show changes over time
-      </button>
-
-      <div className="lookup">
-        <input
-          value={name}
-          onChange={(event) => setName(event.target.value)}
-          placeholder="Object name, e.g. R Dra"
-          aria-label="Object name"
-        />
-        <button
-          type="button"
-          disabled={busy || !name.trim()}
-          onClick={() => onFind(name.trim(), draft)}
-        >
-          Find
-        </button>
-      </div>
-
-      <p className="label">Challenge targets</p>
-      <div className="chips">
-        {CHALLENGE_TARGETS.map((target) => (
-          <button
-            type="button"
-            key={target.label}
-            disabled={busy}
-            onClick={() =>
-              'name' in target
-                ? onFind(target.name, draft)
-                : onShow({ ...draft, ra: target.ra, dec: target.dec })
-            }
-          >
-            {target.label}
-          </button>
-        ))}
       </div>
     </form>
   )

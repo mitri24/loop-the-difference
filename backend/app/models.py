@@ -1,4 +1,4 @@
-from typing import Literal
+from typing import Annotated, Literal
 
 from pydantic import BaseModel, Field
 
@@ -11,6 +11,8 @@ class Observation(BaseModel):
     mjd: float
     date: str
     access_url: str
+    # The whole Level-2 file on AWS S3 (anonymous HTTPS), when IRSA lists a cloud copy.
+    cloud_url: str | None = None
 
 
 class Epoch(BaseModel):
@@ -68,12 +70,14 @@ class Frame(BaseModel):
     wavelength_max_um: float
     coverage: float
     source_url: str
+    cloud_url: str | None = None
     epoch: int = 0
     n_combined: int = 1
     date_end: str | None = None
     masked_fraction: float | None = None
     wavelength_um: float | None = None
     bandwidth_um: float | None = None
+    sources: list["DetectedSource"] = []
 
 
 class Check(BaseModel):
@@ -160,3 +164,89 @@ class SpectrumJob(BaseModel):
     total: int = 0
     spectrum: Spectrum | None = None
     error: str | None = None
+
+
+class DetectedSource(BaseModel):
+    """A point source at least 5σ above the noise in one frame (app/sources.py).
+
+    `match` names the catalogue with a source within the match radius: a positional
+    coincidence, not an identification. "none" needs verification; "unknown" means a catalogue
+    did not answer.
+    """
+
+    ra: float
+    dec: float
+    # 0-based pixel centre in the frame PNG: x to the right (east is left), y down from the top
+    # row (north is up). ra/dec are the reliable fields.
+    x: float
+    y: float
+    # Background-subtracted peak pixel, and that peak over the frame's noise.
+    peak_mjy_sr: float
+    snr: float
+    match: Literal["gaia", "allwise", "none", "unknown"]
+    catalog_id: str | None = None
+    separation_arcsec: float | None = None
+    # Vega magnitude in catalog_band: Gaia DR3 G or AllWISE W1.
+    catalog_mag: float | None = None
+    catalog_band: Literal["G", "W1"] | None = None
+
+
+Frame.model_rebuild()
+FrameManifest.model_rebuild()
+FrameJob.model_rebuild()
+
+
+# One time per epoch; 1995–2077, because SBIdent times out for dates decades back.
+SmallBodyMjd = Annotated[float, Field(ge=50000, le=80000)]
+
+
+class SmallBodiesRequest(BaseModel):
+    ra: str = Field(min_length=1, max_length=40)
+    dec: str = Field(min_length=1, max_length=40)
+    size_deg: float = Field(default=0.2, gt=0, le=1.0)
+    mjds: list[SmallBodyMjd] = Field(min_length=1, max_length=6)
+
+
+class SmallBody(BaseModel):
+    """Known asteroid or comet from NASA/JPL SBIdent, seen from the geocentre."""
+
+    name: str
+    ra: float
+    dec: float
+    vmag: float | None = None
+    # Apparent motion in arcsec per hour; the RA rate is on the sky (dRA·cos dec).
+    ra_rate: float
+    dec_rate: float
+    # Separation from the field centre.
+    distance_arcsec: float
+
+
+class SmallBodyEpoch(BaseModel):
+    mjd: float
+    date: str
+    bodies: list[SmallBody] = []
+    error: str | None = None
+    # The SBIdent request itself, so every listed body can be checked at the source.
+    source_url: str
+
+
+class SmallBodiesJob(BaseModel):
+    job_id: str
+    status: Literal["queued", "started", "finished", "failed", "not_found"]
+    progress: int = 0
+    total: int = 0
+    epochs: list[SmallBodyEpoch] = []
+    error: str | None = None
+
+
+class NeossatCoverage(BaseModel):
+    """NEOSSat (CSA) sky frames covering a position, counted at CADC: visible light, not SPHEREx."""
+
+    collection: str
+    ra: float
+    dec: float
+    count: int
+    first_date: str | None = None
+    last_date: str | None = None
+    search_url: str
+    note: str

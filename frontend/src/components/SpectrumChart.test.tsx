@@ -5,6 +5,7 @@ import {
   Plot,
   SpectrumChart,
   epochColour,
+  fluxTick,
   offScale,
   ranges,
   scale,
@@ -112,6 +113,12 @@ describe('SpectrumChart', () => {
 
   it('tells above from below the axes', () => {
     expect([offScale(0), offScale(100), offScale(1000)]).toEqual(['above', null, 'below'])
+  })
+
+  it('writes seven-digit flux ticks compactly and keeps small ones exact', () => {
+    expect([fluxTick(3_600_000, 0), fluxTick(125_000, 0), fluxTick(9_999, 0), fluxTick(2.25, 1)]).toEqual(
+      ['3.6M', '125K', '9999', '2.3'],
+    )
   })
 
   it('shows no arrow legend when every point fits', () => {

@@ -1,10 +1,12 @@
 import { useEffect, useRef, useState } from 'react'
 import { createSpectrum, getSpectrumJob } from '../api'
 import type { Check, SpectrumJob, SpectrumPoint } from '../types'
+import { BrightnessChart } from './BrightnessChart'
 
 const EPOCH_COLOURS = ['#6ea8fe', '#e2b340', '#ef6b6b', '#7bd389', '#c792ea', '#5ad1d1']
-const W = 640
-const H = 280
+// Drawn at the sidebar's width, so 11px text stays 11px.
+const W = 320
+const H = 200
 const M = { left: 64, right: 12, top: 12, bottom: 40 }
 const POLL_MS = 2000
 
@@ -30,6 +32,12 @@ export function ranges(points: SpectrumPoint[]): {
   }
 }
 
+// Bright targets reach seven digits; "3.6M" keeps the labels clear of the axis title.
+export const fluxTick = (value: number, decimals: number) =>
+  Math.abs(value) >= 10_000
+    ? value.toLocaleString('en', { notation: 'compact', maximumSignificantDigits: 3 })
+    : value.toFixed(decimals)
+
 const ticks = ([a, b]: [number, number], n = 5) =>
   a === b ? [a] : Array.from({ length: n }, (_, i) => a + ((b - a) * i) / (n - 1))
 
@@ -44,8 +52,19 @@ export function summarize(checks: Check[]) {
   }
 }
 
-// Key by target: the spectrum belongs to one position and starts on request.
-export function SpectrumChart({ ra, dec }: { ra: string; dec: string }) {
+// Key by target: the spectrum belongs to one position and starts on request. centerUm and detector
+// pick the visits for the brightness-over-time chart, which reuses the same points.
+export function SpectrumChart({
+  ra,
+  dec,
+  centerUm,
+  detector,
+}: {
+  ra: string
+  dec: string
+  centerUm?: number | null
+  detector?: number
+}) {
   const [job, setJob] = useState<SpectrumJob | null>(null)
   const [error, setError] = useState<string | null>(null)
   const running = job?.status === 'queued' || job?.status === 'started'
@@ -76,7 +95,7 @@ export function SpectrumChart({ ra, dec }: { ra: string; dec: string }) {
 
   return (
     <section aria-label="Quick-look spectrum">
-      <h2>Quick-look spectrum at the target</h2>
+      <h3>Quick-look spectrum at the target</h3>
       {!running && (!spectrum || !spectrum.complete) && (
         <button type="button" onClick={start}>
           {spectrum ? retry : 'Build quick-look spectrum from all SPHEREx visits'}
@@ -92,7 +111,9 @@ export function SpectrumChart({ ra, dec }: { ra: string; dec: string }) {
             : 'Searching all detectors…'}
         </p>
       )}
-      {(error ?? job?.error) && <p className="notice error">{error ?? job?.error}</p>}
+      {(error ?? job?.error) && (
+        <p className="notice error">Could not build the spectrum: {error ?? job?.error}</p>
+      )}
       {spectrum && points.length === 0 && (
         <p className="notice">No visit gave a usable flux at this position.</p>
       )}
@@ -104,6 +125,7 @@ export function SpectrumChart({ ra, dec }: { ra: string; dec: string }) {
           need checking. {notes.join(' · ')}
         </p>
       )}
+      {points.length > 0 && <BrightnessChart points={points} centerUm={centerUm} detector={detector} />}
     </section>
   )
 }
@@ -147,7 +169,7 @@ export function Plot({ points }: { points: SpectrumPoint[] }) {
             <g key={`y${i}`}>
               <line x1={M.left} x2={W - M.right} y1={y(t)} y2={y(t)} />
               <text x={M.left - 6} y={y(t) + 4} textAnchor="end" stroke="none">
-                {t.toFixed(decimals)}
+                {fluxTick(t, decimals)}
               </text>
             </g>
           ))}

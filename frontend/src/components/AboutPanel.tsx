@@ -1,4 +1,5 @@
 import { useEffect, useRef } from 'react'
+import { LearnLinks } from './DataLinks'
 
 const REPO_URL = 'https://github.com/mitri24/loop-the-difference'
 
@@ -60,6 +61,9 @@ export function AboutPanel({ open, onClose }: Props) {
           checking against the catalogues before it counts as anything. It never claims a discovery.
         </p>
 
+        <h3>Learn and reproduce</h3>
+        <LearnLinks />
+
         <h3>Data and credits</h3>
         <ul className="credits">
           <li>
@@ -107,6 +111,26 @@ export function AboutPanel({ open, onClose }: Props) {
             <a href="https://www.cosmos.esa.int/web/gaia-users/license" target="_blank" rel="noreferrer">
               Gaia data licence
             </a>
+          </li>
+          <li>
+            <strong>Catalogue layers on the sky</strong> – Gaia DR3 (ESA) and AllWISE (NASA/IPAC)
+            through VizieR, and SIMBAD: “This research has made use of the SIMBAD database and the
+            VizieR catalogue access tool, CDS, Strasbourg Observatory, France.” Known asteroids from
+            SkyBoT (IMCCE, Observatoire de Paris; Berthier et al. 2006).
+          </li>
+          <li>
+            <strong>Detected sources</strong> – found in the SPHEREx frames with Photutils, an
+            Astropy package for detection and photometry of astronomical sources (Bradley et al.),
+            and compared with ESA Gaia DR3 and with AllWISE from NASA/IPAC IRSA.
+          </li>
+          <li>
+            <strong>Known asteroids and comets</strong> – NASA/JPL Solar System Dynamics,
+            Small-Body Identification API (SBIdent).
+          </li>
+          <li>
+            <strong>NEOSSat</strong> (Canadian Space Agency) – “This research used the facilities of
+            the Canadian Astronomy Data Centre operated by the National Research Council of Canada
+            with the support of the Canadian Space Agency.”
           </li>
           <li>
             <strong>Code</strong> – free software under the GNU General Public License v3.0, written

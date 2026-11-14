@@ -101,9 +101,19 @@ def parse_sia_votable(content: bytes) -> list[Observation]:
                 mjd=mjd,
                 date=Time(mjd, format="mjd").isot[:19] + "Z",
                 access_url=str(row["access_url"]),
+                cloud_url=parse_cloud_access(row.get("cloud_access")),
             )
         )
     return sorted(observations, key=lambda o: o.mjd)
+
+
+def parse_cloud_access(value: object) -> str | None:
+    """IRSA's `cloud_access` JSON → the same file on AWS S3 as an anonymous HTTPS URL."""
+    try:
+        aws = json.loads(str(value))["aws"]
+        return f"https://{aws['bucket_name']}.s3.amazonaws.com/{aws['key']}"
+    except (ValueError, KeyError, TypeError):  # missing column, masked or empty value
+        return None
 
 
 def group_epochs(observations: list[Observation]) -> list[list[Observation]]:

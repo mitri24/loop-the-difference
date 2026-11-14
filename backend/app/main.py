@@ -7,7 +7,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, JSONResponse
 from redis.exceptions import RedisError
 
-from app import jobs, names
+from app import jobs, names, partners
 from app.archive import ArchiveError, resolve_position, search_observations, summarize
 from app.catalogs import find_proper_motion
 from app.config import Settings, get_settings
@@ -20,6 +20,7 @@ from app.models import (
     SpectrumJob,
     SpectrumRequest,
 )
+from app.smallbodies import router as smallbodies_router
 
 _JOB_ID = re.compile(r"^[0-9a-f]{16}$")
 _FRAME_FILE = re.compile(r"^(frame_\d{2}|diff_\d{2}_\d{2})\.png$")
@@ -33,6 +34,7 @@ app.add_middleware(
     allow_methods=["GET", "POST"],
     allow_headers=["*"],
 )
+app.include_router(partners.router)
 
 
 @app.exception_handler(CoordinateError)
@@ -141,3 +143,6 @@ def spectrum_job(job_id: str, settings: SettingsDep) -> SpectrumJob:
     if not _JOB_ID.match(job_id):
         raise HTTPException(status_code=404, detail="Unknown job")
     return jobs.spectrum_status(jobs.connect(settings.redis_url), job_id)
+
+
+app.include_router(smallbodies_router)

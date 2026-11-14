@@ -73,7 +73,7 @@ declare module 'aladin-lite' {
 
   export interface CatalogOptions {
     name: string
-    shape: 'circle' | 'square' | 'triangle' | 'rhomb'
+    shape: 'circle' | 'square' | 'triangle' | 'rhomb' | 'plus' | 'cross'
     color: string
     sourceSize: number
     limit: number
@@ -120,7 +120,26 @@ declare module 'aladin-lite' {
       onError: () => void,
       useProxy: false,
     ): void
+    polyline(coords: SkyCoords[], options?: { color?: string; lineWidth?: number }): OverlayItem
   }
 
   export default A
+
+  export interface CatalogOptions {
+    displayLabel?: boolean
+    labelColumn?: string
+    labelColor?: string
+    labelFont?: string
+  }
+
+  export interface AladinInstance {
+    removeOverlay(overlay: GraphicOverlay): void
+  }
+}
+
+// Detected sources refill one catalogue per label whenever the blink moves on.
+declare module 'aladin-lite' {
+  export interface Catalog {
+    removeAll(): void
+  }
 }
