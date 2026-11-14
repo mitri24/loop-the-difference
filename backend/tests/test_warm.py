@@ -72,7 +72,7 @@ def test_dry_run_lists_every_target_and_detector_without_network(settings, capsy
 
     lines = capsys.readouterr().out.splitlines()
     assert code == 0
-    assert len(lines) == 6 * 3
+    assert len(lines) == 7 * 3
     assert lines[:2] == [f"{POLARIS_D6} · Polaris · D6", "spectrum · Polaris"]
     assert "resolve:R Dra · R Draconis · D1" in lines
 
@@ -91,6 +91,14 @@ def test_jobs_use_the_same_key_as_a_demo_click(settings, capsys):
     assert [c["detector"] for c in calls] == [6, 1]
     assert calls[0]["size_deg"] == 0.2 and calls[0]["max_frames"] == 12
     assert "· 2 frames ·" in capsys.readouterr().out
+
+
+def test_pluto_uses_its_fixed_2026_position_like_the_ui(settings):
+    jobs = warm.plan({"plutoknowndwarfplanet2026"})
+
+    assert [job.key("spherex_dr1") for job in jobs] == [
+        job_id_for("spherex_dr1", 308.5364, -22.9153, 0.2, d, 12) for d in (6, 1)
+    ]
 
 
 def test_named_targets_are_resolved_like_the_ui(settings):
@@ -162,7 +170,7 @@ def test_a_failed_job_does_not_stop_the_others_but_fails_the_run(settings, capsy
 
 def test_unknown_target_filter_is_reported(settings, capsys):
     assert (
-        warm.run(["--targets", "pluto"], settings, resolver=_fail_resolver, build=_fail_build) == 2
+        warm.run(["--targets", "vega"], settings, resolver=_fail_resolver, build=_fail_build) == 2
     )
     assert "Polaris" in capsys.readouterr().out
 

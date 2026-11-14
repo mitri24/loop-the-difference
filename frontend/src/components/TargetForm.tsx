@@ -1,4 +1,4 @@
-import { CHALLENGE_TARGETS, DETECTORS, FIELDS_OF_VIEW } from '../targets'
+import { CHALLENGE_TARGETS, DETECTORS, FIELDS_OF_VIEW, presetView } from '../targets'
 import type { TargetQuery } from '../url'
 
 interface Props {
@@ -19,9 +19,13 @@ export function TargetForm({ value: draft, busy, onShow, onFind, onChange: setDr
         <div className="target-presets">
           {CHALLENGE_TARGETS.map((target) => (
             <button type="button" key={target.label} disabled={busy}
-              onClick={() => 'name' in target ? onFind(target.name, draft)
-                : onShow({ ...draft, ra: target.ra, dec: target.dec })}>
-              <span>{target.label}</span><span aria-hidden="true">↗</span>
+              onClick={() => {
+                const view = presetView(target, draft)
+                if ('name' in target) onFind(target.name, view)
+                else onShow({ ...view, ra: target.ra, dec: target.dec })
+              }}>
+              <span>{target.label}{target.hint && <span className="field-hint">{' '}<br />{target.hint}</span>}</span>
+              <span aria-hidden="true">↗</span>
             </button>
           ))}
         </div>
