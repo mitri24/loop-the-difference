@@ -23,13 +23,19 @@ export function readQuery(search: string): TargetQuery | null {
   }
 }
 
-export function toSearch(query: TargetQuery): string {
+// ?embed=1 shows only the player, for other websites.
+export function readEmbed(search: string): boolean {
+  return new URLSearchParams(search).get('embed') === '1'
+}
+
+export function toSearch(query: TargetQuery, embed = false): string {
   const params = new URLSearchParams({
     ra: query.ra,
     dec: query.dec,
     fov: String(query.fov),
     band: String(query.band),
   })
+  if (embed) params.set('embed', '1')
   return `?${params}`
 }
 

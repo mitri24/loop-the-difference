@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { POLARIS, readQuery, toSearch } from './url'
+import { POLARIS, readEmbed, readQuery, toSearch } from './url'
 
 describe('target in the URL', () => {
   it('needs both coordinates', () => {
@@ -27,5 +27,18 @@ describe('target in the URL', () => {
 
   it('round-trips through the URL', () => {
     expect(readQuery(toSearch(POLARIS))).toEqual(POLARIS)
+  })
+
+  it('reads embed mode only from embed=1', () => {
+    expect(readEmbed('?ra=1&dec=2&embed=1')).toBe(true)
+    expect(readEmbed('?ra=1&dec=2')).toBe(false)
+    expect(readEmbed('?embed=0')).toBe(false)
+    expect(readEmbed('?embed=true')).toBe(false)
+  })
+
+  it('keeps embed mode in the URL it writes', () => {
+    expect(readEmbed(toSearch(POLARIS, true))).toBe(true)
+    expect(readEmbed(toSearch(POLARIS))).toBe(false)
+    expect(readQuery(toSearch(POLARIS, true))).toEqual(POLARIS)
   })
 })
