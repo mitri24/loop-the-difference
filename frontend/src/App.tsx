@@ -23,6 +23,7 @@ import { SkyView } from './components/SkyView'
 import { SmallBodies, useSmallBodies } from './components/SmallBodies'
 import { SourceList } from './components/SourceList'
 import { SpectrumChart } from './components/SpectrumChart'
+import { comparisonStatus, StatusLine } from './components/StatusLine'
 import { TargetForm } from './components/TargetForm'
 import { WavelengthStrip } from './components/WavelengthStrip'
 import { useFrameLayers } from './frameLayers'
@@ -289,27 +290,15 @@ export default function App() {
   } : null)
   useSmallBodyLayer(sky, smallBodies.epochs, frame?.mjd ?? null, smallBodiesOnSky)
 
+  const statusLine = <StatusLine status={comparisonStatus({ busy, job, error, cancelled, checks, message: status })} onStop={cancel}
+    onRetry={() => void run(lastRequest.current.query, lastRequest.current.name)}
+    onChooseAnother={EMBED ? undefined : () => { setStage('explore'); setPanel('target') }}
+    onDetails={EMBED || !manifest ? undefined : (trigger) => { if (panel !== 'evidence') togglePanel('evidence', trigger) }} />
   const statusBlock = (
     <>
-      <div className="comparison-status" role="status" aria-live="polite">
-        <span className={busy ? 'status-dot busy' : 'status-dot'} aria-hidden="true" />
-        <span>{status}</span>
-      </div>
-      {busy && (
-        <div className="loading-state">
-          <progress aria-label="Preparing observations" {...(job && job.total > 0 ? { max: job.total, value: job.progress } : {})} />
-          <p>Real observations are being fetched from IRSA. This can take a few minutes.</p>
-          <button type="button" onClick={cancel}>Stop waiting</button>
-        </div>
-      )}
-      {error && <div className="notice error" role="alert"><strong>Comparison unavailable</strong><p>{error}</p>
-        {!EMBED && (centred.ra !== query.ra || centred.dec !== query.dec) && <p>The map still shows the previous position.</p>}</div>}
-      {(!busy && (error || cancelled || (!hasFrames && job))) && (
-        <div className="recovery-actions">
-          <button type="button" onClick={() => void run(lastRequest.current.query, lastRequest.current.name)}>Retry</button>
-          {!EMBED && <button type="button" onClick={() => { setStage('explore'); setPanel('target') }}>Choose another region</button>}
-        </div>
-      )}
+      {EMBED && statusLine}
+      {busy && <p className="muted">Real observations are being fetched from IRSA. This can take a few minutes.</p>}
+      {error && !EMBED && (centred.ra !== query.ra || centred.dec !== query.dec) && <p className="muted">The map still shows the previous position.</p>}
     </>
   )
   const emptyState = !busy && !hasFrames && !error && !cancelled && (EMBED && !job
@@ -337,14 +326,14 @@ export default function App() {
 
   const loadFirst = <p className="muted">Load a comparison first: choose a target in the search bar.</p>
   const dockItems = PANELS.map((item) => ({ ...item,
-    count: item.id === 'candidate' ? candidate.marks.length : item.id === 'evidence' ? checks.length : undefined,
+    count: item.id === 'candidate' ? candidate.marks.length : item.id === 'evidence' ? checks.filter((check) => check.severity !== 'info').length : undefined,
     alert: item.id === 'evidence' && checks.some((check) => check.severity === 'blocker' || check.severity === 'error') }))
   const current = PANELS.find((item) => item.id === panel)
 
   return (
     <div className="shell" data-testid="planet-x-shell">
       <a className="skip-link" href="#sky-map">Skip to the sky map</a>
-      <SearchBar value={name} onChange={setName} draft={draft} busy={busy} onShow={show} onFind={find} onShare={() => void share()} />
+      <SearchBar value={name} onChange={setName} draft={draft} busy={busy} onShow={show} onFind={find} onShare={() => void share()} status={statusLine} />
 
       <div className={`stage ${stage}`}>
         <section className="viewer" aria-label="SPHEREx images of the region" hidden={stage !== 'investigate'}>
@@ -437,7 +426,7 @@ export default function App() {
             : <SmallBodies lookup={smallBodies} currentMjd={frame?.mjd ?? null} />)}
         </section>
         <section id="evidence-panel" hidden={panel !== 'evidence'}>
-          {manifest ? <EvidencePanel checks={checks} /> : loadFirst}
+          {manifest ? <EvidencePanel checks={checks} frames={manifest.frames} /> : loadFirst}
           {manifest && frame && !showDifference && <WavelengthStrip detector={manifest.detector} frame={frame} />}
           {scienceNote}
         </section>

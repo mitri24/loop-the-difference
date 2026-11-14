@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
-import type { Check, FrameManifest } from '../types'
-import { checksForFrame, groupBySeverity, hasBlocker, manifestChecks } from './EvidencePanel'
+import type { Check, Frame, FrameManifest } from '../types'
+import { checksForFrame, frameFlags, groupBySeverity, hasBlocker, manifestChecks } from './EvidencePanel'
 
 const CHECKS: Check[] = [
   {
@@ -71,5 +71,17 @@ describe('evidence checks', () => {
       },
     ])
     expect(manifestChecks({ checks: [], warnings: [] })).toEqual([])
+  })
+})
+
+describe('pixel flags', () => {
+  const frame = (index: number, obs_id: string, masked_fraction: number | null) =>
+    ({ index, obs_id, date: '2026-01-01', masked_fraction }) as Frame
+  it('lists frames with masked pixels or flags at the target, with a tooltip', () => {
+    const flagged: Check = { code: 'FLAGGED_PIXELS', severity: 'warning', message: 'Flagged', detail: 'b: unusable pixels near the target', affects: ['obs:b'] }
+    const flags = frameFlags([frame(0, 'a', 0.002), frame(1, 'b', 0), frame(2, 'c', 0.12), frame(3, 'd', null)], [flagged])
+    expect(flags.map((f) => [f.frame.obs_id, f.nearTarget])).toEqual([['b', true], ['c', false]])
+    expect(flags[0].tip).toContain('unusable pixels near the target')
+    expect(flags[1].tip).toContain('12 % of the pixels')
   })
 })

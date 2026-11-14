@@ -155,7 +155,7 @@ test('fixture: cancellation stops polling and a new request recovers', async ({ 
   await page.goto('/?ra=37.954542&dec=89.264111')
   await expect(page.getByRole('button', { name: 'Stop waiting' })).toBeVisible()
   await page.getByRole('button', { name: 'Stop waiting' }).click()
-  await expect(page.locator('.comparison-status')).toContainText('Stopped waiting')
+  await expect(page.locator('.status-line')).toContainText('Stopped waiting')
   await expect(page.getByRole('button', { name: 'Stop waiting' })).toBeHidden()
   await page.getByRole('button', { name: 'Retry', exact: true }).click()
   await expect(page.getByRole('button', { name: 'Stop waiting' })).toBeVisible()

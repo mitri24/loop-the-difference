@@ -1,3 +1,4 @@
+import type { ReactNode } from 'react'
 import { CHALLENGE_TARGETS } from '../targets'
 import type { TargetQuery } from '../url'
 import { openTarget } from './TargetForm'
@@ -20,10 +21,11 @@ interface Props {
   onShow: (query: TargetQuery) => void
   onFind: (name: string, base: TargetQuery) => void
   onShare: () => void
+  status?: ReactNode
 }
 
 // Top of the workspace: one input for a name or "RA, Dec", the example targets, Surprise me and Share.
-export function SearchBar({ value, onChange, draft, busy, onShow, onFind, onShare }: Props) {
+export function SearchBar({ value, onChange, draft, busy, onShow, onFind, onShare, status }: Props) {
   const submit = () => {
     const position = splitCoordinates(value)
     if (position) onShow({ ...draft, ...position })
@@ -49,6 +51,7 @@ export function SearchBar({ value, onChange, draft, busy, onShow, onFind, onShar
         <button type="button" className="chip" disabled={busy} title="Open a random example target"
           onClick={() => openTarget(CHALLENGE_TARGETS[Math.floor(Math.random() * CHALLENGE_TARGETS.length)], draft, { onShow, onFind })}>Surprise me</button>
       </div>
+      {status}
     </header>
   )
 }

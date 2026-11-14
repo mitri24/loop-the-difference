@@ -25,6 +25,22 @@
 .share-button { background:transparent; }
 .hud-chips { display:flex; gap:var(--space-1); overflow-x:auto; scrollbar-width:none; justify-content:center; }
 .chip { flex:none; min-height:32px; padding:var(--space-1) var(--space-3); border-radius:999px; font-size:var(--text-xs); background:var(--surface-2); }
+/* One status line under the search bar: icon + word + message, then the recovery actions. */
+.status-line { display:flex; flex-wrap:wrap; align-items:center; justify-content:center; gap:var(--space-1) var(--space-2); font-size:var(--text-xs); min-width:0; }
+.status-text { display:flex; align-items:center; gap:var(--space-2); min-width:0; }
+.status-chip { flex:none; padding:2px var(--space-2); border-radius:999px; border:1px solid currentColor; font-weight:600; white-space:nowrap; }
+.status-message { color:var(--muted); overflow-wrap:anywhere; }
+.status-line progress { width:120px; }
+.status-line--busy .status-chip { color:var(--accent); }
+.status-line--ok .status-chip { color:var(--status-ok); }
+.status-line--warn .status-chip { color:var(--status-warn); }
+.status-line--fail .status-chip { color:var(--status-fail); }
+.status-line--idle .status-chip { color:var(--status-info); }
+.flags-title { margin:var(--space-3) 0 var(--space-1); font-size:var(--text-xs); }
+.flags { display:flex; flex-wrap:wrap; gap:var(--space-1); margin:0; padding:0; list-style:none; }
+.flag { padding:2px var(--space-2); border-radius:999px; border:1px solid currentColor; font-size:var(--text-xs); cursor:help; }
+.flag--degraded { color:var(--status-warn); }
+.flag--info { color:var(--status-info); }
 
 .stage { grid-area:main; position:relative; min-width:0; min-height:0; overflow:hidden; }
 
@@ -158,10 +174,10 @@
   .sky-area.overview.collapsed { height:36px; }
 }
 @media (max-height:600px) and (min-width:701px) {
-  .hud-chips { display:none; }
+  .hud-chips,.status-line--idle { display:none; }
 }
 /* Short phones (landscape, high zoom): the panel goes before the sky; the examples stay in Target & options. */
 @media (max-width:700px) and (max-height:460px) {
-  .hud-chips { display:none; }
+  .hud-chips,.status-line--idle { display:none; }
   .shell { grid-template-rows:auto minmax(0,1fr) minmax(0,max-content) auto var(--dock-h); }
 }
