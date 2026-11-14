@@ -1,6 +1,6 @@
 import type { AladinInstance } from 'aladin-lite'
 import { useState } from 'react'
-import { type LayerKey, MAX_SOURCES, useCatalogLayers } from '../catalogLayers'
+import { type LayerKey, MAX_SOURCES, NEAR_DEG, useCatalogLayers } from '../catalogLayers'
 
 interface Props {
   aladin: AladinInstance | null
@@ -39,6 +39,8 @@ export function CatalogLegend({ aladin, ra, dec, sizeDeg, frameMjd }: Props) {
             />
             {failed ? (
               `${name} unavailable`
+            ) : status[key] === 'none' ? (
+              `${name}: no objects ${key === 'gaia' || key === 'simbad' ? `within ${NEAR_DEG}°` : 'in this field'}`
             ) : (
               <>
                 {name} <span style={{ color: `var(--cat-${key})` }}>{shape}</span> {what}
@@ -50,8 +52,8 @@ export function CatalogLegend({ aladin, ra, dec, sizeDeg, frameMjd }: Props) {
         )
       })}
       <p className="hint">
-        A blinking source without a marker needs verification — it is not a discovery. Each
-        catalogue shows its {MAX_SOURCES} brightest sources at most.{' '}
+        A blinking source without a marker needs verification — it is not a discovery.
+        {` Gaia DR3 and SIMBAD search within ${NEAR_DEG}° of the centre; Gaia DR3 and AllWISE show their ${MAX_SOURCES} brightest sources at most. `}
         <a href={`http://byw.tools/wiseview#ra=${ra}&dec=${dec}`} target="_blank" rel="noreferrer">
           Check in WiseView
         </a>

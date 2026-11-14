@@ -1,25 +1,24 @@
-import { describe, expect, it, vi } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 import {
   catalogCache,
   catalogRadius,
+  fetchVotable,
   gaiaSources,
   gaiaUrl,
   isoDate,
+  layerStatus,
   parseVotableRows,
   propagateGaia,
   simbadUrl,
   skybotUrl,
   snapEpoch,
+  type View,
   wiseUrl,
 } from './catalogLayers'
 
 describe('catalogue URLs', () => {
   it('encodes the cone centre with %20, never +', () => {
-    for (const url of [
-      gaiaUrl(269.45, 4.69, 0.2),
-      wiseUrl(269.45, 4.69, 0.2),
-      simbadUrl(269.45, 4.69, 0.2),
-    ]) {
+    for (const url of [gaiaUrl(269.45, 4.69, 0.2), wiseUrl(269.45, 4.69, 0.2)]) {
       expect(url).toContain('269.45%204.69')
       expect(url).not.toContain('+')
     }
@@ -37,9 +36,22 @@ describe('catalogue URLs', () => {
     )
   })
 
-  it('gives SIMBAD the radius in arcminutes', () => {
-    expect(simbadUrl(1, -2, 0.5)).toBe(
-      'https://simbad.cfa.harvard.edu/simbad/sim-coo?Coord=1%20-2&Radius=30&Radius.unit=arcmin&output.format=votable',
+  it('asks the second VizieR mirror with the same parameters', () => {
+    expect(gaiaUrl(1, -2, 0.5, 'https://vizier.idia.ac.za')).toBe(
+      gaiaUrl(1, -2, 0.5).replace('vizier.cfa.harvard.edu', 'vizier.idia.ac.za'),
+    )
+    expect(wiseUrl(1, -2, 0.5, 'https://vizier.idia.ac.za')).toMatch(
+      /^https:\/\/vizier\.idia\.ac\.za\/viz-bin\/votable\?-source=II\/328\/allwise&/,
+    )
+  })
+
+  it('asks SIMBAD TAP for 500 objects in the cone, encoded', () => {
+    const url = simbadUrl(1, -2, 0.5)
+    expect(url).toBe(
+      "https://simbad.cfa.harvard.edu/simbad/sim-tap/sync?request=doQuery&lang=adql&format=votable/td&query=SELECT%20TOP%20500%20main_id%2C%20ra%2C%20dec%2C%20otype%20FROM%20basic%20WHERE%20CONTAINS(POINT('ICRS'%2C%20ra%2C%20dec)%2C%20CIRCLE('ICRS'%2C%201%2C%20-2%2C%200.5))%20%3D%201",
+    )
+    expect(decodeURIComponent(url.split('query=')[1])).toBe(
+      "SELECT TOP 500 main_id, ra, dec, otype FROM basic WHERE CONTAINS(POINT('ICRS', ra, dec), CIRCLE('ICRS', 1, -2, 0.5)) = 1",
     )
   })
 
@@ -110,6 +122,19 @@ describe('VOTable rows', () => {
 
   it('returns no rows for an empty answer', () => {
     expect(parseVotableRows('<VOTABLE><RESOURCE/></VOTABLE>')).toEqual([])
+  })
+
+  it('reads SkyBoT rows with the vot: prefix and its "no object found" error as empty', () => {
+    expect(
+      parseVotableRows(
+        '<vot:VOTABLE><vot:TABLEDATA><vot:TR><vot:TD>A</vot:TD><vot:TD>1</vot:TD></vot:TR></vot:TABLEDATA></vot:VOTABLE>',
+      ),
+    ).toEqual([['A', '1']])
+    expect(
+      parseVotableRows(
+        '<vot:VOTABLE><vot:INFO name="QUERY_STATUS" value="ERROR">No solar system object was found in the requested FOV</vot:INFO><vot:TABLE nrows="0"/></vot:VOTABLE>',
+      ),
+    ).toEqual([])
   })
 
   it('throws on an error answer or something that is not a VOTable', () => {
@@ -194,6 +219,18 @@ describe('catalogue cache', () => {
     expect(load).toHaveBeenCalledTimes(1)
   })
 
+  it('aborts the running request when the view changes', async () => {
+    const signals: AbortSignal[] = []
+    const cache = catalogCache(async (_v: View, _e: number, cancel: AbortSignal) => {
+      signals.push(cancel)
+      return 'catalogue'
+    })
+    await cache.load(view, 60900)
+    expect(signals[0].aborted).toBe(false)
+    cache.peek({ ...view, ra: 270 }, 60900)
+    expect(signals[0].aborted).toBe(true)
+  })
+
   it('starts again for a new view and skips requests queued for the old one', async () => {
     const load = slow()
     const cache = catalogCache(load)
@@ -205,7 +242,60 @@ describe('catalogue cache', () => {
     expect(await skipped).toBeNull()
     expect(await fresh).toBe('catalogue 60900')
     expect(load).toHaveBeenCalledTimes(2)
-    expect(load).toHaveBeenLastCalledWith(moved, 60900)
+    expect(load).toHaveBeenLastCalledWith(moved, 60900, expect.any(AbortSignal))
     expect(cache.peek(moved, 61100)).toBeUndefined()
+  })
+})
+
+describe('layer status', () => {
+  it('tells an empty field from a failed service', () => {
+    expect(layerStatus({})).toBe('ready')
+    expect(layerStatus('none')).toBe('none')
+    expect(layerStatus(null)).toBe('unavailable')
+  })
+})
+
+describe('catalogue download', () => {
+  afterEach(() => vi.unstubAllGlobals())
+  const ok = '<VOTABLE><TABLEDATA><TR><TD>1</TD></TR></TABLEDATA></VOTABLE>'
+  const busy =
+    '<VOTABLE><INFO name="QUERY_STATUS" value="ERROR">The database is not currently reachable</INFO></VOTABLE>'
+
+  it('tries the next mirror only after the first answer failed, one request at a time', async () => {
+    let inFlight = 0
+    let most = 0
+    const fetch = vi.fn(async (url: string) => {
+      most = Math.max(most, ++inFlight)
+      await Promise.resolve()
+      inFlight--
+      return new Response(url === 'a' ? busy : ok)
+    })
+    vi.stubGlobal('fetch', fetch)
+    expect((await fetchVotable(['a', 'b'], 1000)).rows).toEqual([['1']])
+    expect(fetch.mock.calls.map(([url]) => url)).toEqual(['a', 'b'])
+    expect(most).toBe(1)
+  })
+
+  it('fails when every attempt failed', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () => new Response('', { status: 503 })),
+    )
+    await expect(fetchVotable(['a', 'a'], 1000)).rejects.toThrow('HTTP 503')
+  })
+
+  it('stops a running request and skips the next attempt when cancelled', async () => {
+    const fetch = vi.fn(
+      (_url: string, init: RequestInit) =>
+        new Promise<Response>((_, reject) =>
+          init.signal?.addEventListener('abort', () => reject(new Error('aborted'))),
+        ),
+    )
+    vi.stubGlobal('fetch', fetch)
+    const cancel = new AbortController()
+    const answer = fetchVotable(['a', 'b'], 60_000, cancel.signal)
+    cancel.abort()
+    await expect(answer).rejects.toThrow()
+    expect(fetch).toHaveBeenCalledTimes(1)
   })
 })
