@@ -29,6 +29,7 @@ from app.frames import (
 )
 from app.models import Check, Difference, Frame, FrameManifest, Observation, Spectrum, SpectrumPoint
 from app.photometry import forced_photometry
+from app.sources import find_sources
 
 MIN_COVERAGE = 0.5
 # Just the aperture and the sky ring around the target (about 25 px with the rotation margin).
@@ -40,7 +41,7 @@ MAX_SPECTRUM_POINTS = 100
 SPECTRUM_VERSION = 4
 # Bump whenever the rendered output changes: the job key changes, so cached results are rebuilt,
 # and `warm` removes frame folders whose manifest carries an older version.
-PIPELINE_VERSION = 6
+PIPELINE_VERSION = 7
 
 
 def manifest_path(cache_dir: Path, key: str) -> Path:
@@ -156,6 +157,12 @@ def build_frames(
         for index, ((epoch, group), name) in enumerate(zip(members, names, strict=True))
     ]
     checks += wavelength_checks([frame.wavelength_um for frame in frames], detector)
+    found, source_checks = find_sources(
+        images, [f.mjd for f in frames], target, shape, ra, dec, size_deg, settings.cache_dir
+    )
+    for frame, sources in zip(frames, found, strict=True):
+        frame.sources = sources
+    checks += source_checks
     differences = []
     if stack:
         for a, b in combinations(range(len(images)), 2):

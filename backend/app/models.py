@@ -74,6 +74,7 @@ class Frame(BaseModel):
     masked_fraction: float | None = None
     wavelength_um: float | None = None
     bandwidth_um: float | None = None
+    sources: list["DetectedSource"] = []
 
 
 class Check(BaseModel):
@@ -160,3 +161,33 @@ class SpectrumJob(BaseModel):
     total: int = 0
     spectrum: Spectrum | None = None
     error: str | None = None
+
+
+class DetectedSource(BaseModel):
+    """A point source at least 5σ above the noise in one frame (app/sources.py).
+
+    `match` names the catalogue with a source within the match radius: a positional
+    coincidence, not an identification. "none" needs verification; "unknown" means a catalogue
+    did not answer.
+    """
+
+    ra: float
+    dec: float
+    # 0-based pixel centre in the frame PNG: x to the right (east is left), y down from the top
+    # row (north is up). ra/dec are the reliable fields.
+    x: float
+    y: float
+    # Background-subtracted peak pixel, and that peak over the frame's noise.
+    peak_mjy_sr: float
+    snr: float
+    match: Literal["gaia", "allwise", "none", "unknown"]
+    catalog_id: str | None = None
+    separation_arcsec: float | None = None
+    # Vega magnitude in catalog_band: Gaia DR3 G or AllWISE W1.
+    catalog_mag: float | None = None
+    catalog_band: Literal["G", "W1"] | None = None
+
+
+Frame.model_rebuild()
+FrameManifest.model_rebuild()
+FrameJob.model_rebuild()

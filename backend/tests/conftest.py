@@ -2,7 +2,7 @@ import httpx
 import pytest
 from fastapi.testclient import TestClient
 
-from app import catalogs
+from app import catalogs, sources
 from app.config import Settings, get_settings
 from app.main import app
 
@@ -28,3 +28,13 @@ def no_gaia(monkeypatch):
         raise httpx.ConnectError("no network in tests")
 
     monkeypatch.setattr(catalogs.httpx, "post", unreachable)
+
+
+@pytest.fixture(autouse=True)
+def no_allwise(monkeypatch):
+    """Source matching asks IRSA Gator for AllWISE with httpx.get: never in tests."""
+
+    def unreachable(*_, **__):
+        raise httpx.ConnectError("no network in tests")
+
+    monkeypatch.setattr(sources, "query_allwise", unreachable)

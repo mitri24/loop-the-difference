@@ -73,7 +73,7 @@ declare module 'aladin-lite' {
 
   export interface CatalogOptions {
     name: string
-    shape: 'circle' | 'square' | 'triangle' | 'rhomb'
+    shape: 'circle' | 'square' | 'triangle' | 'rhomb' | 'plus' | 'cross'
     color: string
     sourceSize: number
     limit: number
@@ -123,4 +123,11 @@ declare module 'aladin-lite' {
   }
 
   export default A
+}
+
+// Detected sources refill one catalogue per label whenever the blink moves on.
+declare module 'aladin-lite' {
+  export interface Catalog {
+    removeAll(): void
+  }
 }
