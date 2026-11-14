@@ -1,6 +1,6 @@
 from typing import Annotated, Literal
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 
 class Observation(BaseModel):
@@ -250,3 +250,56 @@ class NeossatCoverage(BaseModel):
     last_date: str | None = None
     search_url: str
     note: str
+
+
+class TrackMark(BaseModel):
+    """One user mark of a moving object: position, frame time and position uncertainty."""
+
+    model_config = ConfigDict(allow_inf_nan=False)
+
+    ra: str = Field(min_length=1, max_length=40)
+    dec: str = Field(min_length=1, max_length=40)
+    mjd: float = Field(ge=50000, le=80000)
+    sigma_arcsec: float = Field(default=1.5, ge=0.1, le=30)
+
+
+class DistantTrackRequest(BaseModel):
+    model_config = ConfigDict(allow_inf_nan=False)
+
+    marks: list[TrackMark] = Field(min_length=2, max_length=2)
+    target_mjds: list[float] = Field(min_length=1, max_length=24)
+    d_min_au: float = Field(default=20, ge=5)
+    d_max_au: float = Field(default=2000, le=100000)
+    steps: int = Field(default=64, ge=2, le=96)
+
+    @model_validator(mode="after")
+    def _check_times(self) -> "DistantTrackRequest":
+        t1, t2 = (mark.mjd for mark in self.marks)
+        if not 0.001 <= abs(t2 - t1) <= 30:
+            raise ValueError("The two marks must be between 1.5 minutes and 30 days apart")
+        if any(max(abs(t - t1), abs(t - t2)) > 400 for t in self.target_mjds):
+            raise ValueError("Every target time must be within 400 days of the marks")
+        if self.d_max_au <= self.d_min_au:
+            raise ValueError("d_max_au must be larger than d_min_au")
+        return self
+
+
+class TrackPoint(BaseModel):
+    mjd: float
+    ra: float
+    dec: float
+    # 2σ search radius from the mark uncertainties alone.
+    radius_arcsec: float
+
+
+class DistanceHypothesis(BaseModel):
+    distance_au: float
+    points: list[TrackPoint]
+
+
+class DistantTrack(BaseModel):
+    """Where the marked object would be at other times for each assumed distance; not an orbit."""
+
+    model: str
+    assumptions: list[str]
+    hypotheses: list[DistanceHypothesis]
