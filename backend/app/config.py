@@ -14,6 +14,8 @@ class Settings(BaseSettings):
     http_timeout_s: float = 90.0
     download_workers: int = 4
     max_queued: int = 20
+    # Comma-separated queues for this worker process, see .env.example.
+    worker_queues: str = ""
     cors_origins: list[str] = ["http://localhost:5173"]
 
 

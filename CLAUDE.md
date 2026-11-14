@@ -13,7 +13,7 @@ NASA Space Apps 2026, challenge "Planet X and SPHEREx": a public web tool. RA/De
 - Run everything: `docker compose up --build` → http://localhost:8080, API docs http://localhost:8000/docs
 - Backend checks: `docker compose run --rm --no-deps api sh -c "ruff format --check . && ruff check . && pytest"`
 - Frontend: `cd frontend && npm ci`, then `npm run dev` (proxies to :8000), `npm run lint`, `npm run typecheck`, `npm test`, `npm run build`
-- After backend changes restart the worker: `docker compose restart worker` (the API reloads by itself)
+- After backend changes restart the workers: `docker compose restart worker worker-slow` (the API reloads by itself)
 
 ## Rules
 - Science honesty: label changes as candidates that need checking; keep provenance (obs_id, cutout URL, date, detector) for every frame shown.

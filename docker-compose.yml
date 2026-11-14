@@ -5,7 +5,7 @@ x-backend: &backend
   env_file:
     - path: .env
       required: false
-  environment:
+  environment: &backend-environment
     SKYSHIFT_REDIS_URL: redis://redis:6379/0
     SKYSHIFT_CACHE_DIR: /data/cache
   volumes:
@@ -38,6 +38,17 @@ services:
   worker:
     <<: *backend
     command: ["python", "-m", "app.worker"]
+    environment:
+      <<: *backend-environment
+      SKYSHIFT_WORKER_QUEUES: frames
+
+  # Spectra download ~100 cutouts and take minutes: a worker of their own, so they never delay a frame job.
+  worker-slow:
+    <<: *backend
+    command: ["python", "-m", "app.worker"]
+    environment:
+      <<: *backend-environment
+      SKYSHIFT_WORKER_QUEUES: slow
 
   redis:
     image: redis:7-alpine
