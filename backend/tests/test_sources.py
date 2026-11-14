@@ -10,8 +10,10 @@ from app import sources
 from app.catalogs import position_at
 from app.frames import target_grid
 from app.sources import (
+    BRIGHT_SNR,
     FWHM_PX,
     MATCH_RADIUS_ARCSEC,
+    THRESHOLD_SIGMA,
     CatalogStar,
     allwise_stars,
     cached_query,
@@ -205,3 +207,54 @@ def test_a_catalogue_answer_is_cached_per_field(tmp_path):
     assert cached_query(tmp_path, "gaia", down, RA, DEC, 0.04) == first == GAIA
     with pytest.raises(httpx.ConnectError):
         cached_query(tmp_path, "gaia", down, RA, DEC, 0.05)
+
+
+def test_a_resolved_neighbour_closer_than_two_and_a_half_fwhm_is_kept():
+    found, _ = detect(_sky((40, 40), [(15.0, 20.0, 60.0), (19.5, 20.0, 30.0)]))
+
+    assert len(found) == 2
+    assert sorted(d.x for d in found) == [
+        pytest.approx(15.0, abs=0.3),
+        pytest.approx(19.5, abs=0.3),
+    ]
+
+
+def test_every_listed_detection_stands_five_sigma_above_the_noise():
+    stars = [(8.0 + 6 * i, 10.0 + 5 * (i % 4), 4.0 + 1.5 * i) for i in range(8)]
+    found, _ = detect(_sky((60, 60), stars, seed=7))
+
+    assert found
+    assert min(d.snr for d in found) >= THRESHOLD_SIGMA
+
+
+def test_a_bright_saturated_star_matches_its_catalogue_star_a_few_pixels_away():
+    grid, shape = target_grid(RA, DEC, SIZE_DEG)
+    detections, _ = detect(_sky(shape, [(14.0, 14.0, 2 * BRIGHT_SNR), (21.0, 7.0, 50.0)]))
+    bright = next(d for d in detections if d.snr >= BRIGHT_SNR)
+    faint = next(d for d in detections if d.snr < BRIGHT_SNR)
+    off = 2.0 * MATCH_RADIUS_ARCSEC / 3600  # inside 3 px, outside 1 px
+    ra_b, dec_b = (float(v) for v in grid.pixel_to_world_values(bright.x, bright.y))
+    ra_f, dec_f = (float(v) for v in grid.pixel_to_world_values(faint.x, faint.y))
+    stars = [
+        CatalogStar("Gaia DR3 bright", ra_b, dec_b + off, 8.2),
+        CatalogStar("Gaia DR3 background", ra_b, dec_b - 3 / 3600, 20.6),
+        CatalogStar("Gaia DR3 offset", ra_f, dec_f + off, 12.0),
+    ]
+
+    labels = {s.snr >= BRIGHT_SNR: s for s in label(detections, grid, shape, MJD, stars, [])}
+
+    assert (labels[True].match, labels[True].catalog_id) == ("gaia", "Gaia DR3 bright")
+    assert labels[False].match == "none"
+
+
+def test_a_cut_catalogue_leaves_unmatched_sources_unknown(monkeypatch):
+    grid, shape = target_grid(RA, DEC, SIZE_DEG)
+    detections, _ = detect(_sky(shape, [(5.0, 5.0, 80.0)]))
+    far = [
+        CatalogStar("Gaia DR3 far", RA + 1, DEC, 10.0),
+        CatalogStar("Gaia DR3 far2", RA + 2, DEC, 11.0),
+    ]
+
+    assert [s.match for s in label(detections, grid, shape, MJD, far, [])] == ["none"]
+    monkeypatch.setattr(sources, "MAX_CATALOG_ROWS", 2)
+    assert [s.match for s in label(detections, grid, shape, MJD, far, [])] == ["unknown"]
