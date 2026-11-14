@@ -4,6 +4,7 @@ import { createFrames, getFrameJob, getObservations, resolveName } from './api'
 import { AboutPanel } from './components/AboutPanel'
 import { stampText, type BlinkLetter } from './blink'
 import { BlinkPlayer } from './components/BlinkPlayer'
+import { BottomBar } from './components/BottomBar'
 import { CandidatePanel } from './components/CandidatePanel'
 import { TrackCheck } from './components/TrackCheck'
 import { useCandidate, useMarkLayer } from './candidate'
@@ -11,14 +12,21 @@ import { DataLinks } from './components/DataLinks'
 import { EvidencePanel, hasBlocker, manifestChecks } from './components/EvidencePanel'
 import { DataPanel } from './components/DataPanel'
 import { DifferenceView } from './components/DifferenceView'
+import { Dock } from './components/Dock'
+import { FloatingPanel } from './components/FloatingPanel'
 import { LayersSection } from './components/LayersSection'
 import { ModeSwitch } from './components/ModeSwitch'
+import { ObservationTimeline } from './components/ObservationTimeline'
+import { SearchBar } from './components/SearchBar'
+import { SkyFrame } from './components/SkyFrame'
 import { SkyView } from './components/SkyView'
 import { SmallBodies, useSmallBodies } from './components/SmallBodies'
 import { SourceList } from './components/SourceList'
+import { SpectrumChart } from './components/SpectrumChart'
 import { TargetForm } from './components/TargetForm'
 import { WavelengthStrip } from './components/WavelengthStrip'
 import { useFrameLayers } from './frameLayers'
+import { usePickLayer } from './pickLayer'
 import { usePlateLayer } from './historicalPlate'
 import { useMotionTrack } from './motionTrack'
 import { checkFrames, possibleTrack } from './track'
@@ -36,10 +44,16 @@ const EMBED = readEmbed(window.location.search)
 const POLARIS_CENTER = { ra: 37.954542, dec: 89.264111 }
 const MAX_FRAMES = 12
 const usesStacks = (mode: ViewMode) => mode !== 'exposures'
-type Panel = 'locate' | 'compare' | 'details'
-const PANEL_TITLES: Record<Panel, string> = {
-  locate: 'Find a sky region', compare: 'Compare observations', details: 'Data & evidence',
-}
+type Panel = 'target' | 'candidate' | 'evidence' | 'spectrum' | 'data' | 'layers' | 'about'
+const PANELS: { id: Panel; title: string; label: string; icon: string }[] = [
+  { id: 'target', title: 'Target & options', label: 'Target', icon: '⌖' },
+  { id: 'candidate', title: 'Candidate check', label: 'Candidate', icon: '◎' },
+  { id: 'evidence', title: 'Evidence & checks', label: 'Evidence', icon: '✓' },
+  { id: 'spectrum', title: 'Spectrum & brightness', label: 'Spectrum', icon: '∿' },
+  { id: 'data', title: 'Data & links', label: 'Data', icon: '⇲' },
+  { id: 'layers', title: 'Sky layers', label: 'Layers', icon: '◫' },
+  { id: 'about', title: 'About & credits', label: 'About', icon: 'i' },
+]
 
 export default function App() {
   const [query, setQuery] = useState<TargetQuery>(INITIAL ?? POLARIS)
@@ -54,7 +68,6 @@ export default function App() {
   const [busy, setBusy] = useState(false)
   const [cancelled, setCancelled] = useState(false)
   const [status, setStatus] = useState('Choose a target or explore the map.')
-  const [about, setAbout] = useState(false)
   const [skyLayer, setSkyLayer] = useState('Loading sky survey…')
   const [skyUnavailable, setSkyUnavailable] = useState(false)
   const [sky, setSky] = useState<AladinInstance | null>(null)
@@ -72,7 +85,10 @@ export default function App() {
   const [skySlice, setSkySlice] = useState(() => sliceForDetector((INITIAL ?? POLARIS).band))
   const [sliceBand, setSliceBand] = useState((INITIAL ?? POLARIS).band)
   const [viewRevision, setViewRevision] = useState(0)
-  const [panel, setPanel] = useState<Panel | null>(INITIAL ? 'compare' : 'locate')
+  const [panel, setPanel] = useState<Panel | null>(INITIAL ? null : 'target')
+  // Explore: the full sky to choose a region. Investigate: the SPHEREx images of that region.
+  const [stage, setStage] = useState<'explore' | 'investigate'>(INITIAL ? 'investigate' : 'explore')
+  const [pick, setPick] = useState<{ ra: number; dec: number } | null>(null)
   const [name, setName] = useState('')
   const [targetLabel, setTargetLabel] = useState(INITIAL ? INITIAL.name ?? 'Linked sky region' : 'Polaris')
   const [shareStatus, setShareStatus] = useState('')
@@ -80,17 +96,6 @@ export default function App() {
   const lastRequest = useRef<{ query: TargetQuery; name?: string }>({ query: INITIAL ?? POLARIS })
   const panelHeading = useRef<HTMLHeadingElement>(null)
   const panelTrigger = useRef<HTMLButtonElement | null>(null)
-  const workspaceRoot = useRef<HTMLDivElement>(null)
-  const appBar = useRef<HTMLElement>(null)
-
-  useEffect(() => {
-    if (!appBar.current) return
-    const observer = new ResizeObserver(([entry]) => {
-      workspaceRoot.current?.style.setProperty('--bar-height', `${entry.target.getBoundingClientRect().height}px`)
-    })
-    observer.observe(appBar.current)
-    return () => observer.disconnect()
-  }, [])
 
   const closePanel = useCallback(() => {
     setPanel(null)
@@ -99,7 +104,7 @@ export default function App() {
 
   useEffect(() => {
     const onKey = (event: KeyboardEvent) => {
-      if (event.key === 'Escape' && !document.querySelector('dialog[open]') &&
+      if (event.key === 'Escape' &&
           !event.defaultPrevented && !(event.target instanceof HTMLSelectElement)) {
         closePanel()
       }
@@ -131,7 +136,10 @@ export default function App() {
     setMotion(null)
     setPlateOnSky(false)
     setFrameIndex(0)
-    setPanel('compare')
+    setStage('investigate')
+    setPick(null)
+    // The images show the result; the target panel would cover them on small screens.
+    setPanel((open) => (open === 'target' ? null : open))
     setName(targetName ?? requested.name ?? '')
     setStatus(targetName ? `Finding ${targetName}…` : 'Searching SPHEREx observations…')
     try {
@@ -267,11 +275,12 @@ export default function App() {
   const markBlocked = skyUnavailable ? 'The sky view needs WebGL2.'
     : showDifference ? 'Marks are set on single frames, not on the difference image.'
     : !frameOnSky ? 'Turn on "SPHEREx frames on the sky" in Layers to mark by clicking.' : null
-  const candidate = useCandidate(job?.job_id ?? null, !markBlocked && panel === 'compare')
+  const candidate = useCandidate(job?.job_id ?? null, !markBlocked && panel === 'candidate')
   useMarkLayer(sky, candidate.marks)
   const possible = useMemo(() => manifest ? possibleTrack(candidate.marks, manifest, manifest.frames.map((f) => f.mjd)) : null, [candidate.marks, manifest])
   const predictions = useMemo(() => (showDifference ? [] : possible?.predictions ?? []), [possible, showDifference])
   useTrackLayer(sky, predictions)
+  usePickLayer(sky, stage === 'explore' ? pick : null, draft.fov)
   // JPL SBIdent takes about a minute per time: one time per epoch, its first frame's.
   // A stack mixes exposures from up to 30 days: moving asteroids are looked up for single exposures.
   const smallBodies = useSmallBodies(manifest && hasFrames && !manifest.stacked ? {
@@ -280,9 +289,8 @@ export default function App() {
   } : null)
   useSmallBodyLayer(sky, smallBodies.epochs, frame?.mjd ?? null, smallBodiesOnSky)
 
-  const comparison = (
+  const statusBlock = (
     <>
-      <ModeSwitch value={query.mode} onChange={selectMode} differenceBlocked={differenceBlocked} disabled={busy && !job} />
       <div className="comparison-status" role="status" aria-live="polite">
         <span className={busy ? 'status-dot busy' : 'status-dot'} aria-hidden="true" />
         <span>{status}</span>
@@ -299,138 +307,165 @@ export default function App() {
       {(!busy && (error || cancelled || (!hasFrames && job))) && (
         <div className="recovery-actions">
           <button type="button" onClick={() => void run(lastRequest.current.query, lastRequest.current.name)}>Retry</button>
-          {!EMBED && <button type="button" onClick={() => setPanel('locate')}>Choose another region</button>}
+          {!EMBED && <button type="button" onClick={() => { setStage('explore'); setPanel('target') }}>Choose another region</button>}
         </div>
       )}
-      {!busy && !hasFrames && !error && !cancelled && (EMBED && !job
-        ? <p className="muted">Add ra and dec to the URL, e.g. ?ra=02:31:49.09&amp;dec=+89:15:50.8&amp;embed=1</p>
-        : <div className="empty-state">
-          <span className="empty-reticle" aria-hidden="true" />
-          <h3>{job ? 'No images to compare' : 'One region. Different moments.'}</h3>
-          <p>{job ? 'Try another detector or sky region. Repeat coverage varies by position.' : 'Choose a target or use the map center to load real SPHEREx observations.'}</p>
-          {!EMBED && <button type="button" onClick={useMapCenter} disabled={skyUnavailable || !sky}>Compare map center</button>}
-        </div>
-      )}
-      {manifest && hasFrames && query.mode === 'difference' && (
-        <>
-          {differenceBlocked && <p className="notice">Difference unavailable. Showing epoch stacks. Open quality checks for the reason.</p>}
-          {!differenceBlocked && !showDifference && <p className="notice">No difference image is available yet. Epoch stacks are shown below.</p>}
-        </>
-      )}
-      {manifest && hasFrames && showDifference && <DifferenceView key={job.job_id} manifest={manifest} />}
-      {manifest && hasFrames && !showDifference && <BlinkPlayer key={job.job_id} frames={manifest.frames} checks={checks} grid={manifest} motion={motion} predictions={predictions}
-        onIndexChange={showFrame} seek={seek} active={EMBED || panel === 'compare' || !panel} showShare={EMBED} />}
-      {!EMBED && manifest && hasFrames && <CandidatePanel candidate={candidate} blocked={markBlocked} track={possible && { ...possible, predictions }}
-        known={{ epochs: smallBodies.epochs, motion, detector: manifest.detector, target: targetLabel }}
-        visits={summary && { observations: summary.observations, inBlink: [...manifest.frames.map((f) => f.obs_id),
-          ...manifest.differences.flatMap((d) => [...d.obs_ids_a, ...d.obs_ids_b])] }}>
-        {possible && predictions.length > 0 && <TrackCheck checks={checkFrames({ ...possible, predictions }, manifest.frames, candidate.marks, manifest)}
-          onShow={(index, p) => { setSeek({ index }); sky?.gotoRaDec(p.ra, p.dec) }} />}
-      </CandidatePanel>}
-      {!EMBED && manifest && hasFrames && <details className="disclosure"><summary>Data & cross-check links</summary>
-        <DataLinks manifest={manifest} frame={showDifference ? null : frame} /></details>}
-      {!EMBED && manifest && frame && !showDifference && <WavelengthStrip detector={manifest.detector} frame={frame} />}
-      {!EMBED && !skyUnavailable && <LayersSection aladin={sky} sizeDeg={query.fov} frame={frame}
-        framesOnSky={framesOnSky} onFramesOnSkyChange={setFramesOnSky} sourcesOnSky={sourcesOnSky} onSourcesOnSkyChange={setSourcesOnSky}
-        trackShown={track.length > 0} possibleTrackShown={predictions.length > 0} skySlice={skySlice} onSkySliceChange={setSkySlice} cubeActive={cubeActive}
-        smallBodyEpochs={smallBodies.epochs} smallBodiesOnSky={smallBodiesOnSky} onSmallBodiesOnSkyChange={setSmallBodiesOnSky}
-        plateAvailable={!!motion} plateOnSky={plateOnSky} onPlateOnSkyChange={setPlateOnSky} plate={plate}
-        framesBlocked={showDifference ? 'The difference image is shown in this panel. Frames and their detected sources go back on the sky in the other modes.' : undefined} />}
-      {!EMBED && !skyUnavailable && frame && !showDifference && <details className="disclosure">
-        <summary>Detected sources{sourceSummary}</summary>
-        <SourceList frame={frame} onSelect={(ra, dec) => sky?.gotoRaDec(ra, dec)} onMark={(source) => candidate.markSource(frame, source)} />
-      </details>}
-      {!EMBED && manifest && hasFrames && (manifest.stacked
-        ? <p className="muted">Known asteroids and comets (JPL SBIdent) are looked up for single exposures: switch the view to Exposures.</p>
-        : <SmallBodies lookup={smallBodies} currentMjd={frame?.mjd ?? null} />)}
-      {manifest && checks.length > 0 && <details className="disclosure" open={hasBlocker(checks, 'difference')}><summary>Quality checks · {checks.length}</summary><EvidencePanel checks={checks} /></details>}
-      <p className="science-note">Changes are unverified. Wavelength, coverage and image artifacts can affect a comparison.</p>
     </>
   )
+  const emptyState = !busy && !hasFrames && !error && !cancelled && (EMBED && !job
+    ? <p className="muted">Add ra and dec to the URL, e.g. ?ra=02:31:49.09&amp;dec=+89:15:50.8&amp;embed=1</p>
+    : <div className="empty-state">
+      <span className="empty-reticle" aria-hidden="true" />
+      <h3>{job ? 'No images to compare' : 'One region. Different moments.'}</h3>
+      <p>{job ? 'Try another detector or sky region. Repeat coverage varies by position.' : 'Choose a target or use the map center to load real SPHEREx observations.'}</p>
+      {!EMBED && <button type="button" onClick={useMapCenter} disabled={skyUnavailable || !sky}>Compare map center</button>}
+    </div>)
+  const modeSwitch = <ModeSwitch value={query.mode} onChange={selectMode} differenceBlocked={differenceBlocked} disabled={busy && !job} />
+  const viewer = manifest && hasFrames && (
+    <>
+      {query.mode === 'difference' && differenceBlocked && <p className="notice">Difference unavailable. Showing epoch stacks. Open Evidence & checks for the reason.</p>}
+      {query.mode === 'difference' && !differenceBlocked && !showDifference && <p className="notice">No difference image is available yet. Epoch stacks are shown below.</p>}
+      {showDifference ? <DifferenceView key={job.job_id} manifest={manifest} />
+        : <BlinkPlayer key={job.job_id} frames={manifest.frames} checks={checks} grid={manifest} motion={motion} predictions={predictions}
+          onIndexChange={showFrame} seek={seek} active={EMBED || stage === 'investigate'} showShare={EMBED} />}
+    </>
+  )
+  const qualityChecks = manifest && checks.length > 0 && <details className="disclosure" open={hasBlocker(checks, 'difference')}><summary>Quality checks · {checks.length}</summary><EvidencePanel checks={checks} /></details>
+  const scienceNote = <p className="science-note">Changes are unverified. Wavelength, coverage and image artifacts can affect a comparison.</p>
 
-  if (EMBED) return <main className="embed-workspace">{comparison}<p className="muted">SPHEREx · {manifest?.collection ?? summary?.collection ?? 'IRSA archive'}</p></main>
+  if (EMBED) return <main className="embed-workspace">{modeSwitch}{statusBlock}{emptyState}{viewer}{qualityChecks}{scienceNote}<p className="muted">SPHEREx · {manifest?.collection ?? summary?.collection ?? 'IRSA archive'}</p></main>
+
+  const loadFirst = <p className="muted">Load a comparison first: choose a target in the search bar.</p>
+  const dockItems = PANELS.map((item) => ({ ...item,
+    count: item.id === 'candidate' ? candidate.marks.length : item.id === 'evidence' ? checks.length : undefined,
+    alert: item.id === 'evidence' && checks.some((check) => check.severity === 'blocker' || check.severity === 'error') }))
+  const current = PANELS.find((item) => item.id === panel)
 
   return (
-    <div ref={workspaceRoot} className={`workspace${panel ? ' sidebar-open' : ''}`} data-testid="planet-x-shell">
+    <div className="shell" data-testid="planet-x-shell">
       <a className="skip-link" href="#sky-map">Skip to the sky map</a>
-      <header ref={appBar} className="app-bar" id="workspace-tools">
-        <div className="brand"><span className="brand-mark" aria-hidden="true">＋</span><div><h1>Loop the Difference</h1><span>SPHEREx observation workspace</span></div></div>
-        <form className="global-search" onSubmit={(event) => { event.preventDefault(); if (name.trim()) find(name.trim(), draft) }}>
-          <label className="sr-only" htmlFor="sky-search">Find a sky object</label>
-          <input id="sky-search" data-testid="sky-search" placeholder="Find a sky object…" value={name} onChange={(event) => setName(event.target.value)} />
-          <button type="submit" disabled={busy || !name.trim()}>Find</button>
-        </form>
-        <nav className="workspace-nav" aria-label="Workspace">
-          {(['locate', 'compare', 'details'] as const).map((item) => <button key={item} type="button"
-            data-testid={`${item}-trigger`} aria-controls={`${item}-panel`} aria-expanded={panel === item}
-            className={panel === item ? 'selected' : ''} onClick={(event) => togglePanel(item, event.currentTarget)}>
-            {item === 'locate' ? 'Locate' : item === 'compare' ? 'Compare' : 'Data'}
-            {item === 'compare' && busy && <span className="count" aria-label="Preparing observations">…</span>}
-            {item === 'compare' && hasFrames && <span className="count">{manifest!.frames.length}</span>}
-          </button>)}
-        </nav>
-        <div className="utility-actions"><button type="button" onClick={() => void share()} title="Copy this comparison link">Share</button><button type="button" onClick={() => setAbout(true)}>About</button></div>
-      </header>
+      <SearchBar value={name} onChange={setName} draft={draft} busy={busy} onShow={show} onFind={find} onShare={() => void share()} />
 
-      <div className="sheet-position" hidden={!panel}>
-        <aside className="workspace-sheet" aria-label={panel ? PANEL_TITLES[panel] : 'Workspace tools'}>
-          <div className="sheet-header"><div><p className="eyebrow">{panel === 'locate' ? '01 / Locate' : panel === 'compare' ? '02 / Compare' : '03 / Inspect'}</p><h2 ref={panelHeading} tabIndex={-1}>{panel ? PANEL_TITLES[panel] : ''}</h2></div><button type="button" className="close-button" onClick={closePanel} aria-label="Close panel" title="Collapse sidebar">‹</button></div>
-          <div className="sheet-content">
-            <section id="locate-panel" hidden={panel !== 'locate'}>
-              <p className="section-intro">Start with a familiar object, a precise position, or the center of your map.</p>
-              <TargetForm value={draft} busy={busy} onShow={show} onFind={find} onChange={setDraft} />
-            </section>
-            <section id="compare-panel" hidden={panel !== 'compare'} className="comparison-content">
-              <div className="target-summary"><strong>{targetLabel}</strong><span>D{query.band} · {query.fov}° region</span></div>
-              {comparison}
-            </section>
-            <section id="details-panel" hidden={panel !== 'details'}>
-              <DataPanel query={query} targetLabel={targetLabel} summary={summary} manifest={manifest} checks={checks}
-                frameIndex={showDifference ? undefined : frameIndex} open={panel === 'details'} onAbout={() => setAbout(true)} />
-            </section>
+      <div className={`stage ${stage}`}>
+        <section className="viewer" aria-label="SPHEREx images of the region" hidden={stage !== 'investigate'}>
+          <div className="viewer-head">
+            <button type="button" className="back-button" onClick={() => setStage('explore')}><span aria-hidden="true">←</span> Back to sky</button>
+            <div className="target-summary"><strong>{targetLabel}</strong><span>D{query.band} · {query.fov}° region</span></div>
+            {modeSwitch}
           </div>
-          {panel === 'locate' && <div className="sheet-actions">
-            <button type="submit" form="region-form" className="primary" disabled={busy}>Compare this position <span aria-hidden="true">→</span></button>
-            <button type="button" onClick={useMapCenter} disabled={busy || skyUnavailable || !sky}>Use map center & compare</button>
+          <div className="viewer-body">
+            {statusBlock}
+            {job && emptyState}
+            {viewer}
+            {hasFrames && scienceNote}
+          </div>
+        </section>
+        <SkyFrame overview={stage === 'investigate'}>
+          <main id="sky-map" className="sky-stage" tabIndex={0} aria-label="Interactive sky map. Arrow keys pan; plus and minus zoom." onKeyDown={(event) => {
+            if (event.target !== event.currentTarget || !sky) return
+            const map = sky
+            const [ra, dec] = map.getRaDec()
+            const [fov] = map.getFov()
+            const step = fov / 10
+            // The same step on the sky east or west: RA degrees shrink with cos(Dec) towards the pole.
+            const raStep = step / Math.max(Math.cos((dec * Math.PI) / 180), 0.01)
+            if (event.key === 'ArrowLeft') map.gotoRaDec((((ra + raStep) % 360) + 360) % 360, dec)
+            else if (event.key === 'ArrowRight') map.gotoRaDec((((ra - raStep) % 360) + 360) % 360, dec)
+            else if (event.key === 'ArrowUp') map.gotoRaDec(ra, Math.min(90, dec + step))
+            else if (event.key === 'ArrowDown') map.gotoRaDec(ra, Math.max(-90, dec - step))
+            else if (event.key === '+' || event.key === '=') map.setFoV(Math.max(0.001, fov * 0.8))
+            else if (event.key === '-') map.setFoV(Math.min(180, fov * 1.25))
+            else return
+            event.preventDefault()
+          }} onClickCapture={(event) => {
+            // Native Aladin menus get the workspace when opened, with no app panel obscuring them.
+            if (event.target instanceof Element && event.target.closest('.aladin-widgets-toolbar, .aladin-projection-control, .aladin-fullScreen-control, .aladin-cooFrame, .aladin-location')) setPanel(null)
+          }}>
+            <SkyView ra={center.ra} dec={center.dec} fov={query.fov} detector={query.band} revision={viewRevision}
+              onReady={(instance) => { setSky(instance); setSkyUnavailable(false) }}
+              onLayerChange={setSkyLayer} onUnavailable={() => setSkyUnavailable(true)}
+              onSkyClick={(ra, dec) => {
+                if (candidate.armed && frameOnSky && manifest) candidate.markAt(frameOnSky, manifest, ra, dec)
+                else if (stage === 'explore') setPick({ ra, dec })
+              }} />
+          </main>
+          <footer className="map-caption">
+            <div className="layer-caption"><span className="status-dot" aria-hidden="true" /><span>Sky context · {skyUnavailable ? 'WebGL2 unavailable' : skyCaption}</span></div>
+            {frameOnSky && frameLayers[frameIndex] && <span className="frame-caption">{frameLayers[frameIndex] === 'failed'
+              ? `SPHEREx frame ${frameIndex + 1}/${manifest!.frames.length} could not load on the sky`
+              : `SPHEREx frame on the sky · ${stampText(frameOnSky, frameLetter)} · D${frameOnSky.detector} · ${frameIndex + 1}/${manifest!.frames.length}`}</span>}
+            <span className="map-hint">Drag to explore · scroll to zoom · map tools at left</span>
+          </footer>
+        </SkyFrame>
+        {stage === 'explore' && (pick || job) && <div className="explore-actions">
+          {pick && <div className="pick-card" role="group" aria-label="Selected position">
+            <span>RA {pick.ra.toFixed(5)}° · Dec {pick.dec.toFixed(5)}°</span>
+            <button type="button" className="primary" onClick={() => show({ ...draft, ra: pick.ra.toFixed(6), dec: pick.dec.toFixed(6) })}>Compare here</button>
+            <button type="button" aria-label="Clear the selected position" onClick={() => setPick(null)}>✕</button>
           </div>}
-        </aside>
+          {job && <button type="button" onClick={() => setStage('investigate')}>Back to {targetLabel} <span aria-hidden="true">→</span></button>}
+        </div>}
       </div>
 
-      <main id="sky-map" className="sky-stage" tabIndex={0} aria-label="Interactive sky map. Arrow keys pan; plus and minus zoom." onKeyDown={(event) => {
-        if (event.target !== event.currentTarget || !sky) return
-        const map = sky
-        const [ra, dec] = map.getRaDec()
-        const [fov] = map.getFov()
-        const step = fov / 10
-        // The same step on the sky east or west: RA degrees shrink with cos(Dec) towards the pole.
-        const raStep = step / Math.max(Math.cos((dec * Math.PI) / 180), 0.01)
-        if (event.key === 'ArrowLeft') map.gotoRaDec((((ra + raStep) % 360) + 360) % 360, dec)
-        else if (event.key === 'ArrowRight') map.gotoRaDec((((ra - raStep) % 360) + 360) % 360, dec)
-        else if (event.key === 'ArrowUp') map.gotoRaDec(ra, Math.min(90, dec + step))
-        else if (event.key === 'ArrowDown') map.gotoRaDec(ra, Math.max(-90, dec - step))
-        else if (event.key === '+' || event.key === '=') map.setFoV(Math.max(0.001, fov * 0.8))
-        else if (event.key === '-') map.setFoV(Math.min(180, fov * 1.25))
-        else return
-        event.preventDefault()
-      }} onClickCapture={(event) => {
-        // Native Aladin menus get the workspace when opened, with no app sheet obscuring them.
-        if (event.target instanceof Element && event.target.closest('.aladin-widgets-toolbar, .aladin-projection-control, .aladin-fullScreen-control, .aladin-cooFrame, .aladin-location')) setPanel(null)
-      }}>
-        <SkyView ra={center.ra} dec={center.dec} fov={query.fov} detector={query.band} revision={viewRevision}
-          onReady={(instance) => { setSky(instance); setSkyUnavailable(false) }}
-          onLayerChange={setSkyLayer} onUnavailable={() => setSkyUnavailable(true)}
-          onSkyClick={(ra, dec) => { if (frameOnSky && manifest) candidate.markAt(frameOnSky, manifest, ra, dec) }} />
-      </main>
+      {summary && <BottomBar hidden={stage !== 'investigate'} head={<strong>Observation timeline</strong>}>
+        <ObservationTimeline observations={summary.observations} frames={manifest?.frames} currentIndex={showDifference ? undefined : frameIndex} detector={manifest?.detector ?? query.band} />
+      </BottomBar>}
 
-      <footer className="map-caption">
-        <div className="layer-caption"><span className="status-dot" aria-hidden="true" /><span>Sky context · {skyUnavailable ? 'WebGL2 unavailable' : skyCaption}</span></div>
-        {frameOnSky && frameLayers[frameIndex] && <span className="frame-caption">{frameLayers[frameIndex] === 'failed'
-          ? `SPHEREx frame ${frameIndex + 1}/${manifest!.frames.length} could not load on the sky`
-          : `SPHEREx frame on the sky · ${stampText(frameOnSky, frameLetter)} · D${frameOnSky.detector} · ${frameIndex + 1}/${manifest!.frames.length}`}</span>}
-        <span className="map-hint">Drag to explore · scroll to zoom · map tools at left</span>
-      </footer>
+      <FloatingPanel hidden={!current} title={current?.title ?? ''} headingRef={panelHeading} onClose={closePanel}
+        actions={panel === 'target' && <>
+          <button type="submit" form="region-form" className="primary" disabled={busy}>Compare this position <span aria-hidden="true">→</span></button>
+          <button type="button" onClick={useMapCenter} disabled={busy || skyUnavailable || !sky}>Use map center & compare</button>
+        </>}>
+        <section id="target-panel" hidden={panel !== 'target'}>
+          <TargetForm value={draft} busy={busy} onShow={show} onFind={find} onChange={setDraft} />
+          {!job && emptyState}
+        </section>
+        <section id="candidate-panel" hidden={panel !== 'candidate'}>
+          {manifest && hasFrames ? <CandidatePanel candidate={candidate} blocked={markBlocked} track={possible && { ...possible, predictions }}
+            known={{ epochs: smallBodies.epochs, motion, detector: manifest.detector, target: targetLabel }}
+            visits={summary && { observations: summary.observations, inBlink: [...manifest.frames.map((f) => f.obs_id),
+              ...manifest.differences.flatMap((d) => [...d.obs_ids_a, ...d.obs_ids_b])] }}>
+            {possible && predictions.length > 0 && <TrackCheck checks={checkFrames({ ...possible, predictions }, manifest.frames, candidate.marks, manifest)}
+              onShow={(index, p) => { setSeek({ index }); sky?.gotoRaDec(p.ra, p.dec) }} />}
+          </CandidatePanel> : loadFirst}
+          {!skyUnavailable && frame && !showDifference && <details className="disclosure">
+            <summary>Detected sources{sourceSummary}</summary>
+            <SourceList frame={frame} onSelect={(ra, dec) => sky?.gotoRaDec(ra, dec)} onMark={(source) => candidate.markSource(frame, source)} />
+          </details>}
+          {manifest && hasFrames && (manifest.stacked
+            ? <p className="muted">Known asteroids and comets (JPL SBIdent) are looked up for single exposures: switch the view to Exposures.</p>
+            : <SmallBodies lookup={smallBodies} currentMjd={frame?.mjd ?? null} />)}
+        </section>
+        <section id="evidence-panel" hidden={panel !== 'evidence'}>
+          {manifest ? <EvidencePanel checks={checks} /> : loadFirst}
+          {manifest && frame && !showDifference && <WavelengthStrip detector={manifest.detector} frame={frame} />}
+          {scienceNote}
+        </section>
+        <section id="spectrum-panel" hidden={panel !== 'spectrum'} className="spectrum-section">
+          {manifest ? <SpectrumChart key={`${manifest.ra},${manifest.dec}`} ra={`${manifest.ra}`} dec={`${manifest.dec}`}
+            centerUm={(frame ?? manifest.frames[0])?.wavelength_um} detector={manifest.detector} /> : loadFirst}
+        </section>
+        <section id="data-panel" hidden={panel !== 'data'}>
+          {manifest && hasFrames && <details className="disclosure" open><summary>Data & cross-check links</summary>
+            <DataLinks manifest={manifest} frame={showDifference ? null : frame} /></details>}
+          <DataPanel query={query} targetLabel={targetLabel} summary={summary} manifest={manifest} checks={checks}
+            open={panel === 'data'} onAbout={() => setPanel('about')} />
+        </section>
+        <section id="layers-panel" hidden={panel !== 'layers'}>
+          {skyUnavailable ? <p className="muted">Sky layers need WebGL2.</p> : <LayersSection aladin={sky} sizeDeg={query.fov} frame={frame}
+            framesOnSky={framesOnSky} onFramesOnSkyChange={setFramesOnSky} sourcesOnSky={sourcesOnSky} onSourcesOnSkyChange={setSourcesOnSky}
+            trackShown={track.length > 0} possibleTrackShown={predictions.length > 0} skySlice={skySlice} onSkySliceChange={setSkySlice} cubeActive={cubeActive}
+            smallBodyEpochs={smallBodies.epochs} smallBodiesOnSky={smallBodiesOnSky} onSmallBodiesOnSkyChange={setSmallBodiesOnSky}
+            plateAvailable={!!motion} plateOnSky={plateOnSky} onPlateOnSkyChange={setPlateOnSky} plate={plate}
+            framesBlocked={showDifference ? 'The difference image is shown in the viewer. Frames and their detected sources go back on the sky in the other modes.' : undefined} />}
+        </section>
+        <section id="about-panel" hidden={panel !== 'about'}>
+          <AboutPanel />
+        </section>
+      </FloatingPanel>
+
+      <Dock items={dockItems} open={panel} onToggle={togglePanel} />
       {shareStatus && <div className="share-feedback" role="status"><span>{shareStatus}</span><button type="button" aria-label="Dismiss share message" onClick={() => setShareStatus('')}>×</button></div>}
-      <AboutPanel open={about} onClose={() => setAbout(false)} />
     </div>
   )
 }

@@ -1,5 +1,4 @@
 :root {
-  --bar-base-height:76px; --bar-height:var(--bar-base-height); --z-map:0; --z-chrome:10; --z-sheet:20; --z-feedback:30;
   color-scheme:dark; font-family:var(--font-sans); font-size:var(--text-md); line-height:1.5;
 }
 * { box-sizing:border-box; }
@@ -21,42 +20,14 @@ button.primary:hover:not(:disabled) { background:var(--accent-hover); border-col
 input,select { width:100%; min-width:0; min-height:42px; padding:.55rem .65rem; background:var(--surface-2); border:1px solid var(--border-strong); border-radius:4px; }
 input::placeholder { color:var(--text-muted); opacity:1; }
 input[type='range'] { accent-color:var(--accent); }
-.muted,.caveat,.science-note,.section-intro { color:var(--muted); }
+.muted,.caveat,.science-note { color:var(--muted); }
 .sr-only { position:absolute; width:1px; height:1px; padding:0; margin:-1px; overflow:hidden; clip-path:inset(50%); white-space:nowrap; border:0; }
 .skip-link { position:fixed; top:-100px; left:8px; z-index:100; background:var(--surface); padding:12px; }
 .skip-link:focus { top:8px; }
 
-/* Aladin fills the viewport. App chrome and native map controls have reserved safe zones. */
-.workspace { height:100vh; height:100dvh; min-height:0; isolation:isolate; }
-.sky-stage { position:fixed; inset:0; z-index:var(--z-map); }
-.sky-view { width:100%; height:100%; overflow:hidden; }
-.app-bar { position:relative; z-index:var(--z-chrome); min-height:var(--bar-base-height); display:grid; grid-template-columns:auto minmax(180px,340px) auto auto; align-items:center; gap:clamp(12px,2vw,32px); padding:12px max(16px,env(safe-area-inset-right)) 12px max(16px,env(safe-area-inset-left)); background:var(--surface-1); border-bottom:1px solid var(--border); }
-.brand { display:flex; align-items:center; gap:10px; white-space:nowrap; }
-.brand-mark { width:32px; height:32px; display:grid; place-items:center; border:1px solid var(--accent); color:var(--accent); font-size:25px; font-weight:300; }
-.brand h1 { font-size:16px; font-weight:650; letter-spacing:-.025em; }
-.brand div > span { font-size:12px; color:var(--muted); }
-.global-search { display:flex; gap:6px; min-width:0; }
-.global-search input { flex:1; width:0; }
-.global-search button { background:transparent; }
-.workspace-nav,.utility-actions { display:flex; align-items:center; gap:4px; }
-.workspace-nav { justify-content:center; }
-.workspace-nav button,.utility-actions button { background:transparent; border-color:transparent; }
-.workspace-nav button.selected { color:var(--accent); background:var(--accent-subtle); border-color:var(--accent); }
-.utility-actions { justify-content:flex-end; }
-.count { font-size:11px; padding:1px 5px; background:var(--accent); color:var(--text-on-accent); border-radius:3px; }
-.sky-view .aladin-location,.sky-view .aladin-cooFrame,.sky-view .aladin-projection-control,.sky-view .aladin-fullScreen-control { top:calc(var(--bar-height) + 8px) !important; }
-.sky-view .aladin-widgets-toolbar { top:calc(var(--bar-height) + 52px) !important; }
-.sky-view .aladin-box:not(.aladin-status-bar) { max-width:calc(100% - 16px); max-height:calc(100% - var(--bar-height) - 64px); }
-.sky-stage > .notice { position:absolute; top:calc(var(--bar-height) + 8px); left:16px; }
 
 /* One contextual container at a time; closed panels preserve comparison state. */
-.sheet-position { position:fixed; z-index:var(--z-sheet); inset:calc(var(--bar-height) + 64px) 64px 88px auto; width:min(400px,calc(100% - 128px)); display:grid; grid-template-rows:minmax(0,1fr); align-items:start; pointer-events:none; }
-.workspace-sheet { display:flex; flex-direction:column; min-width:0; min-height:0; max-height:100%; background:var(--surface); border:1px solid var(--border-strong); border-radius:7px; box-shadow:0 6px 24px var(--shadow-color); pointer-events:auto; }
-.sheet-header { flex:none; display:flex; align-items:center; justify-content:space-between; gap:12px; padding:18px 20px; border-bottom:1px solid var(--border); }
 .eyebrow { margin:0 0 4px; color:var(--muted); font-size:11px; text-transform:uppercase; letter-spacing:.12em; font-weight:600; }
-.close-button { flex:none; font-size:24px; width:40px; padding:0; background:transparent; border-color:transparent; }
-.sheet-content { min-height:0; padding:20px; overflow-y:auto; overscroll-behavior-y:contain; scrollbar-width:thin; }
-.section-intro { margin-bottom:22px; font-size:13px; }
 .target-form { display:flex; flex-direction:column; gap:20px; }
 fieldset { margin:0; padding:0; border:0; min-width:0; }
 legend { padding:0; margin-bottom:10px; font-weight:600; }
@@ -73,7 +44,6 @@ legend { padding:0; margin-bottom:10px; font-weight:600; }
 .target-form > .primary { justify-content:space-between; min-height:44px; }
 .target-summary { display:flex; justify-content:space-between; gap:12px; flex-wrap:wrap; padding-bottom:16px; border-bottom:1px solid var(--border); }
 .target-summary span { color:var(--muted); font-size:12px; }
-.comparison-content { display:flex; flex-direction:column; gap:18px; }
 .comparison-status { display:flex; align-items:center; gap:8px; font-size:12px; color:var(--muted); }
 .status-dot { display:inline-block; width:6px; height:6px; flex:none; border-radius:50%; background:var(--accent); }
 .status-dot.busy { background:var(--warning); }
@@ -97,11 +67,8 @@ summary { cursor:pointer; min-height:32px; padding:5px 0; font-size:13px; }
 .info ul { padding-left:18px; }
 .info h2 { font-size:14px; margin-bottom:8px; }
 .data-section .evidence { margin-top:16px; }
-.map-caption { position:fixed; z-index:var(--z-chrome); bottom:max(36px,env(safe-area-inset-bottom)); left:16px; max-width:calc(100% - 160px); padding:8px 12px; background:var(--surface-glass); border:1px solid var(--border); border-radius:4px; display:flex; gap:24px; align-items:center; pointer-events:none; font-size:12px; }
 .layer-caption { display:flex; align-items:center; gap:8px; min-width:0; }
 .map-hint { color:var(--muted); }
-.share-feedback { position:fixed; z-index:var(--z-feedback); top:calc(var(--bar-height) + 8px); left:50%; transform:translateX(-50%); width:min(440px,calc(100% - 32px)); background:var(--surface-raised); border:1px solid var(--accent); padding:10px; display:flex; align-items:center; justify-content:space-between; gap:8px; box-shadow:0 6px 24px var(--shadow-color); }
-.share-feedback button { flex:none; }
 
 /* Shared comparison controls and provenance. */
 .mode-switch { display:flex; flex-direction:column; align-items:flex-start; gap:8px; font-size:12px; }
@@ -142,9 +109,7 @@ summary { cursor:pointer; min-height:32px; padding:5px 0; font-size:13px; }
 .badge { position:absolute; right:6px; top:6px; padding:3px 6px; background:var(--img-label-bg); color:var(--text); font-size:12px; border-radius:3px; }
 .badge.warning { color:var(--warning); }
 .badge.error,.badge.blocker { color:var(--danger); }
-.about { width:min(640px,calc(100% - 24px)); max-height:calc(100dvh - 24px); padding:0; border:1px solid var(--border); border-radius:6px; background:var(--surface); color:var(--text); }
-.about::backdrop { background:var(--scrim); }
-.about-body { padding:24px; font-size:13px; }
+.about-body { font-size:13px; }
 .about-head { display:flex; align-items:center; justify-content:space-between; gap:16px; }
 .about h2 { font-size:18px; }
 .about h3 { margin:24px 0 8px; }
@@ -152,128 +117,23 @@ summary { cursor:pointer; min-height:32px; padding:5px 0; font-size:13px; }
 .credits { margin:0; padding-left:18px; display:flex; flex-direction:column; gap:16px; }
 .embed-workspace { width:min(720px,100%); padding:16px; display:flex; flex-direction:column; gap:18px; margin:auto; }
 
-@media (max-width:1100px) {
-  :root { --bar-base-height:116px; }
-  .app-bar { grid-template-columns:minmax(0,1fr) auto; gap:8px 16px; padding-block:10px; }
-  .brand { grid-column:1; grid-row:1; }
-  .utility-actions { grid-column:2; grid-row:1; }
-  .global-search { grid-column:1; grid-row:2; }
-  .workspace-nav { grid-column:2; grid-row:2; }
-  .map-hint { display:none; }
-}
 @media (max-width:599px) {
-  :root { --bar-base-height:160px; }
-  .app-bar { grid-template-columns:minmax(0,1fr) auto; gap:8px; padding:10px 12px; }
-  .brand { gap:8px; }
-  .brand-mark { width:26px; height:26px; font-size:20px; }
-  .brand h1 { font-size:14px; }
-  .brand div > span { display:none; }
-  .utility-actions { gap:0; }
-  .utility-actions button { font-size:12px; padding-inline:6px; }
-  .global-search { grid-column:1 / -1; grid-row:2; }
-  .global-search input { font-size:16px; }
-  .workspace-nav { grid-column:1 / -1; grid-row:3; justify-content:stretch; }
-  .workspace-nav button { flex:1; min-height:36px; padding-block:6px; }
-  .sheet-position { top:calc(var(--bar-height) + 56px); left:48px; right:48px; bottom:max(84px,calc(env(safe-area-inset-bottom) + 64px)); width:auto; align-items:end; }
-  .sheet-header { padding:12px; gap:6px; }
-  .sheet-header h2 { font-size:15px; }
-  .sheet-header .eyebrow { font-size:10px; }
-  .sheet-content { padding:12px; }
   .target-presets,.form-row { grid-template-columns:minmax(0,1fr); }
   .coordinate-group .field-hint { position:static; }
   .target-summary { gap:4px; }
   .meta { grid-template-columns:minmax(0,1fr); gap:3px; }
   .meta dd { margin-bottom:8px; }
-  .map-caption { left:8px; max-width:calc(100% - 80px); padding:6px 8px; bottom:max(36px,env(safe-area-inset-bottom)); font-size:11px; }
-  .about-body { padding:16px; }
-}
-@media (max-height:550px) and (min-width:600px) {
-  .sheet-position { top:calc(var(--bar-height) + 48px); bottom:72px; }
-  .sheet-header { padding:10px 16px; }
-  .sheet-content { padding:12px 16px; }
 }
 @media (prefers-reduced-motion:reduce) {
   *,*::before,*::after { scroll-behavior:auto !important; animation:none !important; transition:none !important; }
 }
-.sheet-actions { flex:none; display:grid; gap:8px; padding:12px 20px; border-top:1px solid var(--border); }
-.sheet-actions .primary { justify-content:space-between; }
-.sheet-actions > button:last-child { background:transparent; }
 .coordinate-disclosure { border-block:1px solid var(--border); padding-block:6px; }
 .coordinate-disclosure .coordinate-group { margin-top:12px; padding-bottom:8px; }
 .sky-view button,.sky-view input,.sky-view select { min-height:0; max-width:none; }
-@media (max-width:599px) { .sheet-actions { padding:10px 12px; } }
-/* Short windows and high zoom reflow into a document instead of clipping controls. */
-@media (max-height:460px) {
-  .workspace { height:auto; min-height:480px; }
-  .sky-stage { position:absolute; height:max(100dvh,480px); }
-  .sheet-position { position:relative; inset:auto; width:auto; margin:72px 48px 24px; display:block; }
-  .workspace-sheet { max-height:none; }
-  .sheet-content { overflow:visible; }
-  .map-caption { position:relative; bottom:auto; left:auto; margin:0 80px 36px 8px; width:fit-content; max-width:calc(100% - 88px); }
-}
-.comparison-content .viewport { width:min(100%,30dvh); align-self:center; }
-.comparison-content .player .controls { order:-1; }
-@media (max-width:599px) { .comparison-content .viewport { width:min(100%,24dvh); } }
 .image-error { position:absolute; inset:0; z-index:2; display:flex; flex-direction:column; justify-content:center; align-items:center; gap:12px; background:var(--bg); padding:12px; font-size:12px; text-align:center; }
 
-.app-bar { padding-top:calc(12px + env(safe-area-inset-top)); }
-@media (max-width:1100px) { .app-bar { padding-top:calc(10px + env(safe-area-inset-top)); } }
-
-/* Dock tools to one left sidebar; Aladin continues to fill the whole viewport. */
-.workspace { --sidebar-width:360px; --map-tools-offset:0px; }
-.workspace.sidebar-open { --map-tools-offset:var(--sidebar-width); }
-.sheet-position {
-  inset:var(--bar-height) auto 0 0;
-  width:var(--sidebar-width);
-  display:flex;
-  align-items:stretch;
-}
-.workspace-sheet {
-  flex:1;
-  height:100%;
-  border:0;
-  border-right:1px solid var(--border);
-  border-radius:0;
-  box-shadow:4px 0 16px var(--shadow-color);
-}
-.sheet-content { flex:1; }
-.sheet-actions { padding-bottom:max(16px,env(safe-area-inset-bottom)); }
-.sky-view .aladin-cooFrame { left:calc(var(--map-tools-offset) + 4px) !important; }
-.sky-view .aladin-location { left:calc(var(--map-tools-offset) + 72px) !important; }
-.sky-view .aladin-widgets-toolbar { left:calc(var(--map-tools-offset) + 4px) !important; }
-.sky-view .aladin-fov { left:calc(var(--map-tools-offset) + 4px) !important; }
 /* Aladin's own controls hide the focus ring; keyboard users need it on the map too. */
 .sky-view :focus-visible { outline:2px solid var(--focus-ring) !important; outline-offset:2px; }
-.map-caption {
-  left:calc(var(--map-tools-offset) + 16px);
-  max-width:calc(100% - var(--map-tools-offset) - 160px);
-}
-@media (min-width:600px) and (max-width:1100px) {
-  .workspace { --sidebar-width:320px; }
-}
-@media (max-width:1023px) {
-  .workspace.sidebar-open { --map-tools-offset:0px; }
-  .workspace.sidebar-open .map-caption { display:none; }
-}
-@media (max-width:599px) {
-  .workspace { --sidebar-width:min(360px,calc(100% - 48px)); }
-  .workspace.sidebar-open { --map-tools-offset:0px; }
-  .sheet-position { inset:var(--bar-height) auto 0 0; width:var(--sidebar-width); align-items:stretch; }
-  .map-caption { left:8px; max-width:calc(100% - 80px); }
-}
-@media (max-height:460px) {
-  .workspace.sidebar-open { --map-tools-offset:0px; }
-  .sheet-position {
-    position:relative;
-    inset:auto;
-    width:min(var(--sidebar-width),calc(100% - 48px));
-    margin:0 0 32px;
-  }
-  .workspace-sheet { height:auto; min-height:calc(100dvh - var(--bar-height)); }
-  .sheet-content { flex:none; }
-  .workspace.sidebar-open .map-caption { display:none; }
-  .map-caption { left:auto; max-width:calc(100% - 88px); }
-}
 
 /* Frames on the sky, catalogue layers, Gaia marker and spectrum inside the sidebar workspace. */
 .marker { position:absolute; width:4%; aspect-ratio:1; transform:translate(-50%,-50%); border:2px solid var(--warning); border-radius:50%; pointer-events:none; }
@@ -289,11 +149,7 @@ summary { cursor:pointer; min-height:32px; padding:5px 0; font-size:13px; }
 .spectrum-section svg { display:block; }
 .spectrum-section .progress { color:var(--muted); font-size:13px; }
 .spectrum-section button { width:100%; }
-.map-caption { flex-wrap:wrap; row-gap:4px; }
 .frame-caption { color:var(--text); font-variant-numeric:tabular-nums; }
-/* Aladin's source table opens at the bottom left of the map: next to the sidebar, and the caption steps aside. */
-.sky-view .aladin-table { left:calc(var(--map-tools-offset) + 4px) !important; max-width:calc(100% - var(--map-tools-offset) - 8px) !important; }
-.workspace:has(.aladin-table) .map-caption { display:none; }
 
 /* Detected sources (NAS-52): marker colours --src-* in tokens.css, always paired with shape and word. */
 

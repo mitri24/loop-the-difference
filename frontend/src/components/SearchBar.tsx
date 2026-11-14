@@ -1,0 +1,54 @@
+import { CHALLENGE_TARGETS } from '../targets'
+import type { TargetQuery } from '../url'
+import { openTarget } from './TargetForm'
+
+// "RA, Dec" (or two numbers or sexagesimal parts split by space) goes to the backend as coordinates;
+// anything with other letters is a name. The backend parses the coordinates (coords.py).
+export function splitCoordinates(text: string): Pick<TargetQuery, 'ra' | 'dec'> | null {
+  const value = text.trim()
+  if (!value || /[a-ce-gi-ln-rt-z]/i.test(value)) return null
+  const parts = value.includes(',') ? value.split(',') : value.split(/\s+/)
+  if (parts.length !== 2 || parts.some((part) => !/\d/.test(part))) return null
+  return { ra: parts[0].trim(), dec: parts[1].trim() }
+}
+
+interface Props {
+  value: string
+  onChange: (value: string) => void
+  draft: TargetQuery
+  busy: boolean
+  onShow: (query: TargetQuery) => void
+  onFind: (name: string, base: TargetQuery) => void
+  onShare: () => void
+}
+
+// Top of the workspace: one input for a name or "RA, Dec", the example targets, Surprise me and Share.
+export function SearchBar({ value, onChange, draft, busy, onShow, onFind, onShare }: Props) {
+  const submit = () => {
+    const position = splitCoordinates(value)
+    if (position) onShow({ ...draft, ...position })
+    else if (value.trim()) onFind(value.trim(), draft)
+  }
+  return (
+    <header className="hud" id="workspace-tools">
+      <div className="hud-row">
+        <span className="brand" title="Loop the Difference · SPHEREx observation workspace"><span className="brand-mark" aria-hidden="true">＋</span><span className="brand-name">Loop the Difference</span></span>
+        <form className="global-search" role="search" onSubmit={(event) => { event.preventDefault(); submit() }}>
+          <label className="sr-only" htmlFor="sky-search">Target name or RA, Dec</label>
+          <input id="sky-search" data-testid="sky-search" placeholder="Name or RA, Dec – e.g. Barnard's Star or 269.45, 4.69"
+            value={value} onChange={(event) => onChange(event.target.value)} autoComplete="off" />
+          <button type="submit" className="primary" disabled={busy || !value.trim()}>Compare</button>
+        </form>
+        <button type="button" className="share-button" onClick={onShare} title="Copy this comparison link">Share</button>
+      </div>
+      <div className="hud-chips" role="group" aria-label="Examples">
+        {CHALLENGE_TARGETS.map((target) => (
+          <button type="button" key={target.label} className="chip" disabled={busy} title={target.hint ?? target.label}
+            onClick={() => openTarget(target, draft, { onShow, onFind })}>{target.label.split(' · ')[0]}</button>
+        ))}
+        <button type="button" className="chip" disabled={busy} title="Open a random example target"
+          onClick={() => openTarget(CHALLENGE_TARGETS[Math.floor(Math.random() * CHALLENGE_TARGETS.length)], draft, { onShow, onFind })}>Surprise me</button>
+      </div>
+    </header>
+  )
+}
