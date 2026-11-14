@@ -43,7 +43,7 @@ def _star(source_mjy_sr: float, sky: float = 3.0) -> np.ndarray:
 def test_known_source_flux_is_recovered_above_the_sky(tmp_path):
     path = _cutout(tmp_path, _star(90.0), np.full((SIZE, SIZE), 0.04))
 
-    flux, error = forced_photometry(path, RA, DEC, radius_px=2.5)
+    flux, error, _ = forced_photometry(path, RA, DEC, radius_px=2.5)
 
     assert flux == pytest.approx(90.0 * UJY_PER_MJY_SR, rel=1e-4)
     # Flat sky: the VARIANCE summed over the aperture, at most its area π·2.5² pixels.
@@ -60,7 +60,7 @@ def test_aperture_area_does_not_jump_with_the_sub_pixel_position(tmp_path, offse
     path = _cutout(tmp_path, image, np.full((SIZE, SIZE), 0.04))
 
     ra = RA - offset_px * SCALE_DEG / np.cos(np.radians(DEC))
-    flux, _ = forced_photometry(path, ra, DEC)
+    flux, _, _ = forced_photometry(path, ra, DEC)
 
     assert flux / UJY_PER_MJY_SR == pytest.approx(np.pi * 2.0**2, rel=0.02)
 
@@ -83,7 +83,7 @@ def test_noisy_sky_error_matches_the_scatter_of_measurements(tmp_path):
     fluxes, errors = [], []
     for run in range(200):
         image = _star(90.0) + rng.normal(0, sigma, (SIZE, SIZE))
-        flux, error = forced_photometry(
+        flux, error, _ = forced_photometry(
             _cutout(tmp_path / str(run), image, np.full((SIZE, SIZE), sigma**2)), RA, DEC
         )
         fluxes.append(flux)
@@ -101,16 +101,19 @@ def test_masked_or_clipped_aperture_gives_no_flux(tmp_path, ra_offset_px):
     path = _cutout(tmp_path, image, np.full((SIZE, SIZE), 0.04))
 
     ra = RA - ra_offset_px * SCALE_DEG / np.cos(np.radians(DEC))
-    assert forced_photometry(path, ra, DEC) == (None, None)
+    assert forced_photometry(path, ra, DEC) == (None, None, False)
 
 
-@pytest.mark.parametrize(("bit", "measured"), [(1, True), (2, False)])
-def test_unusable_flag_in_the_aperture_gives_no_flux(tmp_path, bit, measured):
+@pytest.mark.parametrize(("bit", "flagged"), [(1, False), (2, True)])
+def test_unusable_flag_in_the_aperture_keeps_the_flux_and_marks_it(tmp_path, bit, flagged):
     flags = np.zeros((SIZE, SIZE))
     flags[SIZE // 2, SIZE // 2] = bit
     path = _cutout(tmp_path, _star(90.0), np.full((SIZE, SIZE), 0.04), flags)
 
-    assert (forced_photometry(path, RA, DEC)[0] is not None) is measured
+    flux, _, marked = forced_photometry(path, RA, DEC)
+
+    assert flux == pytest.approx(90.0 * UJY_PER_MJY_SR, rel=0.02)
+    assert marked is flagged
 
 
 def test_flagged_pixel_in_the_sky_ring_does_not_change_the_flux(tmp_path):
@@ -126,4 +129,4 @@ def test_flagged_pixel_in_the_sky_ring_does_not_change_the_flux(tmp_path):
 def test_negative_variance_gives_no_flux(tmp_path):
     path = _cutout(tmp_path, _star(90.0), np.full((SIZE, SIZE), -1e6))
 
-    assert forced_photometry(path, RA, DEC) == (None, None)
+    assert forced_photometry(path, RA, DEC) == (None, None, False)

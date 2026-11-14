@@ -131,6 +131,7 @@ export interface SpectrumPoint {
   bandwidth_um: number
   flux_ujy: number
   flux_err_ujy: number
+  flagged?: boolean
   source_url: string
 }
 

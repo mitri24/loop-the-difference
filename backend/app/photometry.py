@@ -22,10 +22,12 @@ def forced_photometry(
     dec: float,
     radius_px: float = APERTURE_RADIUS_PX,
     annulus_px: tuple[float, float] = ANNULUS_PX,
-) -> tuple[float, float] | tuple[None, None]:
-    """Background-subtracted aperture flux (µJy) and its 1σ error at the target, quick-look only.
+) -> tuple[float, float, bool] | tuple[None, None, bool]:
+    """Background-subtracted aperture flux (µJy), its 1σ error and a flag, quick-look only.
 
     No aperture correction: the flux is the PSF core, comparable between visits, not a total flux.
+    The flag says that the aperture holds pixels the archive marks unusable (e.g. saturation):
+    the flux is still measured, so nothing is hidden, but it must be shown as unreliable.
     """
     with warnings.catch_warnings():
         warnings.simplefilter("ignore", FITSFixedWarning)
@@ -41,17 +43,17 @@ def forced_photometry(
     x, y = wcs.world_to_pixel_values(ra, dec)
     yy, xx = np.indices(image.shape)
     distance = np.hypot(xx - x, yy - y)
-    valid = np.isfinite(image) & np.isfinite(variance) & ~unusable
+    finite = np.isfinite(image) & np.isfinite(variance)
     weight = _aperture_weights(xx - x, yy - y, radius_px)
     aperture = weight > 0
-    sky = valid & (distance >= annulus_px[0]) & (distance <= annulus_px[1])
+    sky = finite & ~unusable & (distance >= annulus_px[0]) & (distance <= annulus_px[1])
     height, width = image.shape
     inside = radius_px - 0.5 <= x <= width - 0.5 - radius_px and (
         radius_px - 0.5 <= y <= height - 0.5 - radius_px
     )
-    # A clipped, masked or flagged aperture biases the flux: no number is better than a wrong one.
-    if not inside or not valid[aperture].all() or sky.sum() < 2:
-        return None, None
+    # A clipped or masked aperture biases the flux low: no number is better than a wrong one.
+    if not inside or not finite[aperture].all() or sky.sum() < 2:
+        return None, None, False
 
     background = np.median(image[sky])
     w = weight[aperture]
@@ -60,10 +62,10 @@ def forced_photometry(
     sky_error = np.sqrt(np.pi / 2) * np.std(image[sky], ddof=1) / np.sqrt(sky.sum())
     error_squared = np.sum(w**2 * variance[aperture]) + (w.sum() * sky_error) ** 2
     if not error_squared >= 0:
-        return None, None
+        return None, None, False
     error = np.sqrt(error_squared)
     to_ujy = proj_plane_pixel_area(wcs) * _MJY_SR_TO_UJY_PER_DEG2
-    return float(flux * to_ujy), float(error * to_ujy)
+    return float(flux * to_ujy), float(error * to_ujy), bool(unusable[aperture].any())
 
 
 def _aperture_weights(dx: np.ndarray, dy: np.ndarray, radius_px: float) -> np.ndarray:

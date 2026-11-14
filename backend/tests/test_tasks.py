@@ -179,7 +179,7 @@ def test_spectrum_has_one_point_per_visit_of_every_detector(monkeypatch, setting
     observations = [_observation(100), _observation(101), _observation(290)]
     observations[1] = observations[1].model_copy(update={"detector": 2})
     _offline_archive(monkeypatch, settings, tmp_path, observations)
-    fluxes = {"100": (50.0, 2.0), "101": (None, None), "290": (40.0, 3.0)}
+    fluxes = {"100": (50.0, 2.0, False), "101": (None, None, False), "290": (40.0, 3.0, True)}
     monkeypatch.setattr(tasks, "forced_photometry", lambda path, ra, dec: fluxes[path.stem])
 
     spectrum = build_spectrum(RA, DEC)
@@ -190,8 +190,10 @@ def test_spectrum_has_one_point_per_visit_of_every_detector(monkeypatch, setting
         ("obs-290", 1, 4.79),
     ]
     assert (points[0]["flux_ujy"], points[0]["flux_err_ujy"]) == (50.0, 2.0)
+    assert [p["flagged"] for p in points] == [False, True]
     assert "size=0.0426" in points[0]["source_url"]
     assert [c["code"] for c in spectrum["checks"]] == [
         "QUICK_LOOK_SPECTRUM",
+        "SPECTRUM_POINTS_FLAGGED",
         "SPECTRUM_POINTS_SKIPPED",
     ]
