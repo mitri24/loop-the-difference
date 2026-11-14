@@ -8,7 +8,7 @@ from fastapi.responses import FileResponse, JSONResponse
 from redis.exceptions import RedisError
 
 from app import jobs, names
-from app.archive import ArchiveError, search_observations, summarize
+from app.archive import ArchiveError, resolve_position, search_observations, summarize
 from app.config import Settings, get_settings
 from app.coords import CoordinateError, parse_dec, parse_ra
 from app.models import FrameJob, FrameRequest, ObservationSummary, ResolvedTarget
@@ -58,9 +58,11 @@ def health(settings: SettingsDep) -> dict[str, str]:
 
 
 @app.get("/api/resolve")
-def resolve(name: str = Query(min_length=1, max_length=100)) -> ResolvedTarget:
+def resolve(
+    settings: SettingsDep, name: str = Query(min_length=1, max_length=100)
+) -> ResolvedTarget:
     try:
-        ra, dec = names.resolve(name)
+        ra, dec = resolve_position(name, settings)
     except NameResolveError:
         raise HTTPException(status_code=404, detail=f"Unknown target: {name}") from None
     except names.NameLookupTimeout:

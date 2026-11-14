@@ -1,6 +1,17 @@
 from pathlib import Path
 
-from app.archive import group_epochs, parse_sia_votable, select_frames, summarize
+import pytest
+
+from app.archive import (
+    group_epochs,
+    parse_sia_votable,
+    resolve_cache_path,
+    resolve_position,
+    search_observations,
+    select_frames,
+    sia_cache_path,
+    summarize,
+)
 from app.models import Observation
 
 # Real IRSA SIA2 answer for WISE 0855 (spherex_dr1), trimmed to six rows.
@@ -53,3 +64,56 @@ def test_summary_counts_detectors_and_epochs():
     assert summary.count == 3
     assert summary.detectors == {1: 1, 6: 2}
     assert [epoch.count for epoch in summary.epochs] == [2, 1]
+
+
+def test_search_results_are_cached_on_disk(settings, monkeypatch):
+    calls = []
+
+    class Response:
+        content = FIXTURE.read_bytes()
+
+        def raise_for_status(self):
+            pass
+
+    def fake_get(url, params, timeout):
+        calls.append(params["POS"])
+        return Response()
+
+    monkeypatch.setattr("app.archive.httpx.get", fake_get)
+
+    first = search_observations(133.79513, -7.24515, settings)
+    monkeypatch.setattr("app.archive.httpx.get", lambda *a, **k: pytest.fail("network use"))
+    second = search_observations(133.79513, -7.24515, settings)
+
+    assert calls == ["CIRCLE 133.79513 -7.24515 0.0005"]
+    assert [o.obs_id for o in first] == [o.obs_id for o in second]
+    assert sia_cache_path(settings.cache_dir, "spherex_dr1", 133.79513, -7.24515).is_file()
+    assert not list((settings.cache_dir / "sia").glob("*.part"))
+
+
+def test_empty_search_answers_are_not_cached(settings, monkeypatch):
+    empty = FIXTURE.read_bytes().replace(b"science", b"calibration")
+
+    class Response:
+        content = empty
+
+        def raise_for_status(self):
+            pass
+
+    monkeypatch.setattr("app.archive.httpx.get", lambda *a, **k: Response())
+
+    assert search_observations(1.0, 2.0, settings) == []
+    assert not (settings.cache_dir / "sia").exists()
+
+
+def test_resolved_names_are_cached_on_disk(settings, monkeypatch):
+    monkeypatch.setattr(
+        "app.archive.names.resolve", lambda name: (269.4520769586187, 4.69336496657667)
+    )
+
+    first = resolve_position("Barnard's Star", settings)
+    monkeypatch.setattr("app.archive.names.resolve", lambda name: pytest.fail("network use"))
+    second = resolve_position("Barnard's Star", settings)
+
+    assert first == second == (269.4520769586187, 4.69336496657667)
+    assert resolve_cache_path(settings.cache_dir, "Barnard's Star").is_file()
