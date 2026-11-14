@@ -2,7 +2,7 @@ import { AnalysisReleaseInfo } from './analysis/AnalysisReleaseInfo'
 import { AnalysisHost } from './analysis/AnalysisHost'
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import type { AladinInstance } from 'aladin-lite'
-import { createFrames, getFrameJob, getObservations, resolveName } from './api'
+import { createFrames, getFrameJob, getObservations, getSurprise, resolveName } from './api'
 import { AboutPanel } from './components/AboutPanel'
 import { compatiblePair, stampText, type BlinkLetter, type BlinkPair } from './blink'
 import { blockedReason, CANDIDATE_CAVEAT, type CheckActionId } from './checkGuide'
@@ -308,6 +308,31 @@ export default function App() {
     if (target === searchShows.current) show({ ...base, ra: query.ra, dec: query.dec })
     else void run(base, target)
   }, [run, query, show])
+  // Surprise me: the API picks a random fast-moving Gaia DR3 star (an example target while Gaia is down). Why it was
+  // picked stays on screen while that position is shown, so it goes away when the user moves on.
+  const [surprise, setSurprise] = useState<{ ra: string, dec: string, reason: string } | null>(null)
+  const surpriseMe = useCallback(async () => {
+    controller.current?.abort()
+    const picking = new AbortController()
+    controller.current = picking
+    setBusy(true)
+    setError(null)
+    setJob(null)
+    setStage('investigate')
+    setStatus('Picking a fast-moving nearby star from Gaia DR3…')
+    try {
+      const star = await getSurprise(picking.signal)
+      if (picking.signal.aborted) return
+      const ra = star.ra.toFixed(6), dec = star.dec.toFixed(6)
+      setSurprise({ ra, dec, reason: star.reason })
+      void run({ ...draft, name: star.name, ra, dec }, undefined, star.proper_motion)
+    } catch (cause) {
+      if (picking.signal.aborted) return
+      setBusy(false)
+      setError(cause instanceof Error ? cause.message : String(cause))
+      setStatus('Could not pick a star.')
+    }
+  }, [run, draft])
 
   useEffect(() => {
     const timer = INITIAL ? window.setTimeout(() => void run(INITIAL), 0) : undefined
@@ -595,7 +620,7 @@ export default function App() {
     <div className="shell" data-testid="planet-x-shell" ref={shellRef}>
       <a className="skip-link" href="#sky-map">Skip to the sky map</a>
       <SearchBar tools={<HeaderTools items={PANELS} open={panel} onToggle={togglePanel}
-        actions={[{ id: 'share', label: 'Share', title: 'Copy this comparison link', onClick: () => void share() }]} />} onDraftChange={setDraft} value={name} onChange={(value) => { searchShows.current = null; setName(value) }} draft={draft} busy={busy} onShow={show} onFind={find} />
+        actions={[{ id: 'share', label: 'Share', title: 'Copy this comparison link', onClick: () => void share() }]} />} onDraftChange={setDraft} value={name} onChange={(value) => { searchShows.current = null; setName(value) }} draft={draft} busy={busy} onShow={show} onFind={find} onSurprise={() => void surpriseMe()} />
 
       <div className={`stage ${stage}`}>
         <section className="viewer" aria-label="SPHEREx images of the region" hidden={stage !== 'investigate'}>
@@ -710,6 +735,9 @@ export default function App() {
         slots={{ coverage: coverageSlot, aligned: alignedSlot, spectrum: spectrumSlot, footprints: footprintsSlot }} />}
 
       {shareStatus && <div className="share-feedback" role="status"><span>{shareStatus}</span><button type="button" aria-label="Dismiss share message" onClick={() => setShareStatus('')}>×</button></div>}
+      {!shareStatus && surprise?.ra === query.ra && surprise.dec === query.dec && (
+        <div className="share-feedback" role="status"><span>{surprise.reason}</span><button type="button" aria-label="Dismiss why this star was picked" onClick={() => setSurprise(null)}>×</button></div>
+      )}
     </div>
   )
 }

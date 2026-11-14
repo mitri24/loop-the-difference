@@ -56,6 +56,13 @@ export interface ResolvedTarget {
   proper_motion?: ProperMotion // left out when Gaia DR3 has no match
 }
 
+// A random fast-moving Gaia DR3 star; an example target (no motion fields) when Gaia is down.
+export interface SurpriseTarget extends ResolvedTarget {
+  pm_mas_yr?: number
+  g_mag?: number
+  reason: string
+}
+
 export interface Frame {
   index: number
   url: string

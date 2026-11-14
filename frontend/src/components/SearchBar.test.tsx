@@ -22,11 +22,13 @@ describe('splitCoordinates', () => {
 describe('SearchBar', () => {
   it('opens the example targets from beside the search field', () => {
     const html = renderToStaticMarkup(<SearchBar value="" onChange={() => undefined} draft={POLARIS} busy={false}
-      onShow={() => undefined} onFind={() => undefined} />)
+      onShow={() => undefined} onFind={() => undefined} onSurprise={() => undefined} />)
     const searchGroup = html.slice(html.indexOf('class="search-group"'), html.indexOf('class="header-actions"'))
     for (const label of ["Barnard's Star", 'WISE 0855', 'Epsilon Indi B', 'RW Aurigae', 'R Draconis', 'Pluto', 'Polaris']) {
       expect(searchGroup).toContain(`>${label.replace("'", '&#x27;')}</button>`)
     }
     expect(searchGroup).toContain('class="examples-toggle"')
+    expect(searchGroup).toContain('title="Open a random fast-moving nearby star from Gaia DR3 – a new region takes 1–3 minutes to load">Surprise me</button>')
+    expect(html.toLowerCase()).not.toContain('discover')
   })
 })
