@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { createFrames, getFrameJob, getObservations, resolveName } from './api'
 import { AboutPanel } from './components/AboutPanel'
 import { BlinkPlayer } from './components/BlinkPlayer'
+import { EvidencePanel, manifestChecks } from './components/EvidencePanel'
 import { ObservationInfo } from './components/ObservationInfo'
 import { SkyContext } from './components/SkyContext'
 import { TargetForm } from './components/TargetForm'
@@ -88,6 +89,7 @@ export default function App() {
   }, [show])
 
   const manifest = job?.manifest
+  const checks = manifest ? manifestChecks(manifest) : []
 
   return (
     <div className="app">
@@ -120,11 +122,7 @@ export default function App() {
 
         <section className="stage">
           {error && <p className="notice error">{error}</p>}
-          {manifest?.warnings.map((warning) => (
-            <p key={warning} className="notice">
-              {warning}
-            </p>
-          ))}
+          {manifest && <EvidencePanel checks={checks} />}
           {busy && (
             <p className="progress">
               {job?.status === 'started' && job.total > 0
@@ -133,7 +131,7 @@ export default function App() {
             </p>
           )}
           {manifest && manifest.frames.length > 0 && (
-            <BlinkPlayer key={job.job_id} frames={manifest.frames} />
+            <BlinkPlayer key={job.job_id} frames={manifest.frames} checks={checks} />
           )}
           {!busy && !job && !error && (
             <p className="hint">

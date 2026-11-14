@@ -1,8 +1,9 @@
 import { useEffect, useState } from 'react'
-import type { Frame } from '../types'
+import type { Check, Frame } from '../types'
+import { CheckBadge, checksForFrame } from './EvidencePanel'
 
 // Remount with a new key for new frames: playback state then starts fresh.
-export function BlinkPlayer({ frames }: { frames: Frame[] }) {
+export function BlinkPlayer({ frames, checks = [] }: { frames: Frame[]; checks?: Check[] }) {
   const [index, setIndex] = useState(0)
   const [playing, setPlaying] = useState(true)
   const [delayMs, setDelayMs] = useState(500)
@@ -62,6 +63,7 @@ export function BlinkPlayer({ frames }: { frames: Frame[] }) {
         ))}
         <div className="reticle" aria-hidden="true" />
         <span className="stamp">{frame.date.slice(0, 10)}</span>
+        <CheckBadge checks={checksForFrame(checks, frame)} />
       </div>
 
       <div className="controls">
