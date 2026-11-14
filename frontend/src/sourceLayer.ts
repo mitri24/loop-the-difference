@@ -27,6 +27,8 @@ export function countSources(sources: DetectedSource[]): SourceCounts {
   return counts
 }
 
+export const degText = (deg: number) => `${deg.toFixed(5)}°`.replace('-', '−')
+
 /** Highest signal-to-noise first; the manifest's own order stays untouched. */
 export const brightestFirst = (sources: DetectedSource[]) =>
   [...sources].sort((a, b) => b.snr - a.snr)

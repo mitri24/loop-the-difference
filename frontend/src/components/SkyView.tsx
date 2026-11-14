@@ -13,6 +13,8 @@ interface Props {
   onReady?: (aladin: AladinInstance) => void
   onLayerChange?: (label: string) => void
   onUnavailable?: () => void
+  // A click (not a drag) on the map, in ICRS degrees.
+  onSkyClick?: (ra: number, dec: number) => void
 }
 
 interface Sky {
@@ -28,14 +30,14 @@ const CONTEXT_ZOOM = 4
 const SPHEREX_TIMEOUT_MS = 5000
 const FALLBACK_LABEL = 'AllWISE (fallback)'
 
-export function SkyView({ ra, dec, fov, detector, revision, onReady, onLayerChange, onUnavailable }: Props) {
+export function SkyView({ ra, dec, fov, detector, revision, onReady, onLayerChange, onUnavailable, onSkyClick }: Props) {
   const container = useRef<HTMLDivElement>(null)
   const sky = useRef<Sky | null>(null)
-  const latest = useRef({ ra, dec, fov, detector, onReady, onLayerChange, onUnavailable })
+  const latest = useRef({ ra, dec, fov, detector, onReady, onLayerChange, onUnavailable, onSkyClick })
   const [unavailable, setUnavailable] = useState(false)
 
   useEffect(() => {
-    latest.current = { ra, dec, fov, detector, onReady, onLayerChange, onUnavailable }
+    latest.current = { ra, dec, fov, detector, onReady, onLayerChange, onUnavailable, onSkyClick }
   })
 
   useEffect(() => {
@@ -105,6 +107,10 @@ export function SkyView({ ra, dec, fov, detector, revision, onReady, onLayerChan
           latest.current.onLayerChange?.(
             base === spherex ? spherexReady ? spherexLabel(latest.current.detector) : 'SPHEREx survey loading…' : base.name,
           )
+        })
+        // aladin.on replaces the previous callback of that name: the only 'click' handler.
+        aladin.on('click', ({ ra, dec, isDragging }) => {
+          if (!isDragging && !cancelled) latest.current.onSkyClick?.(ra, dec)
         })
         aladin.setBaseImageLayer(spherex)
         aladin.customizeShareURLFunction(() => {

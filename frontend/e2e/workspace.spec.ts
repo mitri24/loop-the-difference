@@ -373,3 +373,41 @@ test('fixture: a frame that cannot load on the sky is never announced as shown',
   await page.getByRole('button', { name: 'Next frame', exact: true }).click()
   await expect(page.locator('.map-caption')).toContainText('SPHEREx frame on the sky · 2026-09-10 · D6 · 2/2')
 })
+
+test('fixture: Mark detected sources in two frames lists candidate marks A and B', async ({ page }, info) => {
+  const detected = (index: number) => ({ ...frame(index), sources: [{ ra: manifest.ra + 0.05 * (index + 1), dec: manifest.dec - 0.02,
+    x: 40, y: 50, peak_mjy_sr: 2, snr: 122, match: 'none' as const, catalog_id: null, separation_arcsec: null,
+    catalog_mag: null, catalog_band: null }] })
+  await fixtures(page, { ...manifest, frames: [detected(0), detected(1)] })
+  const panel = page.locator('.candidate-check')
+  for (const width of [320, 1920]) {
+    await page.setViewportSize({ width, height: 900 })
+    await page.goto('/?ra=37.954542&dec=89.264111&fov=0.2&band=6')
+    await expect(panel).toContainText('Spotted motion? Mark the object in two frames')
+    await hitTarget(panel.getByRole('button', { name: 'Mark in this frame' }))
+    await page.locator('summary', { hasText: 'Detected sources' }).click()
+    await page.getByRole('button', { name: /^Mark source at RA .* in frame 1$/ }).click()
+    await expect(panel).toContainText('Now mark it in another frame')
+    await page.getByRole('button', { name: 'Next frame', exact: true }).click()
+    await page.getByRole('button', { name: /^Mark source at RA .* in frame 2$/ }).click()
+    await expect(panel.locator('li')).toHaveText([/^◎ A · 2026-03-10 12:00 UTC .*\(S\/N 122\)/, /^◎ B · 2026-09-10 12:00 UTC/])
+    await expect(panel).toContainText('Unverified candidate – needs verification')
+    await hitTarget(panel.getByRole('button', { name: 'Clear marks' }))
+    const scroll = await page.evaluate(() => document.documentElement.scrollWidth)
+    expect(scroll).toBeLessThanOrEqual(width + 1)
+    await page.screenshot({ path: info.outputPath(`candidate-${width}.png`) })
+    await panel.getByRole('button', { name: 'Clear marks' }).click()
+    await expect(panel.locator('li')).toHaveCount(0)
+  }
+  // Sky path: armed, a click outside the frame explains itself, one inside marks the shown frame.
+  await panel.getByRole('button', { name: 'Mark in this frame' }).click()
+  await expect(panel.getByRole('button', { name: 'Mark in this frame' })).toHaveAttribute('aria-pressed', 'true')
+  const map = (await page.locator('.sky-view').boundingBox())!
+  await page.mouse.click(map.x + map.width - 60, map.y + map.height - 60)
+  await expect(panel.getByRole('status')).toHaveText('Click inside the SPHEREx frame (blue outline)')
+  await page.mouse.click(map.x + map.width / 2, map.y + map.height / 2)
+  await expect(panel.locator('li')).toHaveText([/^◎ A · 2026-09-10 12:00 UTC/])
+  await page.getByTestId('compare-trigger').click()
+  await page.getByTestId('compare-trigger').click()
+  await expect(panel.getByRole('button', { name: 'Mark in this frame' })).toHaveAttribute('aria-pressed', 'false')
+})

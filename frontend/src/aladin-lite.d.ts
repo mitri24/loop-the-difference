@@ -96,6 +96,7 @@ declare module 'aladin-lite' {
     removeImageLayer(name: string): void
     customizeShareURLFunction(fn: () => string): void
     on(event: 'stackChanged', callback: (change: StackChange) => void): void
+    on(event: 'click', callback: (click: { ra: number; dec: number; isDragging: boolean }) => void): void
   }
 
   const A: {

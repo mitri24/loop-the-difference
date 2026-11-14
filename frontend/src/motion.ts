@@ -18,8 +18,19 @@ export function markerPosition(
     mjd,
     star.ref_epoch,
   )
-  const dec = rad(now.dec)
-  const dRa = rad(now.ra - ra0)
+  return skyToFrame(now.ra, now.dec, ra0, dec0, sizeDeg)
+}
+
+// A sky position as a fraction of the frame grid from its top left corner; null outside it.
+export function skyToFrame(
+  ra: number,
+  decDeg: number,
+  ra0: number,
+  dec0: number,
+  sizeDeg: number,
+): { x: number; y: number } | null {
+  const dec = rad(decDeg)
+  const dRa = rad(ra - ra0)
   const d0 = rad(dec0)
   const cosC = Math.sin(d0) * Math.sin(dec) + Math.cos(d0) * Math.cos(dec) * Math.cos(dRa)
   if (cosC <= 0) return null

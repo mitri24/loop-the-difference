@@ -3,6 +3,8 @@ import type { AladinInstance } from 'aladin-lite'
 import { createFrames, getFrameJob, getObservations, resolveName } from './api'
 import { AboutPanel } from './components/AboutPanel'
 import { BlinkPlayer } from './components/BlinkPlayer'
+import { CandidatePanel } from './components/CandidatePanel'
+import { useCandidate, useMarkLayer } from './candidate'
 import { DataLinks } from './components/DataLinks'
 import { EvidencePanel, hasBlocker, manifestChecks } from './components/EvidencePanel'
 import { DataPanel } from './components/DataPanel'
@@ -247,6 +249,11 @@ export default function App() {
   const counts = frame?.sources ? countSources(frame.sources) : null
   const sourceSummary = counts ? ` · ${counts.detected} in this frame · ${counts.none} ${counts.none === 1 ? 'needs' : 'need'} verification${counts.unknown ? ` · ${counts.unknown} unknown` : ''}` : ''
   const frameOnSky = frame && sky && framesOnSky && !showDifference ? frame : null
+  const markBlocked = skyUnavailable ? 'The sky view needs WebGL2.'
+    : showDifference ? 'Marks are set on single frames, not on the difference image.'
+    : !frameOnSky ? 'Turn on "SPHEREx frames on the sky" in Layers to mark by clicking.' : null
+  const candidate = useCandidate(job?.job_id ?? null, !markBlocked && panel === 'compare')
+  useMarkLayer(sky, candidate.marks)
   // JPL SBIdent takes about a minute per time: one time per epoch, its first frame's.
   // A stack mixes exposures from up to 30 days: moving asteroids are looked up for single exposures.
   const smallBodies = useSmallBodies(manifest && hasFrames && !manifest.stacked ? {
@@ -295,6 +302,7 @@ export default function App() {
       {manifest && hasFrames && showDifference && <DifferenceView key={job.job_id} manifest={manifest} />}
       {manifest && hasFrames && !showDifference && <BlinkPlayer key={job.job_id} frames={manifest.frames} checks={checks} grid={manifest} motion={motion}
         onIndexChange={setFrameIndex} active={EMBED || panel === 'compare' || !panel} showShare={EMBED} />}
+      {!EMBED && manifest && hasFrames && <CandidatePanel candidate={candidate} blocked={markBlocked} />}
       {!EMBED && manifest && hasFrames && <details className="disclosure"><summary>Data & cross-check links</summary>
         <DataLinks manifest={manifest} frame={showDifference ? null : frame} /></details>}
       {!EMBED && manifest && frame && !showDifference && <WavelengthStrip detector={manifest.detector} frame={frame} />}
@@ -305,7 +313,7 @@ export default function App() {
         framesBlocked={showDifference ? 'The difference image is shown in this panel. Frames and their detected sources go back on the sky in the other modes.' : undefined} />}
       {!EMBED && !skyUnavailable && frame && !showDifference && <details className="disclosure">
         <summary>Detected sources{sourceSummary}</summary>
-        <SourceList frame={frame} onSelect={(ra, dec) => sky?.gotoRaDec(ra, dec)} />
+        <SourceList frame={frame} onSelect={(ra, dec) => sky?.gotoRaDec(ra, dec)} onMark={(source) => candidate.markSource(frame, source)} />
       </details>}
       {!EMBED && manifest && hasFrames && (manifest.stacked
         ? <p className="muted">Known asteroids and comets (JPL SBIdent) are looked up for single exposures: switch the view to Exposures.</p>
@@ -385,7 +393,8 @@ export default function App() {
       }}>
         <SkyView ra={center.ra} dec={center.dec} fov={query.fov} detector={query.band} revision={viewRevision}
           onReady={(instance) => { setSky(instance); setSkyUnavailable(false) }}
-          onLayerChange={setSkyLayer} onUnavailable={() => setSkyUnavailable(true)} />
+          onLayerChange={setSkyLayer} onUnavailable={() => setSkyUnavailable(true)}
+          onSkyClick={(ra, dec) => { if (frameOnSky && manifest) candidate.markAt(frameOnSky, manifest, ra, dec) }} />
       </main>
 
       <footer className="map-caption">
