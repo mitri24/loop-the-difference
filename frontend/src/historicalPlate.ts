@@ -16,8 +16,8 @@ const REGISTER_WAIT_MS = 120_000
 const MJD_UNIX_EPOCH = 40587
 let loads = 0
 
-export const dssUrl = (ra: number, dec: number, arcmin = PLATE_ARCMIN) =>
-  `https://archive.stsci.edu/cgi-bin/dss_search?v=poss1_red&r=${ra}&d=${dec}&e=J2000&h=${arcmin}&w=${arcmin}&f=fits&c=none&fov=NONE&v3=`
+export const dssUrl = (ra: number, dec: number, arcmin = PLATE_ARCMIN, survey = 'poss1_red', format: 'fits' | 'gif' = 'fits') =>
+  `https://archive.stsci.edu/cgi-bin/dss_search?v=${survey}&r=${ra}&d=${dec}&e=J2000&h=${arcmin}&w=${arcmin}&f=${format}&c=none&fov=NONE&v3=`
 
 export interface PlateHeader {
   survey: string

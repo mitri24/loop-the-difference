@@ -321,7 +321,9 @@ export default function App() {
       {manifest && hasFrames && !showDifference && <BlinkPlayer key={job.job_id} frames={manifest.frames} checks={checks} grid={manifest} motion={motion} predictions={predictions}
         onIndexChange={showFrame} seek={seek} active={EMBED || panel === 'compare' || !panel} showShare={EMBED} />}
       {!EMBED && manifest && hasFrames && <CandidatePanel candidate={candidate} blocked={markBlocked} track={possible && { ...possible, predictions }}
-        known={{ epochs: smallBodies.epochs, motion, detector: manifest.detector, target: targetLabel }}>
+        known={{ epochs: smallBodies.epochs, motion, detector: manifest.detector, target: targetLabel }}
+        visits={summary && { observations: summary.observations, inBlink: [...manifest.frames.map((f) => f.obs_id),
+          ...manifest.differences.flatMap((d) => [...d.obs_ids_a, ...d.obs_ids_b])] }}>
         {possible && predictions.length > 0 && <TrackCheck checks={checkFrames({ ...possible, predictions }, manifest.frames, candidate.marks, manifest)}
           onShow={(index, p) => { setSeek({ index }); sky?.gotoRaDec(p.ra, p.dec) }} />}
       </CandidatePanel>}
