@@ -18,3 +18,7 @@ Thumbs.db
 desktop.ini
 .idea/
 .vscode/
+frontend/playwright-report/
+frontend/test-results/
+frontend/test-results-live/
+frontend/test-results-native/

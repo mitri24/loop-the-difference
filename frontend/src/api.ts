@@ -8,7 +8,14 @@ import type {
 } from './types'
 
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
-  const response = await fetch(path, init)
+  const signal = AbortSignal.any([AbortSignal.timeout(120_000), ...(init?.signal ? [init.signal] : [])])
+  let response: Response
+  try {
+    response = await fetch(path, { ...init, signal })
+  } catch (cause) {
+    if (cause instanceof TypeError) throw new Error('The data service could not be reached. Check your connection and retry.', { cause })
+    throw cause
+  }
   if (!response.ok) {
     const body = await response.json().catch(() => null)
     const detail = typeof body?.detail === 'string' ? body.detail : null
@@ -17,20 +24,22 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
   return (await response.json()) as T
 }
 
-export const resolveName = (name: string) =>
-  request<ResolvedTarget>(`/api/resolve?${new URLSearchParams({ name })}`)
+export const resolveName = (name: string, signal?: AbortSignal) =>
+  request<ResolvedTarget>(`/api/resolve?${new URLSearchParams({ name })}`, { signal })
 
-export const getObservations = (ra: string, dec: string) =>
-  request<ObservationSummary>(`/api/observations?${new URLSearchParams({ ra, dec })}`)
+export const getObservations = (ra: string, dec: string, signal?: AbortSignal) =>
+  request<ObservationSummary>(`/api/observations?${new URLSearchParams({ ra, dec })}`, { signal })
 
-export const createFrames = (body: FrameRequest) =>
+export const createFrames = (body: FrameRequest, signal?: AbortSignal) =>
   request<FrameJob>('/api/frames', {
+    signal,
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(body),
   })
 
-export const getFrameJob = (jobId: string) => request<FrameJob>(`/api/frames/${jobId}`)
+export const getFrameJob = (jobId: string, signal?: AbortSignal) =>
+  request<FrameJob>(`/api/frames/${jobId}`, { signal })
 
 export const createSpectrum = (body: SpectrumRequest) =>
   request<SpectrumJob>('/api/spectrum', {

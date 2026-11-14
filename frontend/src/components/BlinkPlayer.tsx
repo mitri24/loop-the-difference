@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { markerPosition } from '../motion'
 import type { Check, Frame, FrameManifest, ProperMotion } from '../types'
 import { CheckBadge, checksForFrame } from './EvidencePanel'
+import { ObservationImage } from './ObservationImage'
 
 interface Props {
   frames: Frame[]
@@ -9,12 +10,23 @@ interface Props {
   grid: Pick<FrameManifest, 'ra' | 'dec' | 'size_deg'>
   motion: ProperMotion | null
   onIndexChange?: (index: number) => void
+  // Playback and shortcuts run only while the player's controls are on screen.
+  active?: boolean
+  showShare?: boolean
 }
 
 // Remount with a new key for new frames: playback state then starts fresh.
-export function BlinkPlayer({ frames, checks = [], grid, motion, onIndexChange }: Props) {
+export function BlinkPlayer({
+  frames,
+  checks = [],
+  grid,
+  motion,
+  onIndexChange,
+  active = true,
+  showShare = true,
+}: Props) {
   const [index, setIndex] = useState(0)
-  const [playing, setPlaying] = useState(true)
+  const [playing, setPlaying] = useState(false)
   const [delayMs, setDelayMs] = useState(500)
   const [copyState, setCopyState] = useState<'idle' | 'copied' | 'failed'>('idle')
   const count = frames.length
@@ -22,10 +34,10 @@ export function BlinkPlayer({ frames, checks = [], grid, motion, onIndexChange }
   useEffect(() => onIndexChange?.(index), [index, onIndexChange])
 
   useEffect(() => {
-    if (!playing || count < 2) return
+    if (!active || !playing || count < 2) return
     const timer = window.setInterval(() => setIndex((i) => (i + 1) % count), delayMs)
     return () => window.clearInterval(timer)
-  }, [playing, delayMs, count])
+  }, [active, playing, delayMs, count])
 
   // Space plays/pauses, arrows step – unless the key already means something where focus is.
   useEffect(() => {
@@ -42,9 +54,13 @@ export function BlinkPlayer({ frames, checks = [], grid, motion, onIndexChange }
       } else return
       event.preventDefault()
     }
-    window.addEventListener('keydown', onKey)
-    return () => window.removeEventListener('keydown', onKey)
-  }, [count])
+    // Map arrows/Space belong to Aladin. Player shortcuts apply only inside this player.
+    if (!active) return
+    const player = document.querySelector('.player')
+    const scopedKey = (event: Event) => onKey(event as KeyboardEvent)
+    player?.addEventListener('keydown', scopedKey)
+    return () => player?.removeEventListener('keydown', scopedKey)
+  }, [active, count])
 
   const frame = frames[index]
   const marker = motion && markerPosition(motion, frame.mjd, grid.ra, grid.dec, grid.size_deg)
@@ -62,15 +78,15 @@ export function BlinkPlayer({ frames, checks = [], grid, motion, onIndexChange }
   }
 
   return (
-    <div className="player">
+    <div className="player" tabIndex={0} aria-label="Observation player. Space to play, arrow keys to step.">
       <div className="viewport">
         {/* All frames stay mounted, so they load once and switching is instant. */}
         {frames.map((f, i) => (
-          <img
+          <ObservationImage
             key={f.url}
             src={f.url}
             alt={`SPHEREx detector ${f.detector}, ${f.date.slice(0, 10)}`}
-            style={{ visibility: i === index ? 'visible' : 'hidden' }}
+            visible={i === index}
           />
         ))}
         <div className="reticle" aria-hidden="true" />
@@ -89,7 +105,7 @@ export function BlinkPlayer({ frames, checks = [], grid, motion, onIndexChange }
         <button type="button" onClick={() => step(-1)} aria-label="Previous frame">
           ‹
         </button>
-        <button type="button" className="primary" onClick={() => setPlaying((p) => !p)}>
+        <button type="button" className="primary" disabled={count < 2} onClick={() => setPlaying((p) => !p)}>
           {playing ? 'Pause' : 'Play'}
         </button>
         <button type="button" onClick={() => step(1)} aria-label="Next frame">
@@ -120,13 +136,13 @@ export function BlinkPlayer({ frames, checks = [], grid, motion, onIndexChange }
             onChange={(event) => setDelayMs(1650 - Number(event.target.value))}
           />
         </label>
-        <button type="button" onClick={() => void copyLink()} onBlur={() => setCopyState('idle')}>
+        {showShare && <button type="button" onClick={() => void copyLink()} onBlur={() => setCopyState('idle')}>
           {copyState === 'copied'
             ? 'Link copied'
             : copyState === 'failed'
               ? 'Copy failed'
               : 'Copy link'}
-        </button>
+        </button>}
       </div>
 
       <dl className="meta">
