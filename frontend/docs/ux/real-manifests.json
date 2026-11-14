@@ -1,0 +1,255 @@
+[
+  {
+    "collection": "spherex_dr1",
+    "ra": 37.954541667,
+    "dec": 89.264111111,
+    "size_deg": 0.2,
+    "detector": 6,
+    "pixel_scale_arcsec": 6.15,
+    "epochs": 2,
+    "complete": true,
+    "stacked": true,
+    "pipeline_version": 6,
+    "frames": [
+      {
+        "index": 0,
+        "url": "/api/frames/1bf541e85f5383fb/frame_00.png",
+        "obs_id": "2025W38_2C_0463_1",
+        "date": "2025-09-20T20:25:52Z",
+        "mjd": 60943.5992920625,
+        "detector": 6,
+        "wavelength_min_um": 4.4115,
+        "wavelength_max_um": 5.009600000000001,
+        "coverage": 0.994,
+        "source_url": "https://irsa.ipac.caltech.edu/ibe/data/spherex/dr1/level2/2025W38_2C/l2b-v27-2026-237/6/level2_2025W38_2C_0463_1D6_spx_l2b-v27-2026-237.fits?center=37.954542,89.264111&size=0.2840",
+        "epoch": 0,
+        "n_combined": 8,
+        "date_end": "2025-10-13T06:18:58Z",
+        "masked_fraction": 0.028,
+        "wavelength_um": 4.6153,
+        "bandwidth_um": 0.0365
+      },
+      {
+        "index": 1,
+        "url": "/api/frames/1bf541e85f5383fb/frame_01.png",
+        "obs_id": "2026W07_2A_0542_1",
+        "date": "2026-02-15T09:59:36Z",
+        "mjd": 61090.92443293751,
+        "detector": 6,
+        "wavelength_min_um": 4.4115,
+        "wavelength_max_um": 5.009600000000001,
+        "coverage": 0.991,
+        "source_url": "https://irsa.ipac.caltech.edu/ibe/data/spherex/dr1/level2/2026W07_2A/l2b-v27-2026-226/6/level2_2026W07_2A_0542_1D6_spx_l2b-v27-2026-226.fits?center=37.954542,89.264111&size=0.2840",
+        "epoch": 1,
+        "n_combined": 8,
+        "date_end": "2026-02-25T03:00:02Z",
+        "masked_fraction": 0.059,
+        "wavelength_um": 4.7017,
+        "bandwidth_um": 0.0367
+      }
+    ],
+    "warnings": [
+      "2025W38_2C_0463_1: unusable pixels within 2 px of the target, treat changes at the target in this frame with care",
+      "2025W38_2C_0491_1: unusable pixels within 2 px of the target, treat changes at the target in this frame with care",
+      "2025W38_2C_0623_1: unusable pixels within 2 px of the target, treat changes at the target in this frame with care",
+      "2025W39_1A_0355_3: unusable pixels within 2 px of the target, treat changes at the target in this frame with care",
+      "2025W39_1A_0467_1: unusable pixels within 2 px of the target, treat changes at the target in this frame with care",
+      "2025W39_1A_0467_4: unusable pixels within 2 px of the target, treat changes at the target in this frame with care",
+      "2025W39_1A_0626_3: unusable pixels within 2 px of the target, treat changes at the target in this frame with care",
+      "2025W42_1A_0084_1: unusable pixels within 2 px of the target, treat changes at the target in this frame with care",
+      "2026W07_2A_0542_1: unusable pixels within 2 px of the target, treat changes at the target in this frame with care",
+      "2026W07_2A_0542_3: unusable pixels within 2 px of the target, treat changes at the target in this frame with care",
+      "2026W08_1A_0644_1: unusable pixels within 2 px of the target, treat changes at the target in this frame with care",
+      "2026W08_1A_0644_3: unusable pixels within 2 px of the target, treat changes at the target in this frame with care",
+      "2026W08_2A_0269_2: unusable pixels within 2 px of the target, treat changes at the target in this frame with care",
+      "2026W08_2A_0269_4: unusable pixels within 2 px of the target, treat changes at the target in this frame with care",
+      "2026W08_2A_0608_3: unusable pixels within 2 px of the target, treat changes at the target in this frame with care",
+      "2026W09_1A_0413_1: unusable pixels within 2 px of the target, treat changes at the target in this frame with care",
+      "Effective wavelength ranges from 4.615 to 4.702 µm (1.9 %, more than one resolution element 1/R = 0.8 % of detector 6); a direct difference needs wavelength-matched frames"
+    ],
+    "checks": [
+      {
+        "code": "FLAGGED_PIXELS",
+        "severity": "warning",
+        "message": "Flagged pixels next to the target",
+        "detail": "2025W38_2C_0463_1: unusable pixels within 2 px of the target, treat changes at the target in this frame with care",
+        "affects": [
+          "obs:2025W38_2C_0463_1"
+        ]
+      },
+      {
+        "code": "FLAGGED_PIXELS",
+        "severity": "warning",
+        "message": "Flagged pixels next to the target",
+        "detail": "2025W38_2C_0491_1: unusable pixels within 2 px of the target, treat changes at the target in this frame with care",
+        "affects": [
+          "obs:2025W38_2C_0491_1"
+        ]
+      },
+      {
+        "code": "FLAGGED_PIXELS",
+        "severity": "warning",
+        "message": "Flagged pixels next to the target",
+        "detail": "2025W38_2C_0623_1: unusable pixels within 2 px of the target, treat changes at the target in this frame with care",
+        "affects": [
+          "obs:2025W38_2C_0623_1"
+        ]
+      },
+      {
+        "code": "FLAGGED_PIXELS",
+        "severity": "warning",
+        "message": "Flagged pixels next to the target",
+        "detail": "2025W39_1A_0355_3: unusable pixels within 2 px of the target, treat changes at the target in this frame with care",
+        "affects": [
+          "obs:2025W39_1A_0355_3"
+        ]
+      },
+      {
+        "code": "FLAGGED_PIXELS",
+        "severity": "warning",
+        "message": "Flagged pixels next to the target",
+        "detail": "2025W39_1A_0467_1: unusable pixels within 2 px of the target, treat changes at the target in this frame with care",
+        "affects": [
+          "obs:2025W39_1A_0467_1"
+        ]
+      },
+      {
+        "code": "FLAGGED_PIXELS",
+        "severity": "warning",
+        "message": "Flagged pixels next to the target",
+        "detail": "2025W39_1A_0467_4: unusable pixels within 2 px of the target, treat changes at the target in this frame with care",
+        "affects": [
+          "obs:2025W39_1A_0467_4"
+        ]
+      },
+      {
+        "code": "FLAGGED_PIXELS",
+        "severity": "warning",
+        "message": "Flagged pixels next to the target",
+        "detail": "2025W39_1A_0626_3: unusable pixels within 2 px of the target, treat changes at the target in this frame with care",
+        "affects": [
+          "obs:2025W39_1A_0626_3"
+        ]
+      },
+      {
+        "code": "FLAGGED_PIXELS",
+        "severity": "warning",
+        "message": "Flagged pixels next to the target",
+        "detail": "2025W42_1A_0084_1: unusable pixels within 2 px of the target, treat changes at the target in this frame with care",
+        "affects": [
+          "obs:2025W42_1A_0084_1"
+        ]
+      },
+      {
+        "code": "FLAGGED_PIXELS",
+        "severity": "warning",
+        "message": "Flagged pixels next to the target",
+        "detail": "2026W07_2A_0542_1: unusable pixels within 2 px of the target, treat changes at the target in this frame with care",
+        "affects": [
+          "obs:2026W07_2A_0542_1"
+        ]
+      },
+      {
+        "code": "FLAGGED_PIXELS",
+        "severity": "warning",
+        "message": "Flagged pixels next to the target",
+        "detail": "2026W07_2A_0542_3: unusable pixels within 2 px of the target, treat changes at the target in this frame with care",
+        "affects": [
+          "obs:2026W07_2A_0542_3"
+        ]
+      },
+      {
+        "code": "FLAGGED_PIXELS",
+        "severity": "warning",
+        "message": "Flagged pixels next to the target",
+        "detail": "2026W08_1A_0644_1: unusable pixels within 2 px of the target, treat changes at the target in this frame with care",
+        "affects": [
+          "obs:2026W08_1A_0644_1"
+        ]
+      },
+      {
+        "code": "FLAGGED_PIXELS",
+        "severity": "warning",
+        "message": "Flagged pixels next to the target",
+        "detail": "2026W08_1A_0644_3: unusable pixels within 2 px of the target, treat changes at the target in this frame with care",
+        "affects": [
+          "obs:2026W08_1A_0644_3"
+        ]
+      },
+      {
+        "code": "FLAGGED_PIXELS",
+        "severity": "warning",
+        "message": "Flagged pixels next to the target",
+        "detail": "2026W08_2A_0269_2: unusable pixels within 2 px of the target, treat changes at the target in this frame with care",
+        "affects": [
+          "obs:2026W08_2A_0269_2"
+        ]
+      },
+      {
+        "code": "FLAGGED_PIXELS",
+        "severity": "warning",
+        "message": "Flagged pixels next to the target",
+        "detail": "2026W08_2A_0269_4: unusable pixels within 2 px of the target, treat changes at the target in this frame with care",
+        "affects": [
+          "obs:2026W08_2A_0269_4"
+        ]
+      },
+      {
+        "code": "FLAGGED_PIXELS",
+        "severity": "warning",
+        "message": "Flagged pixels next to the target",
+        "detail": "2026W08_2A_0608_3: unusable pixels within 2 px of the target, treat changes at the target in this frame with care",
+        "affects": [
+          "obs:2026W08_2A_0608_3"
+        ]
+      },
+      {
+        "code": "FLAGGED_PIXELS",
+        "severity": "warning",
+        "message": "Flagged pixels next to the target",
+        "detail": "2026W09_1A_0413_1: unusable pixels within 2 px of the target, treat changes at the target in this frame with care",
+        "affects": [
+          "obs:2026W09_1A_0413_1"
+        ]
+      },
+      {
+        "code": "WAVELENGTH_MISMATCH",
+        "severity": "blocker",
+        "message": "Frames were observed at different wavelengths",
+        "detail": "Effective wavelength ranges from 4.615 to 4.702 µm (1.9 %, more than one resolution element 1/R = 0.8 % of detector 6); a direct difference needs wavelength-matched frames",
+        "affects": [
+          "difference"
+        ]
+      }
+    ],
+    "differences": [
+      {
+        "a": 0,
+        "b": 1,
+        "url": "/api/frames/1bf541e85f5383fb/diff_00_01.png",
+        "comparable": false,
+        "delta_lambda_pct": 1.85,
+        "obs_ids_a": [
+          "2025W38_2C_0463_1",
+          "2025W38_2C_0491_1",
+          "2025W38_2C_0623_1",
+          "2025W39_1A_0355_3",
+          "2025W39_1A_0467_1",
+          "2025W39_1A_0467_4",
+          "2025W39_1A_0626_3",
+          "2025W42_1A_0084_1"
+        ],
+        "obs_ids_b": [
+          "2026W07_2A_0542_1",
+          "2026W07_2A_0542_3",
+          "2026W08_1A_0644_1",
+          "2026W08_1A_0644_3",
+          "2026W08_2A_0269_2",
+          "2026W08_2A_0269_4",
+          "2026W08_2A_0608_3",
+          "2026W09_1A_0413_1"
+        ]
+      }
+    ]
+  }
+]

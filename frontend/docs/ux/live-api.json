@@ -1,0 +1,15 @@
+{
+  "health": {
+    "status": "ok",
+    "redis": "ok",
+    "collection": "spherex_dr1"
+  },
+  "position": {
+    "name": "Polaris",
+    "ra": 37.95456067,
+    "dec": 89.26410897
+  },
+  "invalid": {
+    "detail": "Invalid right ascension"
+  }
+}

@@ -54,6 +54,8 @@ declare module 'aladin-lite' {
   }
 
   export interface AladinInstance {
+    getRaDec(): SkyCoords
+    getFov(): [number, number]
     gotoRaDec(ra: number, dec: number): void
     setFoV(fovDegrees: number): void
     setBaseImageLayer(layer: HiPSLayer | string): HiPSLayer

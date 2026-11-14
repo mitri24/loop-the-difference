@@ -1,20 +1,21 @@
 import { useEffect, useState } from 'react'
 import type { Check, Frame } from '../types'
 import { CheckBadge, checksForFrame } from './EvidencePanel'
+import { ObservationImage } from './ObservationImage'
 
 // Remount with a new key for new frames: playback state then starts fresh.
-export function BlinkPlayer({ frames, checks = [] }: { frames: Frame[]; checks?: Check[] }) {
+export function BlinkPlayer({ frames, checks = [], active = true, showShare = true }: { frames: Frame[]; checks?: Check[]; active?: boolean; showShare?: boolean }) {
   const [index, setIndex] = useState(0)
-  const [playing, setPlaying] = useState(true)
+  const [playing, setPlaying] = useState(false)
   const [delayMs, setDelayMs] = useState(500)
   const [copyState, setCopyState] = useState<'idle' | 'copied' | 'failed'>('idle')
   const count = frames.length
 
   useEffect(() => {
-    if (!playing || count < 2) return
+    if (!active || !playing || count < 2) return
     const timer = window.setInterval(() => setIndex((i) => (i + 1) % count), delayMs)
     return () => window.clearInterval(timer)
-  }, [playing, delayMs, count])
+  }, [active, playing, delayMs, count])
 
   // Space plays/pauses, arrows step – unless the key already means something where focus is.
   useEffect(() => {
@@ -31,9 +32,13 @@ export function BlinkPlayer({ frames, checks = [] }: { frames: Frame[]; checks?:
       } else return
       event.preventDefault()
     }
-    window.addEventListener('keydown', onKey)
-    return () => window.removeEventListener('keydown', onKey)
-  }, [count])
+    // Map arrows/Space belong to Aladin. Player shortcuts apply only inside this player.
+    if (!active) return
+    const player = document.querySelector('.player')
+    const scopedKey = (event: Event) => onKey(event as KeyboardEvent)
+    player?.addEventListener('keydown', scopedKey)
+    return () => player?.removeEventListener('keydown', scopedKey)
+  }, [active, count])
 
   const frame = frames[index]
   const step = (delta: number) => {
@@ -50,15 +55,15 @@ export function BlinkPlayer({ frames, checks = [] }: { frames: Frame[]; checks?:
   }
 
   return (
-    <div className="player">
+    <div className="player" tabIndex={0} aria-label="Observation player. Space to play, arrow keys to step.">
       <div className="viewport">
         {/* All frames stay mounted, so they load once and switching is instant. */}
         {frames.map((f, i) => (
-          <img
+          <ObservationImage
             key={f.url}
             src={f.url}
             alt={`SPHEREx detector ${f.detector}, ${f.date.slice(0, 10)}`}
-            style={{ visibility: i === index ? 'visible' : 'hidden' }}
+            visible={i === index}
           />
         ))}
         <div className="reticle" aria-hidden="true" />
@@ -70,7 +75,7 @@ export function BlinkPlayer({ frames, checks = [] }: { frames: Frame[]; checks?:
         <button type="button" onClick={() => step(-1)} aria-label="Previous frame">
           ‹
         </button>
-        <button type="button" className="primary" onClick={() => setPlaying((p) => !p)}>
+        <button type="button" className="primary" disabled={count < 2} onClick={() => setPlaying((p) => !p)}>
           {playing ? 'Pause' : 'Play'}
         </button>
         <button type="button" onClick={() => step(1)} aria-label="Next frame">
@@ -101,13 +106,13 @@ export function BlinkPlayer({ frames, checks = [] }: { frames: Frame[]; checks?:
             onChange={(event) => setDelayMs(1650 - Number(event.target.value))}
           />
         </label>
-        <button type="button" onClick={() => void copyLink()} onBlur={() => setCopyState('idle')}>
+        {showShare && <button type="button" onClick={() => void copyLink()} onBlur={() => setCopyState('idle')}>
           {copyState === 'copied'
             ? 'Link copied'
             : copyState === 'failed'
               ? 'Copy failed'
               : 'Copy link'}
-        </button>
+        </button>}
       </div>
 
       <dl className="meta">
