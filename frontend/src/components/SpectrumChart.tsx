@@ -4,8 +4,9 @@ import type { Check, SpectrumJob, SpectrumPoint } from '../types'
 import { BrightnessChart } from './BrightnessChart'
 
 const EPOCH_COLOURS = ['#6ea8fe', '#e2b340', '#ef6b6b', '#7bd389', '#c792ea', '#5ad1d1']
-const W = 640
-const H = 280
+// Drawn at the sidebar's width, so 11px text stays 11px.
+const W = 320
+const H = 200
 const M = { left: 64, right: 12, top: 12, bottom: 40 }
 const POLL_MS = 2000
 
@@ -30,6 +31,12 @@ export function ranges(points: SpectrumPoint[]): {
     y: [Math.min(0, ...lows), Math.max(0, ...highs)],
   }
 }
+
+// Bright targets reach seven digits; "3.6M" keeps the labels clear of the axis title.
+export const fluxTick = (value: number, decimals: number) =>
+  Math.abs(value) >= 10_000
+    ? value.toLocaleString('en', { notation: 'compact', maximumSignificantDigits: 3 })
+    : value.toFixed(decimals)
 
 const ticks = ([a, b]: [number, number], n = 5) =>
   a === b ? [a] : Array.from({ length: n }, (_, i) => a + ((b - a) * i) / (n - 1))
@@ -88,7 +95,7 @@ export function SpectrumChart({
 
   return (
     <section aria-label="Quick-look spectrum">
-      <h2>Quick-look spectrum at the target</h2>
+      <h3>Quick-look spectrum at the target</h3>
       {!running && (!spectrum || !spectrum.complete) && (
         <button type="button" onClick={start}>
           {spectrum ? retry : 'Build quick-look spectrum from all SPHEREx visits'}
@@ -162,7 +169,7 @@ export function Plot({ points }: { points: SpectrumPoint[] }) {
             <g key={`y${i}`}>
               <line x1={M.left} x2={W - M.right} y1={y(t)} y2={y(t)} />
               <text x={M.left - 6} y={y(t) + 4} textAnchor="end" stroke="none">
-                {t.toFixed(decimals)}
+                {fluxTick(t, decimals)}
               </text>
             </g>
           ))}

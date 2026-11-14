@@ -10,8 +10,14 @@ import type {
   SpectrumRequest,
 } from './types'
 
+// nginx answers these itself, with an HTML page, while the API is down or restarting.
+const UNAVAILABLE = new Set([502, 503, 504])
+
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
-  const signal = AbortSignal.any([AbortSignal.timeout(120_000), ...(init?.signal ? [init.signal] : [])])
+  const timeout = AbortSignal.timeout(120_000)
+  // AbortSignal.any is missing before Chrome 116, Firefox 124 and Safari 17.4.
+  const signal = init?.signal && typeof AbortSignal.any === 'function'
+    ? AbortSignal.any([timeout, init.signal]) : init?.signal ?? timeout
   let response: Response
   try {
     response = await fetch(path, { ...init, signal })
@@ -22,6 +28,7 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
   if (!response.ok) {
     const body = await response.json().catch(() => null)
     const detail = typeof body?.detail === 'string' ? body.detail : null
+    if (!detail && UNAVAILABLE.has(response.status)) throw new Error('The data service is not available right now. Retry in a moment.')
     throw new Error(detail ?? `Request failed (${response.status})`)
   }
   return (await response.json()) as T

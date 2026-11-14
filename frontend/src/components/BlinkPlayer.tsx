@@ -10,7 +10,7 @@ interface Props {
   grid: Pick<FrameManifest, 'ra' | 'dec' | 'size_deg'>
   motion: ProperMotion | null
   onIndexChange?: (index: number) => void
-  // Playback and shortcuts run only while the player's controls are on screen.
+  // Playback and shortcuts pause while the player and the sky are covered by another panel.
   active?: boolean
   showShare?: boolean
 }
@@ -78,7 +78,7 @@ export function BlinkPlayer({
   }
 
   return (
-    <div className="player" tabIndex={0} aria-label="Observation player. Space to play, arrow keys to step.">
+    <div className="player" role="group" tabIndex={0} aria-label="Observation player. Space to play, arrow keys to step.">
       <div className="viewport">
         {/* All frames stay mounted, so they load once and switching is instant. */}
         {frames.map((f, i) => (
@@ -162,7 +162,7 @@ export function BlinkPlayer({
               {motion.source_id} · µ {motion.pmra_mas_yr.toFixed(0)},{' '}
               {motion.pmdec_mas_yr.toFixed(0)} mas/yr
               {motion.parallax_mas !== null && ` · ϖ ${motion.parallax_mas.toFixed(1)} mas`} ·{' '}
-              {marker ? '◇ predicted position' : 'predicted position outside this frame'}
+              {marker ? '○ predicted position' : 'predicted position outside this frame'}
             </dd>
           </>
         )}

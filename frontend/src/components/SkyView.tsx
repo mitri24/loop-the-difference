@@ -112,6 +112,8 @@ export function SkyView({ ra, dec, fov, detector, revision, onReady, onLayerChan
           const [currentRa, currentDec] = aladin.getRaDec()
           url.searchParams.set('ra', currentRa.toFixed(6))
           url.searchParams.set('dec', currentDec.toFixed(6))
+          // The view centre is a position now, not the named target any more.
+          url.searchParams.delete('name')
           return url.href
         })
         const footprint = A.graphicOverlay({ name: 'Frame footprint', color: '#6ea8fe', lineWidth: 1 })

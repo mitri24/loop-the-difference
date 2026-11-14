@@ -54,7 +54,6 @@ input[type='range'] { accent-color:var(--accent); }
 
 /* One contextual container at a time; closed panels preserve comparison state. */
 .sheet-position { position:fixed; z-index:var(--z-sheet); inset:calc(var(--bar-height) + 64px) 64px 88px auto; width:min(400px,calc(100% - 128px)); display:grid; grid-template-rows:minmax(0,1fr); align-items:start; pointer-events:none; }
-.sheet-position.sheet-left { right:auto; left:56px; }
 .workspace-sheet { display:flex; flex-direction:column; min-width:0; min-height:0; max-height:100%; background:var(--surface); border:1px solid #485156; border-radius:7px; box-shadow:0 6px 24px #0005; pointer-events:auto; }
 .sheet-header { flex:none; display:flex; align-items:center; justify-content:space-between; gap:12px; padding:18px 20px; border-bottom:1px solid var(--border); }
 .eyebrow { margin:0 0 4px; color:var(--muted); font-size:11px; text-transform:uppercase; letter-spacing:.12em; font-weight:600; }
@@ -75,7 +74,6 @@ legend { padding:0; margin-bottom:10px; font-weight:600; }
 .coordinate-group .field-hint { position:absolute; right:0; top:0; }
 .form-row { display:grid; grid-template-columns:minmax(0,.8fr) minmax(0,1.2fr); gap:10px; }
 .target-form > .primary { justify-content:space-between; min-height:44px; }
-.map-center-action { width:100%; margin-top:10px; background:transparent; }
 .target-summary { display:flex; justify-content:space-between; gap:12px; flex-wrap:wrap; padding-bottom:16px; border-bottom:1px solid var(--border); }
 .target-summary span { color:var(--muted); font-size:12px; }
 .comparison-content { display:flex; flex-direction:column; gap:18px; }
@@ -179,7 +177,7 @@ summary { cursor:pointer; min-height:32px; padding:5px 0; font-size:13px; }
   .global-search input { font-size:16px; }
   .workspace-nav { grid-column:1 / -1; grid-row:3; justify-content:stretch; }
   .workspace-nav button { flex:1; min-height:36px; padding-block:6px; }
-  .sheet-position,.sheet-position.sheet-left { top:calc(var(--bar-height) + 56px); left:48px; right:48px; bottom:max(84px,calc(env(safe-area-inset-bottom) + 64px)); width:auto; align-items:end; }
+  .sheet-position { top:calc(var(--bar-height) + 56px); left:48px; right:48px; bottom:max(84px,calc(env(safe-area-inset-bottom) + 64px)); width:auto; align-items:end; }
   .sheet-header { padding:12px; gap:6px; }
   .sheet-header h2 { font-size:15px; }
   .sheet-header .eyebrow { font-size:10px; }
@@ -211,7 +209,7 @@ summary { cursor:pointer; min-height:32px; padding:5px 0; font-size:13px; }
 @media (max-height:460px) {
   .workspace { height:auto; min-height:480px; }
   .sky-stage { position:absolute; height:max(100dvh,480px); }
-  .sheet-position,.sheet-position.sheet-left { position:relative; inset:auto; width:auto; margin:72px 48px 24px; display:block; }
+  .sheet-position { position:relative; inset:auto; width:auto; margin:72px 48px 24px; display:block; }
   .workspace-sheet { max-height:none; }
   .sheet-content { overflow:visible; }
   .map-caption { position:relative; bottom:auto; left:auto; margin:0 80px 36px 8px; width:fit-content; max-width:calc(100% - 88px); }
@@ -247,6 +245,8 @@ summary { cursor:pointer; min-height:32px; padding:5px 0; font-size:13px; }
 .sky-view .aladin-location { left:calc(var(--map-tools-offset) + 72px) !important; }
 .sky-view .aladin-widgets-toolbar { left:calc(var(--map-tools-offset) + 4px) !important; }
 .sky-view .aladin-fov { left:calc(var(--map-tools-offset) + 4px) !important; }
+/* Aladin's own controls hide the focus ring; keyboard users need it on the map too. */
+.sky-view :focus-visible { outline:2px solid var(--accent) !important; outline-offset:2px; }
 .map-caption {
   left:calc(var(--map-tools-offset) + 16px);
   max-width:calc(100% - var(--map-tools-offset) - 160px);
@@ -256,12 +256,12 @@ summary { cursor:pointer; min-height:32px; padding:5px 0; font-size:13px; }
 }
 @media (max-width:1023px) {
   .workspace.sidebar-open { --map-tools-offset:0px; }
+  .workspace.sidebar-open .map-caption { display:none; }
 }
 @media (max-width:599px) {
   .workspace { --sidebar-width:min(360px,calc(100% - 48px)); }
   .workspace.sidebar-open { --map-tools-offset:0px; }
   .sheet-position { inset:var(--bar-height) auto 0 0; width:var(--sidebar-width); align-items:stretch; }
-  .workspace.sidebar-open .map-caption { display:none; }
   .map-caption { left:8px; max-width:calc(100% - 80px); }
 }
 @media (max-height:460px) {
@@ -280,7 +280,7 @@ summary { cursor:pointer; min-height:32px; padding:5px 0; font-size:13px; }
 
 /* Frames on the sky, catalogue layers, Gaia marker and spectrum inside the sidebar workspace. */
 :root { --cat-gaia:#7fd4ff; --cat-wise:#ff8a65; --cat-simbad:#ffd54f; --cat-skybot:#c5a3ff; }
-.marker { position:absolute; width:4%; aspect-ratio:1; transform:translate(-50%,-50%) rotate(45deg); border:2px solid var(--warning); pointer-events:none; }
+.marker { position:absolute; width:4%; aspect-ratio:1; transform:translate(-50%,-50%); border:2px solid var(--warning); border-radius:50%; pointer-events:none; }
 .layers-section { display:flex; flex-direction:column; gap:10px; padding-top:14px; border-top:1px solid var(--border); }
 .layers-section h3 { margin:0; font-size:13px; }
 .layers-section > p { margin:0; font-size:12px; }
@@ -289,12 +289,15 @@ summary { cursor:pointer; min-height:32px; padding:5px 0; font-size:13px; }
 .catalog-legend { display:flex; flex-direction:column; gap:2px; }
 .catalog-legend .unavailable { color:var(--muted); }
 .catalog-legend .hint { margin:6px 0 0; font-size:12px; color:var(--muted); }
-.spectrum-section h2 { font-size:14px; margin-bottom:8px; }
+.spectrum-section h3 { font-size:14px; margin-bottom:8px; }
 .spectrum-section svg { display:block; }
 .spectrum-section .progress { color:var(--muted); font-size:13px; }
 .spectrum-section button { width:100%; }
 .map-caption { flex-wrap:wrap; row-gap:4px; }
 .frame-caption { color:var(--text); font-variant-numeric:tabular-nums; }
+/* Aladin's source table opens at the bottom left of the map: next to the sidebar, and the caption steps aside. */
+.sky-view .aladin-table { left:calc(var(--map-tools-offset) + 4px) !important; max-width:calc(100% - var(--map-tools-offset) - 8px) !important; }
+.workspace:has(.aladin-table) .map-caption { display:none; }
 
 /* Detected sources (NAS-52): marker colours on the dark sky, always paired with shape and word. */
 :root {

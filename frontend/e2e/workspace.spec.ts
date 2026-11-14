@@ -344,3 +344,32 @@ test('fixture: frames on the sky, layers, Gaia motion and spectrum keep their pl
   await page.getByRole('button', { name: 'Build quick-look spectrum from all SPHEREx visits' }).click()
   await expect(page.locator('#details-panel .spectrum-section')).toContainText('Could not build the spectrum: Not Found')
 })
+
+test('fixture: a shared link with a name adds the Gaia marker; new coordinates drop the name', async ({ page }) => {
+  await fixtures(page)
+  const motion = { source_id: '576402619921510144', ra: manifest.ra, dec: manifest.dec, ref_epoch: 2016,
+    pmra_mas_yr: 44.5, pmdec_mas_yr: -11.9, parallax_mas: 7.3 }
+  await page.route('**/api/resolve?**', route => route.fulfill({ json: { name: 'Polaris', ra: manifest.ra, dec: manifest.dec, proper_motion: motion } }))
+  await page.goto('/?ra=37.954542&dec=89.264111&fov=0.2&band=6&name=Polaris')
+  await expect(page.locator('.player .marker')).toBeVisible()
+  await expect(page.locator('#compare-panel .meta')).toContainText('576402619921510144')
+  await page.getByTestId('locate-trigger').click()
+  await page.getByText('Enter precise coordinates', { exact: true }).click()
+  await page.getByLabel('Right ascension').fill('37.9')
+  await page.getByRole('button', { name: 'Compare this position' }).click()
+  await expect(page).toHaveURL(/ra=37\.9&/)
+  await expect(page.getByRole('button', { name: 'Play', exact: true })).toBeVisible()
+  expect(page.url()).not.toContain('name=')
+  await expect(page.locator('#compare-panel .meta')).not.toContainText('Gaia DR3')
+  await expect(page.locator('.player .marker')).toHaveCount(0)
+})
+
+test('fixture: a frame that cannot load on the sky is never announced as shown', async ({ page }) => {
+  await fixtures(page)
+  await page.route('**/api/frames/fixture/frame_0.png*', route => route.fulfill({ status: 404, body: 'Not found' }))
+  await page.goto('/?ra=37.954542&dec=89.264111')
+  await expect(page.locator('.map-caption')).toContainText('SPHEREx frame 1/2 could not load on the sky')
+  await expect(page.locator('.map-caption')).not.toContainText('SPHEREx frame on the sky')
+  await page.getByRole('button', { name: 'Next frame', exact: true }).click()
+  await expect(page.locator('.map-caption')).toContainText('SPHEREx frame on the sky · 2026-09-10 · D6 · 2/2')
+})

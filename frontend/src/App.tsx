@@ -20,6 +20,7 @@ import { sliceForDetector } from './sky'
 import { sliceText, useCubeWavelengths, useSkySlice } from './skyCube'
 import { useSmallBodyLayer } from './smallBodyLayer'
 import { countSources, useSourceLayer } from './sourceLayer'
+import { CHALLENGE_TARGETS } from './targets'
 import type { FrameJob, ObservationSummary, ProperMotion } from './types'
 import { POLARIS, readEmbed, readQuery, toSearch, type TargetQuery, type ViewMode } from './url'
 
@@ -37,6 +38,8 @@ export default function App() {
   const [query, setQuery] = useState<TargetQuery>(INITIAL ?? POLARIS)
   const [draft, setDraft] = useState<TargetQuery>(INITIAL ?? POLARIS)
   const [center, setCenter] = useState(POLARIS_CENTER)
+  // The query the map was last moved to; a failed request leaves the map where it was.
+  const [centred, setCentred] = useState<Pick<TargetQuery, 'ra' | 'dec'>>(POLARIS)
   const [summary, setSummary] = useState<ObservationSummary | null>(null)
   const [job, setJob] = useState<FrameJob | null>(null)
   const [error, setError] = useState<string | null>(null)
@@ -114,6 +117,7 @@ export default function App() {
     setMotion(null)
     setFrameIndex(0)
     setPanel('compare')
+    setName(targetName ?? requested.name ?? '')
     setStatus(targetName ? `Finding ${targetName}…` : 'Searching SPHEREx observations…')
     try {
       let next = requested
@@ -127,7 +131,7 @@ export default function App() {
       setQuery(next)
       setDraft(next)
       setMotion(nextMotion)
-      setTargetLabel(next.name ?? (next.ra === POLARIS.ra && next.dec === POLARIS.dec ? 'Polaris' : 'Selected sky region'))
+      setTargetLabel(next.name ?? CHALLENGE_TARGETS.find((t) => 'ra' in t && t.ra === next.ra && t.dec === next.dec)?.label ?? 'Selected sky region')
       window.history.replaceState(null, '', toSearch(next, EMBED))
       // A name in a shared link only adds the Gaia proper motion; the frames follow the coordinates.
       if (!targetName && next.name && !knownMotion) {
@@ -144,6 +148,7 @@ export default function App() {
       if (stale()) return
       setSummary(found)
       setCenter({ ra: found.ra, dec: found.dec })
+      setCentred(next)
       setViewRevision((value) => value + 1)
       let state = started
       setJob(state)
@@ -235,7 +240,7 @@ export default function App() {
   const showDifference = query.mode === 'difference' && !differenceBlocked && (manifest?.differences.length ?? 0) > 0
   const hasFrames = (manifest?.frames.length ?? 0) > 0
   // The player's frame blinks on the sky; the difference image stays in the panel.
-  useFrameLayers(sky, manifest, frameIndex, framesOnSky && !showDifference)
+  const frameLayers = useFrameLayers(sky, manifest, frameIndex, framesOnSky && !showDifference)
   useSourceLayer(sky, manifest?.frames, frameIndex, sourcesOnSky && hasFrames && !showDifference)
   const track = useMotionTrack(sky, motion, manifest?.frames)
   const frame = (hasFrames && manifest?.frames[frameIndex]) || null
@@ -251,7 +256,7 @@ export default function App() {
 
   const comparison = (
     <>
-      <ModeSwitch value={query.mode} onChange={selectMode} differenceBlocked={differenceBlocked} />
+      <ModeSwitch value={query.mode} onChange={selectMode} differenceBlocked={differenceBlocked} disabled={busy && !job} />
       <div className="comparison-status" role="status" aria-live="polite">
         <span className={busy ? 'status-dot busy' : 'status-dot'} aria-hidden="true" />
         <span>{status}</span>
@@ -263,19 +268,21 @@ export default function App() {
           <button type="button" onClick={cancel}>Stop waiting</button>
         </div>
       )}
-      {error && <div className="notice error" role="alert"><strong>Comparison unavailable</strong><p>{error}</p></div>}
+      {error && <div className="notice error" role="alert"><strong>Comparison unavailable</strong><p>{error}</p>
+        {!EMBED && (centred.ra !== query.ra || centred.dec !== query.dec) && <p>The map still shows the previous position.</p>}</div>}
       {(!busy && (error || cancelled || (!hasFrames && job))) && (
         <div className="recovery-actions">
           <button type="button" onClick={() => void run(lastRequest.current.query, lastRequest.current.name)}>Retry</button>
-          <button type="button" onClick={() => setPanel('locate')}>Choose another region</button>
+          {!EMBED && <button type="button" onClick={() => setPanel('locate')}>Choose another region</button>}
         </div>
       )}
-      {!busy && !hasFrames && !error && !cancelled && (
-        <div className="empty-state">
+      {!busy && !hasFrames && !error && !cancelled && (EMBED && !job
+        ? <p className="muted">Add ra and dec to the URL, e.g. ?ra=02:31:49.09&amp;dec=+89:15:50.8&amp;embed=1</p>
+        : <div className="empty-state">
           <span className="empty-reticle" aria-hidden="true" />
           <h3>{job ? 'No images to compare' : 'One region. Different moments.'}</h3>
           <p>{job ? 'Try another detector or sky region. Repeat coverage varies by position.' : 'Choose a target or use the map center to load real SPHEREx observations.'}</p>
-          <button type="button" onClick={useMapCenter} disabled={skyUnavailable || !sky}>Compare map center</button>
+          {!EMBED && <button type="button" onClick={useMapCenter} disabled={skyUnavailable || !sky}>Compare map center</button>}
         </div>
       )}
       {manifest && hasFrames && query.mode === 'difference' && (
@@ -286,7 +293,7 @@ export default function App() {
       )}
       {manifest && hasFrames && showDifference && <DifferenceView key={job.job_id} manifest={manifest} />}
       {manifest && hasFrames && !showDifference && <BlinkPlayer key={job.job_id} frames={manifest.frames} checks={checks} grid={manifest} motion={motion}
-        onIndexChange={setFrameIndex} active={EMBED || panel === 'compare'} showShare={EMBED} />}
+        onIndexChange={setFrameIndex} active={EMBED || panel === 'compare' || !panel} showShare={EMBED} />}
       {!EMBED && manifest && hasFrames && <details className="disclosure"><summary>Data & cross-check links</summary>
         <DataLinks manifest={manifest} frame={showDifference ? null : frame} /></details>}
       {!EMBED && manifest && frame && !showDifference && <WavelengthStrip detector={manifest.detector} frame={frame} />}
@@ -309,30 +316,7 @@ export default function App() {
 
   return (
     <div ref={workspaceRoot} className={`workspace${panel ? ' sidebar-open' : ''}`} data-testid="planet-x-shell">
-      <a className="skip-link" href="#workspace-tools">Skip to workspace controls</a>
-      <main className="sky-stage" tabIndex={0} aria-label="Interactive sky map. Arrow keys pan; plus and minus zoom." onKeyDown={(event) => {
-        if (event.target !== event.currentTarget || !sky) return
-        const map = sky
-        const [ra, dec] = map.getRaDec()
-        const [fov] = map.getFov()
-        const step = fov / 10
-        if (event.key === 'ArrowLeft') map.gotoRaDec((ra + step) % 360, dec)
-        else if (event.key === 'ArrowRight') map.gotoRaDec((ra - step + 360) % 360, dec)
-        else if (event.key === 'ArrowUp') map.gotoRaDec(ra, Math.min(90, dec + step))
-        else if (event.key === 'ArrowDown') map.gotoRaDec(ra, Math.max(-90, dec - step))
-        else if (event.key === '+' || event.key === '=') map.setFoV(Math.max(0.001, fov * 0.8))
-        else if (event.key === '-') map.setFoV(Math.min(180, fov * 1.25))
-        else return
-        event.preventDefault()
-      }} onClickCapture={(event) => {
-        // Native Aladin menus get the workspace when opened, with no app sheet obscuring them.
-        if (event.target instanceof Element && event.target.closest('.aladin-widgets-toolbar, .aladin-projection-control, .aladin-fullScreen-control, .aladin-cooFrame, .aladin-location')) setPanel(null)
-      }}>
-        <SkyView ra={center.ra} dec={center.dec} fov={query.fov} detector={query.band} revision={viewRevision}
-          onReady={(instance) => { setSky(instance); setSkyUnavailable(false) }}
-          onLayerChange={setSkyLayer} onUnavailable={() => setSkyUnavailable(true)} />
-      </main>
-
+      <a className="skip-link" href="#sky-map">Skip to the sky map</a>
       <header ref={appBar} className="app-bar" id="workspace-tools">
         <div className="brand"><span className="brand-mark" aria-hidden="true">＋</span><div><h1>Loop the Difference</h1><span>SPHEREx observation workspace</span></div></div>
         <form className="global-search" onSubmit={(event) => { event.preventDefault(); if (name.trim()) find(name.trim(), draft) }}>
@@ -376,9 +360,36 @@ export default function App() {
         </aside>
       </div>
 
+      <main id="sky-map" className="sky-stage" tabIndex={0} aria-label="Interactive sky map. Arrow keys pan; plus and minus zoom." onKeyDown={(event) => {
+        if (event.target !== event.currentTarget || !sky) return
+        const map = sky
+        const [ra, dec] = map.getRaDec()
+        const [fov] = map.getFov()
+        const step = fov / 10
+        // The same step on the sky east or west: RA degrees shrink with cos(Dec) towards the pole.
+        const raStep = step / Math.max(Math.cos((dec * Math.PI) / 180), 0.01)
+        if (event.key === 'ArrowLeft') map.gotoRaDec((((ra + raStep) % 360) + 360) % 360, dec)
+        else if (event.key === 'ArrowRight') map.gotoRaDec((((ra - raStep) % 360) + 360) % 360, dec)
+        else if (event.key === 'ArrowUp') map.gotoRaDec(ra, Math.min(90, dec + step))
+        else if (event.key === 'ArrowDown') map.gotoRaDec(ra, Math.max(-90, dec - step))
+        else if (event.key === '+' || event.key === '=') map.setFoV(Math.max(0.001, fov * 0.8))
+        else if (event.key === '-') map.setFoV(Math.min(180, fov * 1.25))
+        else return
+        event.preventDefault()
+      }} onClickCapture={(event) => {
+        // Native Aladin menus get the workspace when opened, with no app sheet obscuring them.
+        if (event.target instanceof Element && event.target.closest('.aladin-widgets-toolbar, .aladin-projection-control, .aladin-fullScreen-control, .aladin-cooFrame, .aladin-location')) setPanel(null)
+      }}>
+        <SkyView ra={center.ra} dec={center.dec} fov={query.fov} detector={query.band} revision={viewRevision}
+          onReady={(instance) => { setSky(instance); setSkyUnavailable(false) }}
+          onLayerChange={setSkyLayer} onUnavailable={() => setSkyUnavailable(true)} />
+      </main>
+
       <footer className="map-caption">
         <div className="layer-caption"><span className="status-dot" aria-hidden="true" /><span>Sky context · {skyUnavailable ? 'WebGL2 unavailable' : skyCaption}</span></div>
-        {frameOnSky && <span className="frame-caption">SPHEREx frame on the sky · {frameOnSky.date.slice(0, 10)} · D{frameOnSky.detector} · {frameIndex + 1}/{manifest!.frames.length}</span>}
+        {frameOnSky && frameLayers[frameIndex] && <span className="frame-caption">{frameLayers[frameIndex] === 'failed'
+          ? `SPHEREx frame ${frameIndex + 1}/${manifest!.frames.length} could not load on the sky`
+          : `SPHEREx frame on the sky · ${frameOnSky.date.slice(0, 10)} · D${frameOnSky.detector} · ${frameIndex + 1}/${manifest!.frames.length}`}</span>}
         <span className="map-hint">Drag to explore · scroll to zoom · map tools at left</span>
       </footer>
       {shareStatus && <div className="share-feedback" role="status"><span>{shareStatus}</span><button type="button" aria-label="Dismiss share message" onClick={() => setShareStatus('')}>×</button></div>}
