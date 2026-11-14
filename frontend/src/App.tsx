@@ -91,7 +91,7 @@ export default function App() {
     <div className="app">
       {!EMBED && (
         <header className="header">
-          <h1>SkyShift</h1>
+          <h1>Loop the Difference</h1>
           <p>See how the sky shifts: NASA SPHEREx images of one patch of sky, played over time.</p>
         </header>
       )}
@@ -135,7 +135,7 @@ export default function App() {
             </p>
           )}
           <p className="caveat">
-            SkyShift is a discovery aid, not a detection pipeline: check every change against
+            Loop the Difference is a discovery aid, not a detection pipeline: check every change against
             catalogues before calling it a candidate. SPHEREx observes through linear variable
             filters, so the exact wavelength differs from frame to frame.
           </p>
