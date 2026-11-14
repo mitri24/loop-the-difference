@@ -9,6 +9,8 @@ import {
   layerStatus,
   parseVotableRows,
   propagateGaia,
+  simbadSources,
+  sourceName,
   simbadUrl,
   skybotUrl,
   snapEpoch,
@@ -48,10 +50,10 @@ describe('catalogue URLs', () => {
   it('asks SIMBAD TAP for 500 objects in the cone, encoded', () => {
     const url = simbadUrl(1, -2, 0.5)
     expect(url).toBe(
-      "https://simbad.cfa.harvard.edu/simbad/sim-tap/sync?request=doQuery&lang=adql&format=votable/td&query=SELECT%20TOP%20500%20main_id%2C%20ra%2C%20dec%2C%20otype%20FROM%20basic%20WHERE%20CONTAINS(POINT('ICRS'%2C%20ra%2C%20dec)%2C%20CIRCLE('ICRS'%2C%201%2C%20-2%2C%200.5))%20%3D%201",
+      "https://simbad.cfa.harvard.edu/simbad/sim-tap/sync?request=doQuery&lang=adql&format=votable/td&query=SELECT%20TOP%20500%20main_id%2C%20ra%2C%20dec%2C%20otype%2C%20pmra%2C%20pmdec%20FROM%20basic%20WHERE%20CONTAINS(POINT('ICRS'%2C%20ra%2C%20dec)%2C%20CIRCLE('ICRS'%2C%201%2C%20-2%2C%200.5))%20%3D%201",
     )
     expect(decodeURIComponent(url.split('query=')[1])).toBe(
-      "SELECT TOP 500 main_id, ra, dec, otype FROM basic WHERE CONTAINS(POINT('ICRS', ra, dec), CIRCLE('ICRS', 1, -2, 0.5)) = 1",
+      "SELECT TOP 500 main_id, ra, dec, otype, pmra, pmdec FROM basic WHERE CONTAINS(POINT('ICRS', ra, dec), CIRCLE('ICRS', 1, -2, 0.5)) = 1",
     )
   })
 
@@ -177,6 +179,51 @@ describe('Gaia sources at the frame epoch', () => {
     )
     expect(sources).toHaveLength(1)
     expect(sources[0]).toMatchObject({ ra: 10.5, dec: -20.25 })
+  })
+})
+
+describe('SIMBAD sources at the frame epoch', () => {
+  const mjd2025_5 = 51544.5 + 25.5 * 365.25
+
+  it("moves Barnard's Star from J2000 by its proper motion and keeps name and type", () => {
+    const [star] = simbadSources(
+      [["NAME Barnard's star", '269.45207511', '4.69339088', 'BY*', '-801.551', '10362.394']],
+      mjd2025_5,
+    )
+    expect((star.dec - 4.69339088) * 3600).toBeCloseTo(264.24, 1)
+    const cosDec = Math.cos((4.69339088 * Math.PI) / 180)
+    expect((star.ra - 269.45207511) * 3600 * cosDec).toBeCloseTo(-20.44, 1)
+    expect(star.data).toMatchObject({ main_id: "NAME Barnard's star", otype: 'BY*' })
+  })
+
+  it('stays at J2000 for the J2000 epoch (no frames yet)', () => {
+    const [star] = simbadSources(
+      [['x', '269.45207511', '4.69339088', 'BY*', '-801.551', '10362.394']],
+      51544.5,
+    )
+    expect(star).toMatchObject({ ra: 269.45207511, dec: 4.69339088 })
+  })
+
+  it('keeps the J2000 position without proper motion and drops rows without a position', () => {
+    const sources = simbadSources(
+      [
+        ['M 31', '10.68', '41.27', 'G', '', ''],
+        ['x', '', '', '', '', ''],
+      ],
+      mjd2025_5,
+    )
+    expect(sources).toHaveLength(1)
+    expect(sources[0]).toMatchObject({ ra: 10.68, dec: 41.27 })
+  })
+})
+
+describe('marker name on hover', () => {
+  it('takes the name column of each catalogue', () => {
+    expect(sourceName({ main_id: "NAME Barnard's star", ra: '1' })).toBe("NAME Barnard's star")
+    expect(sourceName({ Num: '1', Name: 'Ceres' })).toBe('Ceres')
+    expect(sourceName({ AllWISE: 'J175747.37+044601.2' })).toBe('J175747.37+044601.2')
+    expect(sourceName({ Source: '4472832130942575872' })).toBe('4472832130942575872')
+    expect(sourceName(undefined)).toBe('')
   })
 })
 
