@@ -128,6 +128,11 @@ export function AboutPanel({ open, onClose }: Props) {
             Small-Body Identification API (SBIdent).
           </li>
           <li>
+            <strong>NEOSSat</strong> (Canadian Space Agency) – “This research used the facilities of
+            the Canadian Astronomy Data Centre operated by the National Research Council of Canada
+            with the support of the Canadian Space Agency.”
+          </li>
+          <li>
             <strong>Code</strong> – free software under the GNU General Public License v3.0, written
             with Claude Code (Anthropic) under human review. Built for NASA Space Apps 2026.{' '}
             <a href={REPO_URL} target="_blank" rel="noreferrer">

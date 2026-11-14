@@ -28,8 +28,10 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
   if (!response.ok) {
     const body = await response.json().catch(() => null)
     const detail = typeof body?.detail === 'string' ? body.detail : null
-    if (!detail && UNAVAILABLE.has(response.status)) throw new Error('The data service is not available right now. Retry in a moment.')
-    throw new Error(detail ?? `Request failed (${response.status})`)
+    const message = !detail && UNAVAILABLE.has(response.status)
+      ? 'The data service is not available right now. Retry in a moment.'
+      : detail ?? `Request failed (${response.status})`
+    throw Object.assign(new Error(message), { status: response.status })
   }
   return (await response.json()) as T
 }

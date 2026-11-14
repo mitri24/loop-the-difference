@@ -1,9 +1,9 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { getNeossat } from '../api'
 import type { NeossatCoverage } from '../types'
 
 export type NeossatState =
-  | { status: 'loading' }
+  | { status: 'loading'; slow?: boolean }
   | { status: 'ready'; coverage: NeossatCoverage }
   | { status: 'error'; message: string }
 
@@ -17,24 +17,40 @@ export function neossatSummary(coverage: NeossatCoverage): string | null {
   return years ? `${coverage.count} ${noun}, ${years}` : `${coverage.count} ${noun}`
 }
 
+// CADC needs up to ~50 s for some fields (R Dra); the API answers 504 meanwhile and fills its cache.
+const SLOW_RETRIES = 6
+const SLOW_RETRY_MS = 10_000
+
 // One CADC lookup per position; retry asks again (the API joins a query that is still running).
 export function useNeossat(ra: string, dec: string): { state: NeossatState; retry: () => void } {
   const [attempt, setAttempt] = useState(0)
   const key = `${ra}|${dec}|${attempt}`
   const [result, setResult] = useState<{ key: string; state: NeossatState } | null>(null)
+  const slow = useRef({ position: '', tries: 0 })
 
   useEffect(() => {
     let current = true
+    let timer: ReturnType<typeof setTimeout> | undefined
+    const position = `${ra}|${dec}`
+    if (slow.current.position !== position) slow.current = { position, tries: 0 }
     getNeossat(ra, dec).then(
       (coverage) => {
         if (current) setResult({ key, state: { status: 'ready', coverage } })
       },
-      (e: Error) => {
-        if (current) setResult({ key, state: { status: 'error', message: e.message } })
+      (e: Error & { status?: number }) => {
+        if (!current) return
+        if (e.status === 504 && slow.current.tries < SLOW_RETRIES) {
+          slow.current.tries += 1
+          setResult({ key, state: { status: 'loading', slow: true } })
+          timer = setTimeout(() => setAttempt((n) => n + 1), SLOW_RETRY_MS)
+          return
+        }
+        setResult({ key, state: { status: 'error', message: e.message } })
       },
     )
     return () => {
       current = false
+      clearTimeout(timer)
     }
   }, [ra, dec, key])
 
@@ -48,7 +64,8 @@ export function NeossatLine({ state, onRetry }: { state: NeossatState; onRetry: 
   if (state.status === 'loading') {
     return (
       <p role="status" className="muted">
-        NEOSSat (CSA): checking the CADC archive…
+        NEOSSat (CSA):{' '}
+        {state.slow ? 'CADC is slow for this field – asking again…' : 'checking the CADC archive…'}
       </p>
     )
   }

@@ -65,3 +65,11 @@ describe('NeossatLine', () => {
     expect(error).toContain('Try again')
   })
 })
+
+describe('NeossatLine while CADC is slow', () => {
+  it('says that it asks again instead of showing an error', () => {
+    const html = render({ status: 'loading', slow: true })
+    expect(html).toContain('CADC is slow for this field – asking again…')
+    expect(html).not.toContain('role="alert"')
+  })
+})
