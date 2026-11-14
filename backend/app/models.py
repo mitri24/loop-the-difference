@@ -11,6 +11,8 @@ class Observation(BaseModel):
     mjd: float
     date: str
     access_url: str
+    # The whole Level-2 file on AWS S3 (anonymous HTTPS), when IRSA lists a cloud copy.
+    cloud_url: str | None = None
 
 
 class Epoch(BaseModel):
@@ -68,6 +70,7 @@ class Frame(BaseModel):
     wavelength_max_um: float
     coverage: float
     source_url: str
+    cloud_url: str | None = None
     epoch: int = 0
     n_combined: int = 1
     date_end: str | None = None

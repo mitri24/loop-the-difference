@@ -3,6 +3,7 @@ import type { AladinInstance } from 'aladin-lite'
 import { createFrames, getFrameJob, getObservations, resolveName } from './api'
 import { AboutPanel } from './components/AboutPanel'
 import { BlinkPlayer } from './components/BlinkPlayer'
+import { DataLinks } from './components/DataLinks'
 import { EvidencePanel, hasBlocker, manifestChecks } from './components/EvidencePanel'
 import { DataPanel } from './components/DataPanel'
 import { DifferenceView } from './components/DifferenceView'
@@ -277,8 +278,10 @@ export default function App() {
       {manifest && hasFrames && showDifference && <DifferenceView key={job.job_id} manifest={manifest} />}
       {manifest && hasFrames && !showDifference && <BlinkPlayer key={job.job_id} frames={manifest.frames} checks={checks} grid={manifest} motion={motion}
         onIndexChange={setFrameIndex} active={EMBED || panel === 'compare'} showShare={EMBED} />}
+      {!EMBED && manifest && hasFrames && <details className="disclosure"><summary>Data & cross-check links</summary>
+        <DataLinks manifest={manifest} frame={showDifference ? null : frame} /></details>}
       {!EMBED && manifest && frame && !showDifference && <WavelengthStrip detector={manifest.detector} frame={frame} />}
-      {!EMBED && !skyUnavailable && <LayersSection aladin={sky} ra={center.ra} dec={center.dec} sizeDeg={query.fov} frame={frame}
+      {!EMBED && !skyUnavailable && <LayersSection aladin={sky} sizeDeg={query.fov} frame={frame}
         framesOnSky={framesOnSky} onFramesOnSkyChange={setFramesOnSky} sourcesOnSky={sourcesOnSky} onSourcesOnSkyChange={setSourcesOnSky}
         trackShown={track.length > 0} skySlice={skySlice} onSkySliceChange={setSkySlice} cubeActive={cubeActive}
         framesBlocked={showDifference ? 'The difference image is shown in this panel. Frames and their detected sources go back on the sky in the other modes.' : undefined} />}

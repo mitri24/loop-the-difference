@@ -7,6 +7,7 @@ export interface Observation {
   mjd: number
   date: string
   access_url: string
+  cloud_url?: string | null // the whole Level-2 file on AWS S3
 }
 
 export interface Epoch {
@@ -53,6 +54,7 @@ export interface Frame {
   wavelength_max_um: number
   coverage: number
   source_url: string
+  cloud_url?: string | null // absent in manifests cached before NAS-54
   epoch: number
   n_combined: number
   date_end: string | null
