@@ -1,3 +1,4 @@
+import type { ReactNode } from 'react'
 import { MARK_LETTERS, markText, type Candidate } from '../candidate'
 import { trackEvidence, type PossibleTrack } from '../track'
 import { KnownObjectCheck, type KnownContext } from './KnownObjectCheck'
@@ -9,10 +10,11 @@ interface Props {
   blocked: string | null
   track: PossibleTrack | null
   known: KnownContext
+  children?: ReactNode
 }
 
 // Directly under the blink: what to do next, the marks so far and what they still need.
-export function CandidatePanel({ candidate: { marks, notice, armed, setArmed, clear }, blocked, track, known }: Props) {
+export function CandidatePanel({ candidate: { marks, notice, armed, setArmed, clear }, blocked, track, known, children }: Props) {
   return (
     <section className="candidate-check" aria-labelledby="candidate-heading">
       <h3 id="candidate-heading">Candidate check</h3>
@@ -42,6 +44,7 @@ export function CandidatePanel({ candidate: { marks, notice, armed, setArmed, cl
           <KnownObjectCheck key={marks.map((m) => `${m.obs_id}:${m.ra}:${m.dec}`).join()} marks={marks} {...known}
             evidence={trackEvidence(track)}>
             {track && <TrackSummary track={track} />}
+            {children}
           </KnownObjectCheck>
           <button type="button" onClick={clear}>Clear marks</button>
         </>

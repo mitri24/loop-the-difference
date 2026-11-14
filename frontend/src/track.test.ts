@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { candidateState, type Mark } from './candidate'
-import { fitTrack, possibleTrack, predict, regime, trackEvidence } from './track'
+import { checkFrames, fitTrack, possibleTrack, predict, regime, trackEvidence } from './track'
+import type { DetectedSource, Frame } from './types'
 
 const mark = (mjd: number, ra: number, dec: number, sigma = 1): Mark => ({
   obs_id: `obs-${mjd}`, mjd, date: '', ra, dec, sigma_arcsec: sigma,
@@ -97,5 +98,42 @@ describe('possible track', () => {
 
   it('needs two different dates', () => {
     expect(fitTrack([FRAME_7], PLUTO_CENTRE)).toBeNull()
+  })
+})
+
+const source = (ra: number, dec: number, snr: number): DetectedSource => ({
+  ra, dec, x: 0, y: 0, peak_mjy_sr: 1, snr, match: 'none', catalog_id: null, separation_arcsec: null, catalog_mag: null, catalog_band: null,
+})
+const frame = (obs_id: string, mjd: number, sources?: DetectedSource[]) => ({ obs_id, mjd, date: '2026-05-01T00:00:00Z', sources }) as Frame
+const PLUTO_GRID = { ...PLUTO_CENTRE, size_deg: 0.1, pixel_scale_arcsec: 6.15 }
+
+describe('look back within SPHEREx', () => {
+  const marks = [{ ...FRAME_7, obs_id: 'f7' }, { ...FRAME_10, obs_id: 'f10' }]
+  const check = (frames: Frame[], grid = PLUTO_GRID) => {
+    const track = possibleTrack(marks, PLUTO_CENTRE, frames.map((f) => f.mjd))!
+    return checkFrames(track, frames, marks, grid)
+  }
+
+  it('reads Pluto in frame 8 as a detection near the prediction and skips the marked frames', () => {
+    const rows = check([
+      frame('f10', FRAME_10.mjd, []), frame('f8', FRAME_8.mjd, [source(308.6, -22.9, 40), source(FRAME_8.ra, FRAME_8.dec, 177)]),
+      frame('f7', FRAME_7.mjd, []),
+    ])
+    expect(rows.map((r) => r.frame.obs_id)).toEqual(['f8'])
+    expect(rows[0].index).toBe(1)
+    expect(rows[0].result.kind).toBe('detection')
+    expect(rows[0].result.kind === 'detection' && rows[0].result.source.snr).toBe(177)
+    expect(rows[0].radius_arcsec).toBeCloseTo(1.5 * 6.15, 6)
+  })
+
+  it('reports nothing, outside the frame, outside the window and no source list, in time order', () => {
+    const rows = check([
+      frame('f11', FRAME_11_MJD, []), frame('f7', FRAME_7.mjd), frame('f8', FRAME_8.mjd, [source(308.6, -22.9, 40)]),
+      frame('f10', FRAME_10.mjd), frame('f9', 61157, undefined),
+    ])
+    expect(rows.map((r) => [r.frame.obs_id, r.result.kind])).toEqual([['f8', 'nothing'], ['f9', 'noSources'], ['f11', 'window']])
+    expect(rows[2].prediction).toBeNull()
+    const outside = check([frame('f7', FRAME_7.mjd), frame('f8', FRAME_8.mjd, []), frame('f10', FRAME_10.mjd)], { ...PLUTO_GRID, ra: 309, size_deg: 0.05 })
+    expect(outside[0].result.kind).toBe('outside')
   })
 })

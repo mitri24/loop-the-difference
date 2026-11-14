@@ -1,9 +1,10 @@
 // Possible track from the user's marks: a straight line in the tangent plane at the field centre,
 // used only where a straight line is physically valid. Never an orbit, never a verdict.
-import type { Evidence, Mark } from './candidate'
+import { insideFrame, nearestSource, type Evidence, type Mark } from './candidate'
 import { skyToTangent } from './motion'
 import { tangentToSky } from './sky'
 import { EPOCH_GAP_DAYS } from './timeAxis'
+import type { DetectedSource, Frame, FrameManifest } from './types'
 
 const ARCSEC_PER_RAD = (180 / Math.PI) * 3600
 export const DAYS_PER_YEAR = 365.25
@@ -117,4 +118,47 @@ export function possibleTrack(marks: Mark[], centre: { ra: number; dec: number }
 
 export function trackEvidence(track: PossibleTrack | null): Evidence {
   return { motion: track?.regime === 'stellar', fastMotion: track?.regime === 'fast' || track?.regime === 'solarSystem' }
+}
+
+// A detection counts as at the prediction within 2σ of the prediction, but never closer than
+// 1.5 SPHEREx pixels: centroids of the same blob scatter by about a pixel.
+export const SEARCH_PIXELS = 1.5
+// Mirrors MAX_SOURCES in backend/app/sources.py: a full list holds only the brightest detections.
+export const SPHEREX_SOURCE_CAP = 300
+
+export type LookBack =
+  | { kind: 'detection'; source: DetectedSource; sep_arcsec: number }
+  | { kind: 'nothing' | 'outside' | 'window' | 'noSources' }
+
+export interface FrameCheck {
+  index: number
+  frame: Frame
+  // Null outside the straight-line window.
+  prediction: Prediction | null
+  radius_arcsec: number
+  result: LookBack
+}
+
+/** Every frame without a mark, in time order: the nearest ≥5σ detection in the search area at the prediction. */
+export function checkFrames(
+  track: PossibleTrack, frames: Frame[], marks: Pick<Mark, 'obs_id'>[],
+  grid: Pick<FrameManifest, 'ra' | 'dec' | 'size_deg' | 'pixel_scale_arcsec'>,
+): FrameCheck[] {
+  const marked = new Set(marks.map((m) => m.obs_id))
+  return frames
+    .map((frame, index) => ({ frame, index }))
+    .filter(({ frame }) => !marked.has(frame.obs_id))
+    .sort((a, b) => a.frame.mjd - b.frame.mjd)
+    .map(({ frame, index }) => {
+      const prediction = track.predictions.find((p) => p.mjd === frame.mjd) ?? null
+      const radius_arcsec = Math.max(prediction?.radius_arcsec ?? 0, SEARCH_PIXELS * grid.pixel_scale_arcsec)
+      const row = { index, frame, prediction, radius_arcsec }
+      if (!prediction) return { ...row, result: { kind: 'window' as const } }
+      if (!insideFrame(prediction.ra, prediction.dec, grid)) return { ...row, result: { kind: 'outside' as const } }
+      if (!frame.sources) return { ...row, result: { kind: 'noSources' as const } }
+      const nearest = nearestSource(frame.sources, prediction.ra, prediction.dec, radius_arcsec)
+      return nearest
+        ? { ...row, result: { kind: 'detection' as const, ...nearest } }
+        : { ...row, result: { kind: 'nothing' as const } }
+    })
 }

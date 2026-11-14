@@ -5,6 +5,7 @@ import { AboutPanel } from './components/AboutPanel'
 import { stampText, type BlinkLetter } from './blink'
 import { BlinkPlayer } from './components/BlinkPlayer'
 import { CandidatePanel } from './components/CandidatePanel'
+import { TrackCheck } from './components/TrackCheck'
 import { useCandidate, useMarkLayer } from './candidate'
 import { DataLinks } from './components/DataLinks'
 import { EvidencePanel, hasBlocker, manifestChecks } from './components/EvidencePanel'
@@ -20,7 +21,7 @@ import { WavelengthStrip } from './components/WavelengthStrip'
 import { useFrameLayers } from './frameLayers'
 import { usePlateLayer } from './historicalPlate'
 import { useMotionTrack } from './motionTrack'
-import { possibleTrack } from './track'
+import { checkFrames, possibleTrack } from './track'
 import { useTrackLayer } from './trackLayer'
 import { sliceForDetector } from './sky'
 import { sliceText, useCubeWavelengths, useSkySlice } from './skyCube'
@@ -58,6 +59,7 @@ export default function App() {
   const [skyUnavailable, setSkyUnavailable] = useState(false)
   const [sky, setSky] = useState<AladinInstance | null>(null)
   const [frameIndex, setFrameIndex] = useState(0)
+  const [seek, setSeek] = useState<{ index: number } | null>(null)
   const [frameLetter, setFrameLetter] = useState<BlinkLetter | null>(null)
   const showFrame = useCallback((index: number, letter: BlinkLetter | null) => {
     setFrameIndex(index)
@@ -317,9 +319,12 @@ export default function App() {
       )}
       {manifest && hasFrames && showDifference && <DifferenceView key={job.job_id} manifest={manifest} />}
       {manifest && hasFrames && !showDifference && <BlinkPlayer key={job.job_id} frames={manifest.frames} checks={checks} grid={manifest} motion={motion} predictions={predictions}
-        onIndexChange={showFrame} active={EMBED || panel === 'compare' || !panel} showShare={EMBED} />}
+        onIndexChange={showFrame} seek={seek} active={EMBED || panel === 'compare' || !panel} showShare={EMBED} />}
       {!EMBED && manifest && hasFrames && <CandidatePanel candidate={candidate} blocked={markBlocked} track={possible && { ...possible, predictions }}
-        known={{ epochs: smallBodies.epochs, motion, detector: manifest.detector, target: targetLabel }} />}
+        known={{ epochs: smallBodies.epochs, motion, detector: manifest.detector, target: targetLabel }}>
+        {possible && predictions.length > 0 && <TrackCheck checks={checkFrames({ ...possible, predictions }, manifest.frames, candidate.marks, manifest)}
+          onShow={(index, p) => { setSeek({ index }); sky?.gotoRaDec(p.ra, p.dec) }} />}
+      </CandidatePanel>}
       {!EMBED && manifest && hasFrames && <details className="disclosure"><summary>Data & cross-check links</summary>
         <DataLinks manifest={manifest} frame={showDifference ? null : frame} /></details>}
       {!EMBED && manifest && frame && !showDifference && <WavelengthStrip detector={manifest.detector} frame={frame} />}
