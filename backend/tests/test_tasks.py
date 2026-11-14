@@ -67,7 +67,9 @@ def _offline_archive(monkeypatch, settings, tmp_path, observations, flagged_targ
     """Three synthetic epochs on the target grid itself; one exposure carries a cosmic ray."""
     target, shape = target_grid(RA, DEC, SIZE_DEG)
     monkeypatch.setattr(tasks, "get_settings", lambda: settings)
-    monkeypatch.setattr(tasks, "search_observations", lambda ra, dec, settings: observations)
+    monkeypatch.setattr(
+        tasks, "search_observations", lambda ra, dec, settings, collections: (observations, [])
+    )
     monkeypatch.setattr(
         tasks,
         "fetch_cutout",
@@ -275,7 +277,7 @@ def test_every_frame_lists_its_sources_with_png_pixel_positions(monkeypatch, set
 
     manifest = build_frames("job", RA, DEC, SIZE_DEG, 6, 12, stack=False)
 
-    assert manifest["pipeline_version"] == 9
+    assert manifest["pipeline_version"] == 10
     for frame in manifest["frames"]:
         (source,) = frame["sources"]
         assert source["match"] == "none"
@@ -285,3 +287,44 @@ def test_every_frame_lists_its_sources_with_png_pixel_positions(monkeypatch, set
     (check,) = [c for c in manifest["checks"] if c["code"] == "SOURCES"]
     assert check["severity"] == "info"
     assert "4 detections in 4 frames" in check["detail"]
+
+
+def test_frames_carry_their_release_and_a_mix_is_said(monkeypatch, settings, tmp_path):
+    dr1 = [_observation(100 + i).model_copy(update={"collection": "spherex_dr1"}) for i in range(3)]
+    qr3 = [_observation(290 + i).model_copy(update={"collection": "spherex_qr3"}) for i in range(3)]
+    _offline_archive(monkeypatch, settings, tmp_path, dr1 + qr3)
+    monkeypatch.setattr(
+        tasks,
+        "search_observations",
+        lambda ra, dec, settings, collections: (dr1 + qr3, ["spherex_dr1_deep"]),
+    )
+
+    manifest = build_frames(
+        "job", RA, DEC, SIZE_DEG, 6, 12, collections=["spherex_dr1", "spherex_dr1_deep"]
+    )
+
+    assert [f["release"] for f in manifest["frames"]] == ["DR1"] * 3 + ["QR3"] * 3
+    assert manifest["release"] == "DR1 + QR3"
+    assert manifest["collection"] == "spherex_dr1,spherex_dr1_deep"
+    checks = {c["code"]: c for c in manifest["checks"]}
+    mixed = checks["MIXED_RELEASES"]
+    assert mixed["message"] == "Mixed releases: DR1 + QR3 (different calibration versions)"
+    assert mixed["severity"] == "info"
+    assert checks["RELEASE_UNAVAILABLE"]["severity"] == "warning"
+    assert "spherex_dr1_deep" in checks["RELEASE_UNAVAILABLE"]["detail"]
+    # The release that did not answer is asked again on the next request.
+    assert manifest["complete"] is False
+
+
+def test_a_deep_field_of_the_same_release_is_no_mix(monkeypatch, settings, tmp_path):
+    dr1 = [_observation(100 + i).model_copy(update={"collection": "spherex_dr1"}) for i in range(3)]
+    deep = _observation(103).model_copy(update={"collection": "spherex_dr1_deep"})
+    _offline_archive(monkeypatch, settings, tmp_path, [*dr1, deep])
+
+    manifest = build_frames("job", RA, DEC, SIZE_DEG, 6, 12, collections=["spherex_dr1"])
+
+    assert manifest["release"] == "DR1 + DR1 deep"
+    assert manifest["complete"] is True
+    codes = [c["code"] for c in manifest["checks"]]
+    assert "MIXED_RELEASES" not in codes
+    assert "RELEASE_UNAVAILABLE" not in codes

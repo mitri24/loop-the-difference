@@ -10,7 +10,14 @@ from fastapi.responses import FileResponse, JSONResponse
 from redis.exceptions import RedisError
 
 from app import jobs, names, partners, tracks
-from app.archive import ArchiveError, resolve_position, search_observations, summarize
+from app.archive import (
+    ArchiveError,
+    collection_key,
+    resolve_position,
+    search_observations,
+    spherex_collections,
+    summarize,
+)
 from app.catalogs import find_proper_motion
 from app.config import Settings, get_settings
 from app.coords import CoordinateError, parse_dec, parse_ra
@@ -96,15 +103,17 @@ def resolve(
 @app.get("/api/observations")
 def observations(ra: str, dec: str, settings: SettingsDep) -> ObservationSummary:
     ra_deg, dec_deg = parse_ra(ra), parse_dec(dec)
-    found = search_observations(ra_deg, dec_deg, settings)
-    return summarize(ra_deg, dec_deg, settings.spherex_collection, found)
+    collections = spherex_collections(settings)
+    found, _ = search_observations(ra_deg, dec_deg, settings, collections)
+    return summarize(ra_deg, dec_deg, collection_key(collections), found)
 
 
 @app.post("/api/frames")
 def create_frames(request: FrameRequest, settings: SettingsDep) -> FrameJob:
     ra, dec = parse_ra(request.ra), parse_dec(request.dec)
+    collections = spherex_collections(settings)
     job_id = jobs.job_id_for(
-        settings.spherex_collection,
+        collection_key(collections),
         ra,
         dec,
         request.size_deg,
@@ -122,6 +131,7 @@ def create_frames(request: FrameRequest, settings: SettingsDep) -> FrameJob:
         detector=request.detector,
         max_frames=request.max_frames,
         stack=request.stack,
+        collections=collections,
     )
 
 

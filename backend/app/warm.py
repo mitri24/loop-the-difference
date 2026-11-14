@@ -20,7 +20,14 @@ from pathlib import Path
 
 from pydantic import ValidationError
 
-from app.archive import resolve_cache_path, resolve_position, sia_cache_path
+from app.archive import (
+    collection_key,
+    collections_cache_path,
+    resolve_cache_path,
+    resolve_position,
+    sia_cache_path,
+    spherex_collections,
+)
 from app.config import Settings, get_settings
 from app.coords import parse_dec, parse_ra
 from app.jobs import job_id_for
@@ -102,10 +109,10 @@ def run(
     settings: Settings | None = None,
     resolver: Resolver | None = None,
     build: Callable[..., dict] = build_frames,
-    spectrum: Callable[[float, float], dict] | None = None,
+    spectrum: Callable[..., dict] | None = None,
 ) -> int:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
-    parser.add_argument("--dry-run", action="store_true", help="list the jobs, no network")
+    parser.add_argument("--dry-run", action="store_true", help="list the jobs, no downloads")
     parser.add_argument("--force", action="store_true", help="rebuild cached frames")
     parser.add_argument("--targets", help="comma-separated labels, e.g. polaris,wise0855")
     parser.add_argument("--no-spectrum", action="store_true", help="warm the frames only")
@@ -124,12 +131,16 @@ def run(
         if stale:
             print(f"removed {len(stale)} frame folders from older pipeline versions")
 
+    if args.force and not args.dry_run:
+        collections_cache_path(settings.cache_dir).unlink(missing_ok=True)
+    collections = spherex_collections(settings)
+    collection = collection_key(collections)
     failed = 0
     resolved: dict[str, tuple[float, float]] = {}
     spectra: set[str] = set()
     for job in jobs:
         if args.dry_run:
-            key = job.key(settings.spherex_collection) or f"resolve:{job.name}"
+            key = job.key(collection) or f"resolve:{job.name}"
             print(f"{key} · {job.target} · D{job.detector}")
             if not args.no_spectrum and job.target not in spectra:
                 spectra.add(job.target)
@@ -147,15 +158,16 @@ def run(
                 job = WarmJob(
                     job.target, job.detector, parse_ra(f"{ra:.6f}"), parse_dec(f"{dec:.6f}")
                 )
-            key = job.key(settings.spherex_collection)
+            key = job.key(collection)
             cached = manifest_path(settings.cache_dir, key)
             if args.force:
-                sia_cache_path(
-                    settings.cache_dir, settings.spherex_collection, job.ra, job.dec
-                ).unlink(missing_ok=True)
+                for name in collections:
+                    sia_cache_path(settings.cache_dir, name, job.ra, job.dec).unlink(
+                        missing_ok=True
+                    )
             if not args.no_spectrum and job.target not in spectra:
                 spectra.add(job.target)
-                failed += not _warm_spectrum(spectrum, job)
+                failed += not _warm_spectrum(partial(spectrum, collections=collections), job)
             if not args.force and cached.is_file():
                 manifest = FrameManifest.model_validate_json(cached.read_text())
                 if manifest.complete:
@@ -168,6 +180,7 @@ def run(
                 size_deg=SIZE_DEG,
                 detector=job.detector,
                 max_frames=MAX_FRAMES,
+                collections=collections,
             )
         except Exception as exc:  # one failed target must not stop the others
             failed += 1
@@ -183,7 +196,7 @@ def run(
     return 1 if failed else 0
 
 
-def _warm_spectrum(spectrum: Callable[[float, float], dict], job: WarmJob) -> bool:
+def _warm_spectrum(spectrum: Callable[..., dict], job: WarmJob) -> bool:
     """Build the target's spectrum once, at the position the UI sends; a failure stays local."""
     started = time.monotonic()
     try:

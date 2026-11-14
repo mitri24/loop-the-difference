@@ -292,7 +292,8 @@ def test_spectrum_is_rebuilt_only_when_it_is_missing_or_incomplete(
     response = client.post("/api/spectrum", json={"ra": "133.795", "dec": "-7.245"})
 
     assert response.status_code == 200
-    assert enqueued == ([{"ra": 133.795, "dec": -7.245}] if rerun else [])
+    expected = {"ra": 133.795, "dec": -7.245, "collections": ["spherex_dr1"]}
+    assert enqueued == ([expected] if rerun else [])
     assert previous.deleted is rerun
 
 

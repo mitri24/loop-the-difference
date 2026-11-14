@@ -8,7 +8,15 @@ import httpx
 import numpy as np
 from rq import get_current_job
 
-from app.archive import group_epochs, search_observations, select_for_stacks, select_frames
+from app.archive import (
+    collection_key,
+    group_epochs,
+    release_label,
+    search_observations,
+    select_for_stacks,
+    select_frames,
+    spherex_collections,
+)
 from app.catalogs import find_proper_motion, position_at
 from app.config import Settings, get_settings
 from app.frames import (
@@ -41,7 +49,7 @@ MAX_SPECTRUM_POINTS = 100
 SPECTRUM_VERSION = 4
 # Bump whenever the rendered output changes: the job key changes, so cached results are rebuilt,
 # and `warm` removes frame folders whose manifest carries an older version.
-PIPELINE_VERSION = 9
+PIPELINE_VERSION = 10
 
 
 def manifest_path(cache_dir: Path, key: str) -> Path:
@@ -100,10 +108,13 @@ def build_frames(
     detector: int,
     max_frames: int,
     stack: bool = False,
+    collections: list[str] | None = None,
 ) -> dict:
     """Worker job: find the observations, cut them out, align them and render the blink frames."""
     settings = get_settings()
-    observations = [o for o in search_observations(ra, dec, settings) if o.detector == detector]
+    collections = collections or spherex_collections(settings)
+    found, failed = search_observations(ra, dec, settings, collections)
+    observations = [o for o in found if o.detector == detector]
     selected = select_for_stacks(observations) if stack else select_frames(observations, max_frames)
     urls = [cutout_url(o.access_url, ra, dec, size_deg) for o in selected]
     _report(0, len(selected))
@@ -141,6 +152,7 @@ def build_frames(
         kept.append((obs, url, coverage, wavelength, bandwidth, float(unusable.mean())))
         images.append(image)
 
+    checks += release_checks([obs for obs, *_ in kept], failed)
     epochs = _epoch_groups(kept)
     checks += epoch_checks(len(kept), len(epochs))
     if stack:
@@ -193,14 +205,16 @@ def build_frames(
             )
         )
     manifest = FrameManifest(
-        collection=settings.spherex_collection,
+        collection=collection_key(collections),
+        release=_releases([obs for obs, *_ in kept]),
         ra=ra,
         dec=dec,
         size_deg=size_deg,
         detector=detector,
         pixel_scale_arcsec=SPHEREX_PIXEL_SCALE_ARCSEC,
         epochs=len(epochs),
-        complete=len(downloaded) == len(selected),
+        # A release that did not answer is retried on the next request.
+        complete=len(downloaded) == len(selected) and not failed,
         stacked=stack,
         pipeline_version=PIPELINE_VERSION,
         frames=frames,
@@ -214,10 +228,11 @@ def build_frames(
     return manifest.model_dump()
 
 
-def build_spectrum(ra: float, dec: float) -> dict:
+def build_spectrum(ra: float, dec: float, collections: list[str] | None = None) -> dict:
     """Worker job: flux at the target in every visit of every detector, against its wavelength."""
     settings = get_settings()
-    observations = search_observations(ra, dec, settings)
+    collections = collections or spherex_collections(settings)
+    observations, failed = search_observations(ra, dec, settings, collections)
     selected = select_frames(observations, MAX_SPECTRUM_POINTS)
     # A star with a known Gaia proper motion is measured where it stands on each visit's date.
     try:
@@ -228,6 +243,7 @@ def build_spectrum(ra: float, dec: float) -> dict:
     urls = [cutout_url(o.access_url, *position[o.obs_id], SPECTRUM_SIZE_DEG) for o in selected]
     _report(0, len(selected))
     downloaded, checks = download_cutouts(selected, urls, settings)
+    checks += release_checks([obs for obs, _, _ in downloaded], failed)
     checks.append(
         Check(
             code="QUICK_LOOK_SPECTRUM",
@@ -313,10 +329,10 @@ def build_spectrum(ra: float, dec: float) -> dict:
             )
         )
     return Spectrum(
-        collection=settings.spherex_collection,
+        collection=collection_key(collections),
         ra=ra,
         dec=dec,
-        complete=len(downloaded) == len(selected) and not gaia_down,
+        complete=len(downloaded) == len(selected) and not gaia_down and not failed,
         points=sorted(points, key=lambda point: point.wavelength_um),
         checks=checks,
     ).model_dump()
@@ -399,7 +415,40 @@ def _frame(index: int, url: str, epoch: int, members: list[KeptFrame]) -> Frame:
         wavelength_um=round(float(np.median(wavelengths)), 4) if wavelengths else None,
         bandwidth_um=round(float(np.median(bandwidths)), 4) if bandwidths else None,
         masked_fraction=round(float(np.mean([masked for *_, masked in members])), 3),
+        release=_releases(observations),
     )
+
+
+def _releases(observations: list[Observation]) -> str | None:
+    labels = {release_label(o.collection) for o in observations if o.collection}
+    return " + ".join(sorted(labels)) or None
+
+
+def release_checks(observations: list[Observation], failed: list[str]) -> list[Check]:
+    """Never mix releases silently, and say which release could not be searched."""
+    checks = [
+        Check(
+            code="RELEASE_UNAVAILABLE",
+            severity="warning",
+            message=f"SPHEREx {release_label(collection)} could not be searched",
+            detail=f"The archive did not answer for {collection}: its observations are missing",
+        )
+        for collection in failed
+    ]
+    releases = _releases(observations)
+    # A deep field shares its release's calibration: only DR1 against QR3 counts as a mix.
+    if releases and len({label.split()[0] for label in releases.split(" + ")}) > 1:
+        checks.append(
+            Check(
+                code="MIXED_RELEASES",
+                severity="info",
+                message=f"Mixed releases: {releases} (different calibration versions)",
+                detail=f"Frames come from SPHEREx {releases}: the releases are processed with "
+                "different calibration versions, so small brightness steps between them are "
+                "expected and need checking before they count as a change",
+            )
+        )
+    return checks
 
 
 def _report(done: int, total: int) -> None:

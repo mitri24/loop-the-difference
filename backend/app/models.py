@@ -13,6 +13,8 @@ class Observation(BaseModel):
     access_url: str
     # The whole Level-2 file on AWS S3 (anonymous HTTPS), when IRSA lists a cloud copy.
     cloud_url: str | None = None
+    # The IRSA collection the observation was found in, e.g. spherex_qr3.
+    collection: str | None = None
 
 
 class Epoch(BaseModel):
@@ -78,6 +80,8 @@ class Frame(BaseModel):
     wavelength_um: float | None = None
     bandwidth_um: float | None = None
     sources: list["DetectedSource"] = []
+    # SPHEREx release of the frame's exposures: "DR1", "QR3", "DR1 deep", or "DR1 + QR3".
+    release: str | None = None
 
 
 class Check(BaseModel):
@@ -99,7 +103,10 @@ class Difference(BaseModel):
 
 
 class FrameManifest(BaseModel):
+    # Comma-separated IRSA collections that were searched.
     collection: str
+    # Releases of the frames shown, e.g. "DR1 + QR3".
+    release: str | None = None
     ra: float
     dec: float
     size_deg: float

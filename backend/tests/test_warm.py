@@ -19,7 +19,7 @@ def spectra(monkeypatch):
     """Every run also builds one spectrum per target: record it instead of downloading."""
     calls = []
 
-    def build_spectrum(ra, dec):
+    def build_spectrum(ra, dec, collections):
         calls.append((ra, dec))
         return {"points": [1, 2], "checks": [], "complete": True}
 
@@ -237,7 +237,7 @@ def test_failed_or_incomplete_spectrum_fails_the_run_but_warms_the_frames(
         calls.append(kwargs["detector"])
         return {"frames": [], "warnings": [], "complete": True}
 
-    def broken(ra, dec):
+    def broken(ra, dec, collections):
         raise RuntimeError("archive did not answer")
 
     monkeypatch.setattr(warm, "build_spectrum", broken)
@@ -249,7 +249,7 @@ def test_failed_or_incomplete_spectrum_fails_the_run_but_warms_the_frames(
     monkeypatch.setattr(
         warm,
         "build_spectrum",
-        lambda ra, dec: {"points": [], "checks": [skipped], "complete": False},
+        lambda ra, dec, collections: {"points": [], "checks": [skipped], "complete": False},
     )
     assert warm.run(["--targets", "polaris"], settings, resolver=_fail_resolver, build=build) == 1
     assert "0 points · " in (out := capsys.readouterr().out)
