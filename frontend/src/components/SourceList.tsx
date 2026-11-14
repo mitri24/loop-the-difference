@@ -1,14 +1,14 @@
-import { MATCHES, MATCH_STYLE, brightestFirst, catalogMag, countSources } from '../sourceLayer'
+import { MATCHES, MATCH_STYLE, brightestFirst, catalogMag, countSources, degText as fmt } from '../sourceLayer'
 import type { DetectedSource, Frame } from '../types'
 
 interface Props {
   // The frame the blink shows; its sources come with the manifest.
   frame: Frame | null | undefined
   onSelect: (ra: number, dec: number) => void
+  // Keyboard path of the candidate check: mark this source in the shown frame.
+  onMark?: (source: DetectedSource) => void
   maxRows?: number
 }
-
-const fmt = (deg: number) => `${deg.toFixed(5)}°`.replace('-', '−')
 
 function rowText(source: DetectedSource) {
   const evidence = source.catalog_id
@@ -22,7 +22,7 @@ function rowText(source: DetectedSource) {
 }
 
 // Every point source of the shown frame with the catalogue that lists something there.
-export function SourceList({ frame, onSelect, maxRows = 50 }: Props) {
+export function SourceList({ frame, onSelect, onMark, maxRows = 50 }: Props) {
   if (!frame) return <p className="source-empty">Sources appear once frames are loaded.</p>
   const sources = frame.sources
   if (!sources) {
@@ -69,6 +69,12 @@ export function SourceList({ frame, onSelect, maxRows = 50 }: Props) {
                   S/N {source.snr.toFixed(1)} · RA {fmt(source.ra)} Dec {fmt(source.dec)}
                 </span>
               </button>
+              {onMark && (
+                <button type="button" className="source-mark" onClick={() => onMark(source)}
+                  aria-label={`Mark source at RA ${fmt(source.ra)} Dec ${fmt(source.dec)} in frame ${frame.index + 1}`}>
+                  Mark
+                </button>
+              )}
             </li>
           ))}
         </ol>

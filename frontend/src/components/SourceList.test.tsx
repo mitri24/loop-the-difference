@@ -64,6 +64,15 @@ describe('SourceList', () => {
     expect(html).toContain('Showing the 2 brightest of 3.')
   })
 
+  it('offers a Mark button per row only when marking is wired', () => {
+    const marked = renderToStaticMarkup(
+      <SourceList frame={frame([source('none', 40, 2)])} onSelect={() => undefined} onMark={() => undefined} />,
+    )
+    expect(marked).toContain('aria-label="Mark source at RA 2.00000° Dec −7.25000° in frame 3"')
+    expect(marked.match(/<button/g)).toHaveLength(2)
+    expect(render(frame([source('none', 40, 2)]))).not.toContain('Mark source')
+  })
+
   it('has honest empty states', () => {
     expect(render(null)).toContain('Sources appear once frames are loaded.')
     expect(render(frame())).toContain('prepared before source detection existed')
