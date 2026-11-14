@@ -58,7 +58,8 @@ export function footprintCorners(ra: number, dec: number, sizeDeg: number): SkyC
   return offsets.map(([x, y]) => tangentToSky(ra, dec, x, y))
 }
 
-function tangentToSky(ra0: number, dec0: number, xDeg: number, yDeg: number): SkyCoords {
+// Inverse TAN: offsets in degrees on the tangent plane at (ra0, dec0), x east, y north.
+export function tangentToSky(ra0: number, dec0: number, xDeg: number, yDeg: number): SkyCoords {
   const x = xDeg * DEG
   const y = yDeg * DEG
   const sinDec = Math.sin(dec0 * DEG)

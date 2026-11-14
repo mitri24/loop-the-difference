@@ -43,4 +43,18 @@ describe('BlinkPlayer', () => {
     expect(html).toContain('disabled="">Play')
     expect(html).toContain('>2025-11-10 07:08 UTC<')
   })
+
+  it('draws the possible-track search area on the cutout or says it is outside the frame', () => {
+    const frames = [frame(0, '2025-11-10T07:08:30Z')]
+    const inside = renderToStaticMarkup(
+      <BlinkPlayer frames={frames} grid={grid} motion={null} predictions={[{ mjd: 0, ra: 10, dec: 20, radius_arcsec: 9 }]} />,
+    )
+    expect(inside).toContain('class="search-area"')
+    expect(inside).toContain('left:50%;top:50%;width:10%')
+    const outside = renderToStaticMarkup(
+      <BlinkPlayer frames={frames} grid={grid} motion={null} predictions={[{ mjd: 0, ra: 10, dec: 21, radius_arcsec: 9 }]} />,
+    )
+    expect(outside).not.toContain('search-area')
+    expect(outside).toContain('predicted position outside this frame')
+  })
 })

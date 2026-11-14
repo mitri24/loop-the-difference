@@ -1,14 +1,17 @@
-import { CANDIDATE_STATES, MARK_LETTERS, markText, type Candidate } from '../candidate'
+import { CANDIDATE_STATES, MARK_LETTERS, candidateState, markText, type Candidate } from '../candidate'
+import { trackEvidence, type PossibleTrack } from '../track'
+import { TrackSummary } from './TrackSummary'
 
 interface Props {
   candidate: Pick<Candidate, 'marks' | 'notice' | 'armed' | 'setArmed' | 'clear'>
   // Why marking on the sky is off right now; null when it is possible.
   blocked: string | null
+  track: PossibleTrack | null
 }
 
 // Directly under the blink: what to do next, the marks so far and what they still need.
-export function CandidatePanel({ candidate: { marks, notice, armed, setArmed, clear }, blocked }: Props) {
-  const state = CANDIDATE_STATES.unverified
+export function CandidatePanel({ candidate: { marks, notice, armed, setArmed, clear }, blocked, track }: Props) {
+  const state = CANDIDATE_STATES[candidateState(trackEvidence(track))]
   return (
     <section className="candidate-check" aria-labelledby="candidate-heading">
       <h3 id="candidate-heading">Candidate check</h3>
@@ -38,6 +41,7 @@ export function CandidatePanel({ candidate: { marks, notice, armed, setArmed, cl
           <p className="candidate-state">
             <span aria-hidden="true">{state.icon}</span> {state.word}
           </p>
+          {track && <TrackSummary track={track} />}
           <button type="button" onClick={clear}>Clear marks</button>
         </>
       )}

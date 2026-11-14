@@ -104,7 +104,7 @@ declare module 'aladin-lite' {
     aladin(element: HTMLElement | string, options?: AladinOptions): AladinInstance
     imageHiPS(url: string, options?: HiPSOptions): HiPSLayer
     image(url: string, options: ImageOptions): ImageLayer
-    graphicOverlay(options?: { name?: string; color?: string; lineWidth?: number }): GraphicOverlay
+    graphicOverlay(options?: { name?: string; color?: string; lineWidth?: number; lineDash?: number[] }): GraphicOverlay
     polygon(corners: SkyCoords[], options?: { color?: string; lineWidth?: number }): OverlayItem
     circle(
       ra: number,
