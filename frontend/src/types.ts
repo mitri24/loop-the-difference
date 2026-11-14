@@ -42,6 +42,30 @@ export interface Frame {
   wavelength_max_um: number
   coverage: number
   source_url: string
+  epoch: number
+  n_combined: number
+  date_end: string | null
+  masked_fraction: number | null
+  wavelength_um: number | null
+  bandwidth_um: number | null
+}
+
+export type CheckSeverity = 'error' | 'blocker' | 'warning' | 'info'
+
+export interface Check {
+  code: string
+  severity: CheckSeverity
+  message: string
+  detail: string
+  affects: string[]
+}
+
+export interface Difference {
+  a: number
+  b: number
+  url: string
+  comparable: boolean
+  delta_lambda_pct: number | null
 }
 
 export interface FrameManifest {
@@ -53,8 +77,11 @@ export interface FrameManifest {
   pixel_scale_arcsec: number
   epochs: number
   complete: boolean
+  stacked: boolean
   frames: Frame[]
   warnings: string[]
+  checks: Check[]
+  differences: Difference[]
 }
 
 export interface FrameJob {
@@ -72,4 +99,5 @@ export interface FrameRequest {
   size_deg: number
   detector: number
   max_frames: number
+  stack?: boolean
 }

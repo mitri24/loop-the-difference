@@ -14,7 +14,7 @@ from app.coords import CoordinateError, parse_dec, parse_ra
 from app.models import FrameJob, FrameRequest, ObservationSummary, ResolvedTarget
 
 _JOB_ID = re.compile(r"^[0-9a-f]{16}$")
-_FRAME_FILE = re.compile(r"^frame_\d{2}\.png$")
+_FRAME_FILE = re.compile(r"^(frame_\d{2}|diff_\d{2}_\d{2})\.png$")
 
 SettingsDep = Annotated[Settings, Depends(get_settings)]
 
@@ -87,6 +87,7 @@ def create_frames(request: FrameRequest, settings: SettingsDep) -> FrameJob:
         request.size_deg,
         request.detector,
         request.max_frames,
+        request.stack,
     )
     return jobs.submit(
         jobs.connect(settings.redis_url),
@@ -97,6 +98,7 @@ def create_frames(request: FrameRequest, settings: SettingsDep) -> FrameJob:
         size_deg=request.size_deg,
         detector=request.detector,
         max_frames=request.max_frames,
+        stack=request.stack,
     )
 
 

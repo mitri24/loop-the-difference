@@ -15,7 +15,7 @@ from app.frames import (
     render_png,
     target_grid,
 )
-from app.models import Frame, FrameManifest
+from app.models import Check, Frame, FrameManifest
 
 MIN_COVERAGE = 0.5
 
@@ -24,8 +24,39 @@ def manifest_path(cache_dir: Path, key: str) -> Path:
     return cache_dir / "frames" / key / "manifest.json"
 
 
+def epoch_checks(usable: int, epochs: int) -> list[Check]:
+    """Can the usable observations be compared across epochs at all?"""
+    if usable < 2:
+        return [
+            Check(
+                code="NO_OBSERVATIONS" if usable == 0 else "SINGLE_EPOCH",
+                severity="error" if usable == 0 else "blocker",
+                message="Not enough usable observations to compare epochs",
+                detail="Cannot compare epochs: fewer than two usable observations",
+                affects=["difference"],
+            )
+        ]
+    if epochs < 2:
+        return [
+            Check(
+                code="NO_TIME_BASELINE",
+                severity="blocker",
+                message="All usable observations come from one epoch",
+                detail="No usable time baseline: all usable observations come from one epoch",
+                affects=["difference"],
+            )
+        ]
+    return []
+
+
 def build_frames(
-    key: str, ra: float, dec: float, size_deg: float, detector: int, max_frames: int
+    key: str,
+    ra: float,
+    dec: float,
+    size_deg: float,
+    detector: int,
+    max_frames: int,
+    stack: bool = False,
 ) -> dict:
     """Worker job: find the observations, cut them out, align them and render the blink frames."""
     settings = get_settings()
@@ -34,7 +65,7 @@ def build_frames(
     urls = [cutout_url(o.access_url, ra, dec, size_deg) for o in selected]
     _report(0, len(selected))
 
-    warnings: list[str] = []
+    checks: list[Check] = []
     downloaded = []
     with (
         httpx.Client(timeout=settings.http_timeout_s, follow_redirects=True) as client,
@@ -49,9 +80,15 @@ def build_frames(
             try:
                 downloaded.append((obs, url, future.result()))
             except httpx.HTTPError:
-                warnings.append(
-                    f"{obs.obs_id}: archive did not deliver the cutout, frame skipped "
-                    "(requesting the same view again retries it)"
+                checks.append(
+                    Check(
+                        code="CUTOUT_MISSING",
+                        severity="warning",
+                        message="Archive did not deliver a cutout",
+                        detail=f"{obs.obs_id}: archive did not deliver the cutout, frame skipped "
+                        "(requesting the same view again retries it)",
+                        affects=[f"obs:{obs.obs_id}"],
+                    )
                 )
             _report(done, len(selected))
 
@@ -61,18 +98,21 @@ def build_frames(
         data, wcs = read_image(path)
         image, coverage = align(data, wcs, target, shape)
         if coverage < MIN_COVERAGE:
-            warnings.append(
-                f"{obs.obs_id}: only {coverage:.0%} of the field covered, frame skipped"
+            checks.append(
+                Check(
+                    code="LOW_OVERLAP",
+                    severity="warning",
+                    message="Observation covers too little of the field",
+                    detail=f"{obs.obs_id}: only {coverage:.0%} of the field covered, frame skipped",
+                    affects=[f"obs:{obs.obs_id}"],
+                )
             )
             continue
         kept.append((obs, url, coverage))
         images.append(image)
 
     epochs = len(group_epochs([obs for obs, _, _ in kept]))
-    if len(kept) < 2:
-        warnings.append("Cannot compare epochs: fewer than two usable observations")
-    elif epochs < 2:
-        warnings.append("No usable time baseline: all usable observations come from one epoch")
+    checks += epoch_checks(len(kept), epochs)
 
     out_dir = manifest_path(settings.cache_dir, key).parent
     out_dir.mkdir(parents=True, exist_ok=True)
@@ -101,7 +141,8 @@ def build_frames(
             )
             for index, ((obs, url, coverage), name) in enumerate(zip(kept, names, strict=True))
         ],
-        warnings=warnings,
+        warnings=[check.detail for check in checks],
+        checks=checks,
     )
     partial = out_dir / "manifest.json.part"
     partial.write_text(manifest.model_dump_json())
