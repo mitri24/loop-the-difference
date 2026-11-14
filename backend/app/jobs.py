@@ -15,6 +15,10 @@ QUEUE_NAME = "frames"
 JOB_TIMEOUT_S = 900
 
 
+class QueueFull(Exception):
+    """More than SKYSHIFT_MAX_QUEUED jobs are waiting; nothing was enqueued."""
+
+
 def job_id_for(
     collection: str, ra: float, dec: float, size_deg: float, detector: int, max_frames: int
 ) -> str:
@@ -34,11 +38,14 @@ def submit(redis: Redis, settings: Settings, job_id: str, **params: float | int)
         return current
     if current.status == "finished" and current.manifest and current.manifest.complete:
         return current
+    queue = Queue(QUEUE_NAME, connection=redis)
+    if queue.count > settings.max_queued:
+        raise QueueFull()
     # Failed, expired or incomplete: start over (downloaded cutouts stay cached).
     manifest_path(settings.cache_dir, job_id).unlink(missing_ok=True)
     with suppress(NoSuchJobError):
         Job.fetch(job_id, connection=redis).delete()
-    Queue(QUEUE_NAME, connection=redis).enqueue(
+    queue.enqueue(
         build_frames,
         kwargs={"key": job_id, **params},
         job_id=job_id,

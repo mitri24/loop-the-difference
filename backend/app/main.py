@@ -1,14 +1,13 @@
 import re
 from typing import Annotated
 
-from astropy.coordinates import SkyCoord
 from astropy.coordinates.name_resolve import NameResolveError
 from fastapi import Depends, FastAPI, HTTPException, Query, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, JSONResponse
 from redis.exceptions import RedisError
 
-from app import jobs
+from app import jobs, names
 from app.archive import ArchiveError, search_observations, summarize
 from app.config import Settings, get_settings
 from app.coords import CoordinateError, parse_dec, parse_ra
@@ -43,6 +42,11 @@ def queue_error(_: Request, __: RedisError) -> JSONResponse:
     return JSONResponse(status_code=503, content={"detail": "Job queue is not available"})
 
 
+@app.exception_handler(jobs.QueueFull)
+def queue_full(_: Request, __: jobs.QueueFull) -> JSONResponse:
+    return JSONResponse(status_code=503, content={"detail": "Busy – please try again in a minute"})
+
+
 @app.get("/api/health")
 def health(settings: SettingsDep) -> dict[str, str]:
     try:
@@ -56,10 +60,14 @@ def health(settings: SettingsDep) -> dict[str, str]:
 @app.get("/api/resolve")
 def resolve(name: str = Query(min_length=1, max_length=100)) -> ResolvedTarget:
     try:
-        coord = SkyCoord.from_name(name)
+        ra, dec = names.resolve(name)
     except NameResolveError:
         raise HTTPException(status_code=404, detail=f"Unknown target: {name}") from None
-    return ResolvedTarget(name=name, ra=coord.ra.deg, dec=coord.dec.deg)
+    except names.NameLookupTimeout:
+        raise HTTPException(
+            status_code=504, detail="Name lookup timed out – try coordinates"
+        ) from None
+    return ResolvedTarget(name=name, ra=ra, dec=dec)
 
 
 @app.get("/api/observations")

@@ -1,4 +1,12 @@
-from app.models import Frame, FrameManifest
+import time
+
+import pytest
+from astropy.coordinates import SkyCoord
+from astropy.coordinates.name_resolve import NameResolveError
+from rq.exceptions import NoSuchJobError
+
+from app import jobs, names
+from app.models import Frame, FrameJob, FrameManifest
 from app.tasks import manifest_path
 
 
@@ -56,3 +64,108 @@ def test_finished_job_is_served_from_the_cache_without_the_queue(client, setting
     assert response.status_code == 200
     assert response.json()["status"] == "finished"
     assert response.json()["manifest"]["frames"][0]["obs_id"] == "2025W19_1B_0116_1"
+
+
+class _FullQueue:
+    count = 21
+
+    def __init__(self, *_, **__):
+        pass
+
+    def enqueue(self, *_, **__):
+        raise AssertionError("a full queue must not accept new jobs")
+
+
+def test_new_frames_are_refused_while_the_queue_is_full(client, monkeypatch):
+    monkeypatch.setattr(
+        jobs, "status", lambda *_: FrameJob(job_id="0123456789abcdef", status="not_found")
+    )
+    monkeypatch.setattr(jobs, "Queue", _FullQueue)
+
+    response = client.post("/api/frames", json={"ra": "133.795", "dec": "-7.245"})
+
+    assert response.status_code == 503
+    assert response.json()["detail"] == "Busy – please try again in a minute"
+
+
+def test_running_job_is_returned_even_while_the_queue_is_full(client, monkeypatch):
+    running = FrameJob(job_id="0123456789abcdef", status="started", progress=3, total=12)
+    monkeypatch.setattr(jobs, "status", lambda *_: running)
+    monkeypatch.setattr(jobs, "Queue", _FullQueue)
+
+    response = client.post("/api/frames", json={"ra": "133.795", "dec": "-7.245"})
+
+    assert response.status_code == 200
+    assert response.json()["status"] == "started"
+
+
+@pytest.fixture
+def resolver(monkeypatch):
+    """Replace Sesame with an offline resolver; returns the list of looked-up names."""
+    names._lookup.cache_clear()
+    calls: list[str] = []
+
+    class FakeSkyCoord:
+        @staticmethod
+        def from_name(name: str) -> SkyCoord:
+            calls.append(name)
+            if name.startswith("slow"):
+                time.sleep(0.2)
+            if name.startswith("unknown"):
+                raise NameResolveError(name)
+            return SkyCoord(269.45, 4.69, unit="deg")
+
+    monkeypatch.setattr(names, "SkyCoord", FakeSkyCoord)
+    return calls
+
+
+def test_resolved_names_are_cached(client, resolver):
+    for _ in range(2):
+        response = client.get("/api/resolve", params={"name": "Barnard's Star"})
+        assert response.status_code == 200
+        assert response.json() == {"name": "Barnard's Star", "ra": 269.45, "dec": 4.69}
+
+    assert resolver == ["Barnard's Star"]
+
+
+def test_unknown_name_is_not_cached(client, resolver):
+    for _ in range(2):
+        response = client.get("/api/resolve", params={"name": "unknown thing"})
+        assert response.status_code == 404
+
+    assert resolver == ["unknown thing", "unknown thing"]
+
+
+def test_slow_name_lookup_times_out(client, resolver, monkeypatch):
+    monkeypatch.setattr(names, "LOOKUP_TIMEOUT_S", 0.05)
+
+    response = client.get("/api/resolve", params={"name": "slow star"})
+
+    assert response.status_code == 504
+    assert response.json()["detail"] == "Name lookup timed out – try coordinates"
+
+
+def _no_such_job(*_, **__):
+    raise NoSuchJobError()
+
+
+def test_queue_at_the_limit_still_accepts_a_job(client, monkeypatch):
+    enqueued = []
+
+    class _AtLimitQueue(_FullQueue):
+        count = 20
+
+        def enqueue(self, *_, **kwargs):
+            enqueued.append(kwargs["job_id"])
+
+    monkeypatch.setattr(
+        jobs, "status", lambda *_: FrameJob(job_id="0123456789abcdef", status="not_found")
+    )
+    monkeypatch.setattr(jobs, "Queue", _AtLimitQueue)
+    monkeypatch.setattr(jobs.Job, "fetch", _no_such_job)
+
+    response = client.post("/api/frames", json={"ra": "133.795", "dec": "-7.245"})
+
+    assert response.status_code == 200
+    assert response.json()["status"] == "queued"
+    assert len(enqueued) == 1

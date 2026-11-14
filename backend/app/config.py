@@ -13,6 +13,7 @@ class Settings(BaseSettings):
     cache_dir: Path = Path("/data/cache")
     http_timeout_s: float = 90.0
     download_workers: int = 4
+    max_queued: int = 20
     cors_origins: list[str] = ["http://localhost:5173"]
 
 
