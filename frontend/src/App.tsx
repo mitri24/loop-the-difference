@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { createFrames, getFrameJob, getObservations, resolveName } from './api'
+import { AboutPanel } from './components/AboutPanel'
 import { BlinkPlayer } from './components/BlinkPlayer'
 import { ObservationInfo } from './components/ObservationInfo'
 import { SkyContext } from './components/SkyContext'
@@ -23,6 +24,7 @@ export default function App() {
   const [job, setJob] = useState<FrameJob | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
+  const [about, setAbout] = useState(false)
   const latestRun = useRef(0)
 
   const show = useCallback(async (next: TargetQuery) => {
@@ -91,8 +93,14 @@ export default function App() {
     <div className="app">
       {!EMBED && (
         <header className="header">
-          <h1>Loop the Difference</h1>
-          <p>See how the sky shifts: NASA SPHEREx images of one patch of sky, played over time.</p>
+          <div>
+            <h1>Loop the Difference</h1>
+            <p>See how the sky shifts: NASA SPHEREx images of one patch of sky, played over time.</p>
+          </div>
+          <button type="button" onClick={() => setAbout(true)}>
+            About &amp; credits
+          </button>
+          <AboutPanel open={about} onClose={() => setAbout(false)} />
         </header>
       )}
 
