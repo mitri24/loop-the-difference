@@ -248,7 +248,8 @@ export default function App() {
   const sourceSummary = counts ? ` · ${counts.detected} in this frame · ${counts.none} ${counts.none === 1 ? 'needs' : 'need'} verification${counts.unknown ? ` · ${counts.unknown} unknown` : ''}` : ''
   const frameOnSky = frame && sky && framesOnSky && !showDifference ? frame : null
   // JPL SBIdent takes about a minute per time: one time per epoch, its first frame's.
-  const smallBodies = useSmallBodies(manifest && hasFrames ? {
+  // A stack mixes exposures from up to 30 days: moving asteroids are looked up for single exposures.
+  const smallBodies = useSmallBodies(manifest && hasFrames && !manifest.stacked ? {
     ra: `${manifest.ra}`, dec: `${manifest.dec}`, size_deg: manifest.size_deg,
     mjds: manifest.frames.filter((f, i, all) => all.findIndex((g) => g.epoch === f.epoch) === i).map((f) => f.mjd).slice(0, 6),
   } : null)
@@ -306,7 +307,9 @@ export default function App() {
         <summary>Detected sources{sourceSummary}</summary>
         <SourceList frame={frame} onSelect={(ra, dec) => sky?.gotoRaDec(ra, dec)} />
       </details>}
-      {!EMBED && manifest && hasFrames && <SmallBodies lookup={smallBodies} currentMjd={frame?.mjd ?? null} />}
+      {!EMBED && manifest && hasFrames && (manifest.stacked
+        ? <p className="muted">Known asteroids and comets (JPL SBIdent) are looked up for single exposures: switch the view to Exposures.</p>
+        : <SmallBodies lookup={smallBodies} currentMjd={frame?.mjd ?? null} />)}
       {manifest && checks.length > 0 && <details className="disclosure" open={hasBlocker(checks, 'difference')}><summary>Quality checks · {checks.length}</summary><EvidencePanel checks={checks} /></details>}
       <p className="science-note">Changes are unverified. Wavelength, coverage and image artifacts can affect a comparison.</p>
     </>

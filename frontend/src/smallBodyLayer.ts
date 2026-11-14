@@ -1,7 +1,9 @@
 // Known asteroids and comets (NASA/JPL SBIdent) as labelled markers at the shown frame's time.
 import type { AladinInstance, Catalog, CatalogOptions } from 'aladin-lite'
-import { useEffect } from 'react'
+import { useEffect, useRef } from 'react'
 import type { SmallBody, SmallBodyEpoch } from './types'
+
+type AladinApi = (typeof import('aladin-lite'))['default']
 
 export const SMALL_BODY_LAYER = 'Known asteroids/comets (JPL SBIdent)'
 // JPL's rates are linear motion: fine for hours, not for days. Further away no marker is drawn.
@@ -50,14 +52,16 @@ export function useSmallBodyLayer(
   currentMjd: number | null,
   visible: boolean,
 ) {
+  // One catalogue, refilled in place while the player blinks: removing it would close Aladin's
+  // shared source table (same reason as NAS-58 in catalogLayers.ts).
+  const layer = useRef<Promise<{ A: AladinApi; catalog: Catalog }> | null>(null)
+  const added = useRef(false)
+
   useEffect(() => {
-    if (!aladin || !visible || currentMjd == null) return
-    const epoch = epochFor(epochs, currentMjd)
-    if (!epoch || epoch.bodies.length === 0) return
-    let catalog: Catalog | null = null
-    let disposed = false
-    void import('aladin-lite').then(({ default: A }) => {
-      if (disposed) return
+    if (!aladin) return
+    const epoch = visible && currentMjd != null ? epochFor(epochs, currentMjd) : null
+    const markers = epoch && currentMjd != null ? smallBodyMarkers(epoch, currentMjd) : []
+    layer.current ??= import('aladin-lite').then(({ default: A }) => {
       const color = getComputedStyle(document.documentElement)
         .getPropertyValue('--cat-sbident')
         .trim()
@@ -66,21 +70,39 @@ export function useSmallBodyLayer(
         shape: 'rhomb',
         color,
         sourceSize: 12,
-        limit: epoch.bodies.length,
+        limit: 1000, // far above the known bodies in one SPHEREx field
         onClick: 'showTable',
         displayLabel: true,
         labelColumn: 'label',
         labelColor: color,
       }
-      catalog = A.catalog(options)
-      catalog.addSources(
-        smallBodyMarkers(epoch, currentMjd).map((m) => A.source(m.ra, m.dec, m.data)),
-      )
-      aladin.addCatalog(catalog)
+      return { A, catalog: A.catalog(options) }
+    })
+    let stale = false
+    void layer.current.then(({ A, catalog }) => {
+      if (stale) return
+      if (markers.length === 0) {
+        if (added.current) aladin.removeOverlay(catalog)
+        added.current = false
+        return
+      }
+      catalog.clear()
+      catalog.addSources(markers.map((m) => A.source(m.ra, m.dec, m.data)))
+      if (!added.current) aladin.addCatalog(catalog)
+      added.current = true
     })
     return () => {
-      disposed = true
-      if (catalog) aladin.removeOverlay(catalog)
+      stale = true
     }
   }, [aladin, epochs, currentMjd, visible])
+
+  useEffect(
+    () => () => {
+      void layer.current?.then(({ catalog }) => {
+        if (added.current) aladin?.removeOverlay(catalog)
+        added.current = false
+      })
+    },
+    [aladin],
+  )
 }
