@@ -67,6 +67,8 @@ declare module 'aladin-lite' {
 
   export interface Catalog {
     addSources(sources: unknown[]): void
+    getSources(): unknown[]
+    clear(): void
   }
 
   export interface CatalogOptions {

@@ -104,6 +104,8 @@ const LAYERS: Record<LayerKey, Pick<CatalogOptions, 'name' | 'shape'>> = {
   skybot: { name: 'SkyBoT', shape: 'rhomb' },
 }
 const TIMEOUT_MS = 10_000
+// A failed epoch empties the layer but keeps it, so the open table of another marker stays.
+const NO_SOURCES: unknown[] = []
 const DEBOUNCE_MS = 500
 
 // The Gaia answer does not depend on the epoch: one download per view, moved locally per epoch.
@@ -122,23 +124,20 @@ function gaiaRows(url: string) {
   return gaiaAnswer.rows
 }
 
-async function loadCatalog(key: LayerKey, { ra, dec, r }: View, mjd: number): Promise<Catalog> {
+const catalogOptions = (key: LayerKey): CatalogOptions => ({
+  ...LAYERS[key],
+  color: getComputedStyle(document.documentElement).getPropertyValue(`--cat-${key}`).trim(),
+  sourceSize: 10,
+  limit: MAX_SOURCES,
+  onClick: 'showTable',
+})
+
+async function loadSources(key: LayerKey, { ra, dec, r }: View, mjd: number): Promise<unknown[]> {
   const A = (await import('aladin-lite')).default
-  const options: CatalogOptions = {
-    ...LAYERS[key],
-    color: getComputedStyle(document.documentElement).getPropertyValue(`--cat-${key}`).trim(),
-    sourceSize: 10,
-    limit: MAX_SOURCES,
-    onClick: 'showTable',
-  }
   if (key === 'gaia') {
-    const catalog = A.catalog(options)
-    catalog.addSources(
-      gaiaSources(await gaiaRows(gaiaUrl(ra, dec, r)), mjd).map((s) =>
-        A.source(s.ra, s.dec, s.data),
-      ),
+    return gaiaSources(await gaiaRows(gaiaUrl(ra, dec, r)), mjd).map((s) =>
+      A.source(s.ra, s.dec, s.data),
     )
-    return catalog
   }
   const url =
     key === 'wise'
@@ -150,15 +149,15 @@ async function loadCatalog(key: LayerKey, { ra, dec, r }: View, mjd: number): Pr
     const timer = window.setTimeout(() => reject(new Error('timeout')), TIMEOUT_MS)
     const done = (catalog?: Catalog) => {
       window.clearTimeout(timer)
-      if (catalog) resolve(catalog)
+      if (catalog) resolve(catalog.getSources())
       else reject(new Error('failed'))
     }
-    A.catalogFromURL(url, options, done, () => done(), false)
+    A.catalogFromURL(url, catalogOptions(key), done, () => done(), false)
   })
 }
 
 /**
- * Catalogues per (view, epoch): each pair is asked for once, failures included, so a blink between
+ * Sources per (view, epoch): each pair is asked for once, failures included, so a blink between
  * epochs switches between loaded catalogues instead of querying again. A new view empties the
  * cache; requests run one at a time and those for an older view are skipped.
  */
@@ -174,7 +173,7 @@ export function catalogCache<T>(load: (view: View, epoch: number) => Promise<T |
     pending.clear()
   }
   return {
-    /** The loaded catalogue, null after a failure, undefined while unknown. */
+    /** The loaded sources, null after a failure, undefined while unknown. */
     peek(view: View, epoch: number) {
       enter(view)
       return done.get(epoch)
@@ -202,8 +201,8 @@ export function catalogCache<T>(load: (view: View, epoch: number) => Promise<T |
 }
 
 async function loadWithRetry(key: LayerKey, view: View, epoch: number) {
-  return loadCatalog(key, view, epoch)
-    .catch(() => loadCatalog(key, view, epoch))
+  return loadSources(key, view, epoch)
+    .catch(() => loadSources(key, view, epoch))
     .catch(() => null)
 }
 
@@ -215,26 +214,41 @@ function useLayer(
   mjd: number | null,
   report: (key: LayerKey, status: LayerStatus) => void,
 ) {
-  const shown = useRef<Catalog | null>(null)
+  // One catalogue per layer, refilled in place: removing it would close Aladin's shared table.
+  const catalog = useRef<Promise<Catalog> | null>(null)
+  const added = useRef(false)
+  const shown = useRef<unknown[] | null>(null)
   const [cache] = useState(() =>
     catalogCache((v: View, epoch: number) => loadWithRetry(key, v, epoch)),
   )
   const epoch = key === 'gaia' || key === 'skybot' ? mjd : 0
   useEffect(() => {
     if (!aladin) return
-    const show = (catalog: Catalog | null) => {
-      if (shown.current === catalog) return
-      if (shown.current) aladin.removeOverlay(shown.current)
-      if (catalog) aladin.addCatalog(catalog)
-      shown.current = catalog
+    const show = (sources: unknown[] | null) => {
+      if (shown.current === sources) return
+      shown.current = sources
+      catalog.current ??= import('aladin-lite').then(({ default: A }) =>
+        A.catalog(catalogOptions(key)),
+      )
+      void catalog.current.then((c) => {
+        if (!sources) {
+          if (added.current) aladin.removeOverlay(c)
+          added.current = false
+          return
+        }
+        c.clear()
+        c.addSources(sources)
+        if (!added.current) aladin.addCatalog(c)
+        added.current = true
+      })
     }
     if (!on || !view || epoch == null) {
       show(null)
       return
     }
-    const settle = (catalog: Catalog | null) => {
-      show(catalog)
-      report(key, catalog ? 'ready' : 'unavailable')
+    const settle = (sources: unknown[] | null) => {
+      show(sources ?? NO_SOURCES)
+      report(key, sources ? 'ready' : 'unavailable')
     }
     const hit = cache.peek(view, epoch)
     if (hit !== undefined) {
@@ -243,8 +257,8 @@ function useLayer(
     }
     let stale = false
     report(key, 'loading')
-    void cache.load(view, epoch).then((catalog) => {
-      if (!stale) settle(catalog)
+    void cache.load(view, epoch).then((sources) => {
+      if (!stale) settle(sources)
     })
     return () => {
       stale = true
