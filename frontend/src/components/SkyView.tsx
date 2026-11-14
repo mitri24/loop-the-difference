@@ -127,7 +127,8 @@ export function SkyView({ ra, dec, fov, detector, revision, onReady, onLayerChan
           url.searchParams.delete('name')
           return url.href
         })
-        const footprint = A.graphicOverlay({ name: 'Frame footprint', color: '#6ea8fe', lineWidth: 1 })
+        const color = getComputedStyle(document.documentElement).getPropertyValue('--overlay-footprint').trim()
+        const footprint = A.graphicOverlay({ name: 'Frame footprint', color, lineWidth: 1 })
         aladin.addOverlay(footprint)
         sky.current = { A, aladin, spherex, footprint, spherexReady }
         place(sky.current, start.ra, start.dec, start.fov)

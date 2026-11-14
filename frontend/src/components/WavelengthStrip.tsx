@@ -1,5 +1,5 @@
 import type { Frame } from '../types'
-import { scale } from './SpectrumChart'
+import { bandColour, scale } from './SpectrumChart'
 
 // Same ranges as the detector list in targets.ts (SPHEREx DR1 archive metadata), in µm.
 export const DETECTOR_RANGES_UM: Record<number, [number, number]> = {
@@ -64,7 +64,7 @@ export function WavelengthStrip({
           const y = d % 2 ? ROW_Y.odd : ROW_Y.even
           return (
             <g key={d} className={d === detector ? 'viz-band selected' : 'viz-band'}>
-              <rect x={x(lo)} y={y} width={x(hi) - x(lo)} height={BAR} rx={2} />
+              <rect x={x(lo)} y={y} width={x(hi) - x(lo)} height={BAR} rx={2} fill={bandColour(d)} />
               <text x={(x(lo) + x(hi)) / 2} y={y + BAR - 3} textAnchor="middle">
                 D{d}
               </text>

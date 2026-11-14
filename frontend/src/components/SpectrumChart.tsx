@@ -3,14 +3,17 @@ import { createSpectrum, getSpectrumJob } from '../api'
 import type { Check, SpectrumJob, SpectrumPoint } from '../types'
 import { BrightnessChart } from './BrightnessChart'
 
-const EPOCH_COLOURS = ['#6ea8fe', '#e2b340', '#ef6b6b', '#7bd389', '#c792ea', '#5ad1d1']
 // Drawn at the sidebar's width, so 11px text stays 11px.
 const W = 320
 const H = 200
 const M = { left: 64, right: 12, top: 12, bottom: 40 }
 const POLL_MS = 2000
 
-export const epochColour = (epoch: number) => EPOCH_COLOURS[epoch % EPOCH_COLOURS.length]
+// Colour = detector (fixed band tokens), marker shape = epoch, as in the NAS-9 design system.
+export const bandColour = (detector: number) => `var(--band-d${detector})`
+const SHAPES = ['●', '■', '▲', '◆', '▼', '✚']
+const shapeIndex = (epoch: number) => epoch % SHAPES.length
+export const epochShape = (epoch: number) => SHAPES[shapeIndex(epoch)]
 
 // Linear map from a data range onto pixels; a flat range maps to the middle.
 export function scale([d0, d1]: [number, number], [r0, r1]: [number, number]) {
@@ -121,7 +124,7 @@ export function SpectrumChart({
       {spectrum && (
         <p className="caveat">
           Quick-look only: aperture flux at the target without aperture correction, one point per
-          visit, colour = epoch, bars = 1σ from the VARIANCE extension. Changes are candidates that
+          visit, colour = detector, marker shape = epoch, bars = 1σ from the VARIANCE extension. Changes are candidates that
           need checking. {notes.join(' · ')}
         </p>
       )}
@@ -148,6 +151,7 @@ export function Plot({ points }: { points: SpectrumPoint[] }) {
   // Points outside the range sit on the plot edge as arrows; the tooltip keeps the real value.
   const y = (v: number) => Math.min(H - M.bottom, Math.max(M.top, toY(v)))
   const epochs = [...new Set(points.map((p) => p.epoch))].sort((a, b) => a - b)
+  const detectors = [...new Set(points.map((p) => p.detector))].sort((a, b) => a - b)
   // Whole µJy for bright targets, decimals when the whole axis spans only a few µJy.
   const decimals = yr[1] - yr[0] < 10 ? 1 : 0
   const firstDate = (epoch: number) =>
@@ -159,7 +163,7 @@ export function Plot({ points }: { points: SpectrumPoint[] }) {
   return (
     <>
       <svg viewBox={`0 0 ${W} ${H}`} width="100%" role="img" aria-label="Flux against wavelength">
-        <g stroke="var(--border)" fill="var(--muted)" fontSize="11">
+        <g stroke="var(--grid-line)" fill="var(--muted)" fontSize="11">
           {ticks(xr).map((t, i) => (
             <text key={`x${i}`} x={x(t)} y={H - M.bottom + 16} textAnchor="middle" stroke="none">
               {t.toFixed(2)}
@@ -189,7 +193,7 @@ export function Plot({ points }: { points: SpectrumPoint[] }) {
         {points.map((p) => (
           // Each point links to its cutout: provenance one click (or Tab + Enter) away.
           <a key={`${p.obs_id}-${p.detector}`} href={p.source_url} target="_blank" rel="noreferrer">
-            <g stroke={epochColour(p.epoch)} fill={epochColour(p.epoch)}>
+            <g stroke={bandColour(p.detector)} fill={bandColour(p.detector)}>
               <line
                 x1={x(p.wavelength_um)}
                 x2={x(p.wavelength_um)}
@@ -200,6 +204,7 @@ export function Plot({ points }: { points: SpectrumPoint[] }) {
                 px={x(p.wavelength_um)}
                 py={toY(p.flux_ujy)}
                 edge={y(p.flux_ujy)}
+                epoch={p.epoch}
                 hollow={p.flagged}
               >
                 <title>
@@ -215,16 +220,21 @@ export function Plot({ points }: { points: SpectrumPoint[] }) {
         ))}
       </svg>
       <p className="muted">
+        {detectors.map((d) => (
+          <span key={`d${d}`} style={{ marginRight: '1em' }}>
+            <span style={{ color: bandColour(d) }}>▬</span> D{d}
+          </span>
+        ))}
         {epochs.map((e) => (
-          <span key={e} style={{ color: epochColour(e), marginRight: '1em' }}>
-            ● Epoch {e + 1} ({firstDate(e)})
+          <span key={e} style={{ marginRight: '1em' }}>
+            {epochShape(e)} Epoch {e + 1} ({firstDate(e)})
           </span>
         ))}
         {points.some((p) => p.flagged) && (
           <span style={{ marginRight: '1em' }}>○ flagged pixels in aperture</span>
         )}
         {points.some((p) => offScale(toY(p.flux_ujy))) && (
-          <span>▲▼ beyond the flux axis, value in the tooltip</span>
+          <span>▲▼ beyond the flux axis, value and epoch in the tooltip</span>
         )}
       </p>
     </>
@@ -236,12 +246,14 @@ function PointMark({
   px,
   py,
   edge,
+  epoch,
   hollow,
   children,
 }: {
   px: number
   py: number
   edge: number
+  epoch: number
   hollow?: boolean
   children: React.ReactNode
 }) {
@@ -251,9 +263,25 @@ function PointMark({
     <path d={arrow(px, edge, side)} fill={fill}>
       {children}
     </path>
-  ) : (
-    <circle cx={px} cy={py} r={3} fill={fill}>
+  ) : shapeIndex(epoch) === 0 ? (
+    <circle cx={px} cy={py} r={4} fill={fill}>
       {children}
     </circle>
+  ) : (
+    <path d={shape(px, py, shapeIndex(epoch))} fill={fill}>
+      {children}
+    </path>
   )
+}
+
+// Square, triangle, diamond, triangle down and plus around (px, py), each about 8 px wide.
+const shape = (px: number, py: number, i: number) => {
+  const pts = [
+    [[-4, -4], [4, -4], [4, 4], [-4, 4]],
+    [[0, -5], [4.5, 3.5], [-4.5, 3.5]],
+    [[0, -5], [5, 0], [0, 5], [-5, 0]],
+    [[0, 5], [4.5, -3.5], [-4.5, -3.5]],
+    [[-1.5, -5], [1.5, -5], [1.5, -1.5], [5, -1.5], [5, 1.5], [1.5, 1.5], [1.5, 5], [-1.5, 5], [-1.5, 1.5], [-5, 1.5], [-5, -1.5], [-1.5, -1.5]],
+  ][i - 1]
+  return `M${pts.map(([dx, dy]) => `${px + dx} ${py + dy}`).join(' L')} Z`
 }

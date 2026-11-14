@@ -4,7 +4,8 @@ import type { Check, SpectrumPoint } from '../types'
 import {
   Plot,
   SpectrumChart,
-  epochColour,
+  bandColour,
+  epochShape,
   fluxTick,
   offScale,
   ranges,
@@ -46,8 +47,17 @@ describe('SpectrumChart', () => {
     expect(scale([3, 3], [0, 10])(3)).toBe(5)
   })
 
-  it('gives neighbouring epochs different colours', () => {
-    expect(epochColour(0)).not.toBe(epochColour(1))
+  it('colours points by detector band and tells epochs apart by marker shape', () => {
+    expect(bandColour(4)).toBe('var(--band-d4)')
+    expect(epochShape(0)).not.toBe(epochShape(1))
+    const html = renderToStaticMarkup(
+      <Plot points={[point(0, 2.0, 5, 1), { ...point(1, 2.1, 6, 1), detector: 3 }]} />,
+    )
+
+    expect(html.match(/<circle/g)).toHaveLength(1)
+    expect(html).toContain('stroke="var(--band-d3)"')
+    expect(html).toContain('D3')
+    expect(html).toContain('■ Epoch 2')
   })
 
   it('draws a single point with one tick per axis and links it to its cutout', () => {
@@ -108,7 +118,7 @@ describe('SpectrumChart', () => {
     expect(html.match(/<path d="M[^"]+" fill="var\(--bg\)"/g)).toHaveLength(1)
     expect(html).toContain('125000.0 ± 10.0 µJy')
     expect(html).toContain('beyond the flux axis · open the cutout')
-    expect(html).toContain('▲▼ beyond the flux axis, value in the tooltip')
+    expect(html).toContain('▲▼ beyond the flux axis, value and epoch in the tooltip')
   })
 
   it('tells above from below the axes', () => {
