@@ -8,7 +8,7 @@ import { ModeSwitch } from './components/ModeSwitch'
 import { ObservationInfo } from './components/ObservationInfo'
 import { SkyView } from './components/SkyView'
 import { TargetForm } from './components/TargetForm'
-import type { FrameJob, ObservationSummary } from './types'
+import type { FrameJob, ObservationSummary, ProperMotion } from './types'
 import { POLARIS, readEmbed, readQuery, toSearch, type TargetQuery, type ViewMode } from './url'
 
 const INITIAL = readQuery(window.location.search)
@@ -30,16 +30,18 @@ export default function App() {
   const [summary, setSummary] = useState<ObservationSummary | null>(null)
   const [job, setJob] = useState<FrameJob | null>(null)
   const [error, setError] = useState<string | null>(null)
+  const [motion, setMotion] = useState<ProperMotion | null>(null)
   const [busy, setBusy] = useState(false)
   const [about, setAbout] = useState(false)
   const [skyLayer, setSkyLayer] = useState('AllWISE')
   const [skyUnavailable, setSkyUnavailable] = useState(false)
   const latestRun = useRef(0)
 
-  const show = useCallback(async (next: TargetQuery) => {
+  const show = useCallback(async (next: TargetQuery, nextMotion: ProperMotion | null = null) => {
     const run = ++latestRun.current
     const stale = () => run !== latestRun.current
     setQuery(next)
+    setMotion(nextMotion)
     setSummary(null)
     setJob(null)
     setError(null)
@@ -82,7 +84,8 @@ export default function App() {
     async (name: string, base: TargetQuery) => {
       try {
         const target = await resolveName(name)
-        await show({ ...base, ra: target.ra.toFixed(6), dec: target.dec.toFixed(6) })
+        const next = { ...base, name, ra: target.ra.toFixed(6), dec: target.dec.toFixed(6) }
+        await show(next, target.proper_motion ?? null)
       } catch (e) {
         setError(message(e))
       }
@@ -95,17 +98,38 @@ export default function App() {
   const selectMode = useCallback(
     (mode: ViewMode) => {
       const next = { ...query, mode }
-      if (usesStacks(mode) !== usesStacks(query.mode) && (job || busy)) return void show(next)
+      if (usesStacks(mode) !== usesStacks(query.mode) && (job || busy))
+        return void show(next, motion)
       setQuery(next)
       remember(next)
     },
-    [query, job, busy, show],
+    [query, job, busy, show, motion],
   )
 
-  // Coordinates in the URL (shared or embedded link): start right away.
+  // New coordinates are not the named star any more; a new band or field of view still is.
+  const showCoordinates = useCallback(
+    (next: TargetQuery) =>
+      next.ra === query.ra && next.dec === query.dec
+        ? show(next, motion)
+        : show({ ...next, name: undefined }),
+    [show, query, motion],
+  )
+
+  // Coordinates in the URL (shared or embedded link): start right away. A name in the URL
+  // only adds the Gaia proper motion; the frames still follow the coordinates.
   useEffect(() => {
     if (!INITIAL) return
-    const timer = window.setTimeout(() => void show(INITIAL), 0)
+    const start = (initial: TargetQuery) => {
+      void show(initial)
+      const run = latestRun.current
+      if (!initial.name) return
+      resolveName(initial.name)
+        .then((target) => {
+          if (run === latestRun.current) setMotion(target.proper_motion ?? null)
+        })
+        .catch(() => undefined)
+    }
+    const timer = window.setTimeout(() => start(INITIAL), 0)
     return () => window.clearTimeout(timer)
   }, [show])
 
@@ -154,7 +178,13 @@ export default function App() {
         <DifferenceView key={job.job_id} manifest={manifest} />
       )}
       {manifest && manifest.frames.length > 0 && !showDifference && (
-        <BlinkPlayer key={job.job_id} frames={manifest.frames} checks={checks} />
+        <BlinkPlayer
+          key={job.job_id}
+          frames={manifest.frames}
+          checks={checks}
+          grid={manifest}
+          motion={motion}
+        />
       )}
       {!busy && !job && !error && (
         <p className="hint">
@@ -177,7 +207,9 @@ export default function App() {
         <header className="header">
           <div>
             <h1>Loop the Difference</h1>
-            <p>See how the sky shifts: NASA SPHEREx images of one patch of sky, played over time.</p>
+            <p>
+              See how the sky shifts: NASA SPHEREx images of one patch of sky, played over time.
+            </p>
           </div>
           <button type="button" onClick={() => setAbout(true)}>
             About &amp; credits
@@ -193,7 +225,7 @@ export default function App() {
               key={toSearch(query)}
               value={query}
               busy={busy}
-              onShow={show}
+              onShow={showCoordinates}
               onFind={find}
             />
             {summary && <ObservationInfo summary={summary} band={query.band} />}

@@ -1,6 +1,8 @@
+import httpx
 import pytest
 from fastapi.testclient import TestClient
 
+from app import catalogs
 from app.config import Settings, get_settings
 from app.main import app
 
@@ -16,3 +18,13 @@ def client(settings):
     app.dependency_overrides[get_settings] = lambda: settings
     yield TestClient(app)
     app.dependency_overrides.clear()
+
+
+@pytest.fixture(autouse=True)
+def no_gaia(monkeypatch):
+    """/api/resolve also asks Gaia: tests never reach it."""
+
+    def unreachable(*_, **__):
+        raise httpx.ConnectError("no network in tests")
+
+    monkeypatch.setattr(catalogs.httpx, "post", unreachable)
