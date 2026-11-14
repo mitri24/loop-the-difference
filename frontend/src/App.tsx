@@ -7,6 +7,7 @@ import { DifferenceView } from './components/DifferenceView'
 import { ModeSwitch } from './components/ModeSwitch'
 import { ObservationInfo } from './components/ObservationInfo'
 import { SkyView } from './components/SkyView'
+import { SpectrumChart } from './components/SpectrumChart'
 import { TargetForm } from './components/TargetForm'
 import type { FrameJob, ObservationSummary, ProperMotion } from './types'
 import { POLARIS, readEmbed, readQuery, toSearch, type TargetQuery, type ViewMode } from './url'
@@ -184,6 +185,13 @@ export default function App() {
           checks={checks}
           grid={manifest}
           motion={motion}
+        />
+      )}
+      {manifest && !EMBED && (
+        <SpectrumChart
+          key={`${manifest.ra},${manifest.dec}`}
+          ra={`${manifest.ra}`}
+          dec={`${manifest.dec}`}
         />
       )}
       {!busy && !job && !error && (
