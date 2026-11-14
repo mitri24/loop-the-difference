@@ -175,6 +175,16 @@ describe('catalogue cache', () => {
     expect(shown).toHaveLength(5)
   })
 
+  it('hands back the same source array for the same view and epoch, a new one for a new epoch', async () => {
+    const cache = catalogCache(async (_view: unknown, epoch: number) => [{ epoch }])
+    const first = await cache.load(view, 60900)
+    expect(await cache.load(view, 60900)).toBe(first)
+    expect(cache.peek(view, 60900)).toBe(first)
+    const next = await cache.load(view, 61100)
+    expect(next).not.toBe(first)
+    expect(next).toEqual([{ epoch: 61100 }])
+  })
+
   it('remembers a failure until the view changes', async () => {
     const load = vi.fn(async () => null)
     const cache = catalogCache(load)
