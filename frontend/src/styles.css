@@ -609,6 +609,11 @@ summary { cursor:pointer; min-height:32px; padding:5px 0; font-size:13px; }
   font-weight: 700;
 }
 
+.plate-key {
+  color: #ffb454;
+  font-weight: 700;
+}
+
 /* NAS-54: data and cross-check links (tokens shared with the sidebar UI) */
 .data-links h3 {
   margin: 1rem 0 0.25rem;

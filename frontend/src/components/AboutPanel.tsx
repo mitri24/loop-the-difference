@@ -102,6 +102,14 @@ export function AboutPanel({ open, onClose }: Props) {
             </a>
           </li>
           <li>
+            <strong>1950 photographic plate</strong> – “The Digitized Sky Surveys were produced at the
+            Space Telescope Science Institute under U.S. Government grant NAG W-2166; POSS-I: National
+            Geographic Society – Palomar Observatory.”{' '}
+            <a href="https://archive.stsci.edu/cgi-bin/dss_form" target="_blank" rel="noreferrer">
+              STScI DSS
+            </a>
+          </li>
+          <li>
             <strong>ESA Gaia DR3</strong> (proper motions, when a named target is looked up) – “This
             work has made use of data from the European Space Agency (ESA) mission Gaia
             (https://www.cosmos.esa.int/gaia), processed by the Gaia Data Processing and Analysis

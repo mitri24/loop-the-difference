@@ -18,6 +18,7 @@ import { SourceList } from './components/SourceList'
 import { TargetForm } from './components/TargetForm'
 import { WavelengthStrip } from './components/WavelengthStrip'
 import { useFrameLayers } from './frameLayers'
+import { usePlateLayer } from './historicalPlate'
 import { useMotionTrack } from './motionTrack'
 import { sliceForDetector } from './sky'
 import { sliceText, useCubeWavelengths, useSkySlice } from './skyCube'
@@ -63,6 +64,7 @@ export default function App() {
   const [framesOnSky, setFramesOnSky] = useState(true)
   const [sourcesOnSky, setSourcesOnSky] = useState(true)
   const [smallBodiesOnSky, setSmallBodiesOnSky] = useState(true)
+  const [plateOnSky, setPlateOnSky] = useState(false)
   const [skySlice, setSkySlice] = useState(() => sliceForDetector((INITIAL ?? POLARIS).band))
   const [sliceBand, setSliceBand] = useState((INITIAL ?? POLARIS).band)
   const [viewRevision, setViewRevision] = useState(0)
@@ -123,6 +125,7 @@ export default function App() {
     setJob(null)
     setSummary(null)
     setMotion(null)
+    setPlateOnSky(false)
     setFrameIndex(0)
     setPanel('compare')
     setName(targetName ?? requested.name ?? '')
@@ -251,6 +254,8 @@ export default function App() {
   const frameLayers = useFrameLayers(sky, manifest, frameIndex, framesOnSky && !showDifference)
   useSourceLayer(sky, manifest?.frames, frameIndex, sourcesOnSky && hasFrames && !showDifference)
   const track = useMotionTrack(sky, motion, manifest?.frames)
+  // The plate follows the field only once the map is centred on the current target.
+  const plate = usePlateLayer(sky, plateOnSky, centred.ra === query.ra && centred.dec === query.dec ? center : null, motion)
   const frame = (hasFrames && manifest?.frames[frameIndex]) || null
   const counts = frame?.sources ? countSources(frame.sources) : null
   const sourceSummary = counts ? ` · ${counts.detected} in this frame · ${counts.none} ${counts.none === 1 ? 'needs' : 'need'} verification${counts.unknown ? ` · ${counts.unknown} unknown` : ''}` : ''
@@ -316,6 +321,7 @@ export default function App() {
         framesOnSky={framesOnSky} onFramesOnSkyChange={setFramesOnSky} sourcesOnSky={sourcesOnSky} onSourcesOnSkyChange={setSourcesOnSky}
         trackShown={track.length > 0} skySlice={skySlice} onSkySliceChange={setSkySlice} cubeActive={cubeActive}
         smallBodyEpochs={smallBodies.epochs} smallBodiesOnSky={smallBodiesOnSky} onSmallBodiesOnSkyChange={setSmallBodiesOnSky}
+        plateAvailable={!!motion} plateOnSky={plateOnSky} onPlateOnSkyChange={setPlateOnSky} plate={plate}
         framesBlocked={showDifference ? 'The difference image is shown in this panel. Frames and their detected sources go back on the sky in the other modes.' : undefined} />}
       {!EMBED && !skyUnavailable && frame && !showDifference && <details className="disclosure">
         <summary>Detected sources{sourceSummary}</summary>
