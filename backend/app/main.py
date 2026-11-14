@@ -19,7 +19,7 @@ _FRAME_FILE = re.compile(r"^frame_\d{2}\.png$")
 
 SettingsDep = Annotated[Settings, Depends(get_settings)]
 
-app = FastAPI(title="SkyShift API", version="0.1.0")
+app = FastAPI(title="Loop the Difference API", version="0.1.0")
 app.add_middleware(
     CORSMiddleware,
     allow_origins=get_settings().cors_origins,

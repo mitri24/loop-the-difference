@@ -1,4 +1,4 @@
-# SkyShift – notes for AI assistants
+# Loop the Difference – notes for AI assistants
 
 NASA Space Apps 2026, challenge "Planet X and SPHEREx": a public web tool. RA/Dec in → SPHEREx images of that patch over time as a blink → moving and changing objects stand out. A discovery aid: never claim discoveries.
 

@@ -1,6 +1,6 @@
-# SkyShift
+# Loop the Difference
 
-**See how the sky shifts.** Enter a sky position and SkyShift plays NASA SPHEREx images of that patch over time, aligned and on one brightness scale, so moving and changing objects stand out.
+**See how the sky shifts.** Enter a sky position and Loop the Difference plays NASA SPHEREx images of that patch over time, aligned and on one brightness scale, so moving and changing objects stand out.
 
 Built for the NASA Space Apps Challenge 2026 – [Planet X and SPHEREx](https://www.spaceappschallenge.org/2026/challenges/planet-x-and-spherex/).
 
@@ -41,4 +41,4 @@ Scale the heavy part with more workers: `docker compose up --scale worker=4`. A 
 
 ## Data and credits
 
-SPHEREx data: NASA/IPAC Infrared Science Archive (IRSA), Caltech/IPAC. Sky context: Aladin Lite, CDS Strasbourg. Target names: Sesame, CDS. SkyShift is a discovery aid – every change it shows needs checking before it counts as a candidate.
+SPHEREx data: NASA/IPAC Infrared Science Archive (IRSA), Caltech/IPAC. Sky context: Aladin Lite, CDS Strasbourg. Target names: Sesame, CDS. Loop the Difference is a discovery aid – every change it shows needs checking before it counts as a candidate.
