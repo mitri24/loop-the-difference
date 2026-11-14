@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import type { AladinInstance } from 'aladin-lite'
 import { createFrames, getFrameJob, getObservations, resolveName } from './api'
 import { AboutPanel } from './components/AboutPanel'
+import { stampText, type BlinkLetter } from './blink'
 import { BlinkPlayer } from './components/BlinkPlayer'
 import { CandidatePanel } from './components/CandidatePanel'
 import { useCandidate, useMarkLayer } from './candidate'
@@ -54,6 +55,11 @@ export default function App() {
   const [skyUnavailable, setSkyUnavailable] = useState(false)
   const [sky, setSky] = useState<AladinInstance | null>(null)
   const [frameIndex, setFrameIndex] = useState(0)
+  const [frameLetter, setFrameLetter] = useState<BlinkLetter | null>(null)
+  const showFrame = useCallback((index: number, letter: BlinkLetter | null) => {
+    setFrameIndex(index)
+    setFrameLetter(letter)
+  }, [])
   const [framesOnSky, setFramesOnSky] = useState(true)
   const [sourcesOnSky, setSourcesOnSky] = useState(true)
   const [smallBodiesOnSky, setSmallBodiesOnSky] = useState(true)
@@ -301,7 +307,7 @@ export default function App() {
       )}
       {manifest && hasFrames && showDifference && <DifferenceView key={job.job_id} manifest={manifest} />}
       {manifest && hasFrames && !showDifference && <BlinkPlayer key={job.job_id} frames={manifest.frames} checks={checks} grid={manifest} motion={motion}
-        onIndexChange={setFrameIndex} active={EMBED || panel === 'compare' || !panel} showShare={EMBED} />}
+        onIndexChange={showFrame} active={EMBED || panel === 'compare' || !panel} showShare={EMBED} />}
       {!EMBED && manifest && hasFrames && <CandidatePanel candidate={candidate} blocked={markBlocked} />}
       {!EMBED && manifest && hasFrames && <details className="disclosure"><summary>Data & cross-check links</summary>
         <DataLinks manifest={manifest} frame={showDifference ? null : frame} /></details>}
@@ -401,7 +407,7 @@ export default function App() {
         <div className="layer-caption"><span className="status-dot" aria-hidden="true" /><span>Sky context · {skyUnavailable ? 'WebGL2 unavailable' : skyCaption}</span></div>
         {frameOnSky && frameLayers[frameIndex] && <span className="frame-caption">{frameLayers[frameIndex] === 'failed'
           ? `SPHEREx frame ${frameIndex + 1}/${manifest!.frames.length} could not load on the sky`
-          : `SPHEREx frame on the sky · ${frameOnSky.date.slice(0, 10)} · D${frameOnSky.detector} · ${frameIndex + 1}/${manifest!.frames.length}`}</span>}
+          : `SPHEREx frame on the sky · ${stampText(frameOnSky, frameLetter)} · D${frameOnSky.detector} · ${frameIndex + 1}/${manifest!.frames.length}`}</span>}
         <span className="map-hint">Drag to explore · scroll to zoom · map tools at left</span>
       </footer>
       {shareStatus && <div className="share-feedback" role="status"><span>{shareStatus}</span><button type="button" aria-label="Dismiss share message" onClick={() => setShareStatus('')}>×</button></div>}
