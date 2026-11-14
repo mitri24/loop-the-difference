@@ -1,0 +1,10 @@
+fastapi>=0.115
+uvicorn[standard]>=0.32
+pydantic-settings>=2.6
+httpx>=0.28
+redis>=5.2
+rq>=2.0
+numpy>=2.1
+astropy>=7.0
+reproject>=0.14
+pillow>=11.0

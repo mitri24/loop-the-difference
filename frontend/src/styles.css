@@ -1,0 +1,282 @@
+:root {
+  --bg: #191919;
+  --surface: #202020;
+  --surface-raised: #2a2a2a;
+  --border: #2f2f2f;
+  --text: #e6e6e6;
+  --muted: #9b9b9b;
+  --accent: #6ea8fe;
+  --warning: #e2b340;
+  --danger: #ef6b6b;
+  color-scheme: dark;
+  font-family: system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+  line-height: 1.5;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--text);
+}
+
+a {
+  color: var(--accent);
+}
+
+h1,
+h2 {
+  margin: 0;
+}
+
+h2 {
+  font-size: 0.95rem;
+  font-weight: 600;
+  margin-bottom: 0.5rem;
+}
+
+button,
+input,
+select {
+  font: inherit;
+  color: inherit;
+}
+
+button {
+  background: var(--surface-raised);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 0.4rem 0.75rem;
+  cursor: pointer;
+}
+
+button:hover:not(:disabled) {
+  border-color: var(--muted);
+}
+
+button:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+button.primary {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #0d1117;
+  font-weight: 600;
+}
+
+input,
+select {
+  width: 100%;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 0.4rem 0.5rem;
+}
+
+.app {
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+}
+
+.header {
+  padding: 1rem 1.5rem;
+  border-bottom: 1px solid var(--border);
+}
+
+.header p,
+.muted,
+.caveat,
+.hint,
+.footer,
+.label {
+  color: var(--muted);
+}
+
+.layout {
+  flex: 1;
+  display: grid;
+  grid-template-columns: 300px minmax(0, 1fr) 340px;
+  gap: 1.5rem;
+  padding: 1.5rem;
+}
+
+.panel,
+.context {
+  display: flex;
+  flex-direction: column;
+  gap: 1.25rem;
+}
+
+.target-form {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.target-form label {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  font-size: 0.85rem;
+}
+
+.form-row,
+.lookup {
+  display: flex;
+  gap: 0.5rem;
+}
+
+.form-row label {
+  flex: 1;
+}
+
+.label {
+  margin: 0.5rem 0 0;
+  font-size: 0.85rem;
+}
+
+.chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+}
+
+.chips button {
+  font-size: 0.85rem;
+  padding: 0.25rem 0.6rem;
+}
+
+.info ul {
+  margin: 0;
+  padding-left: 1.1rem;
+  font-size: 0.85rem;
+}
+
+.stage {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  min-width: 0;
+}
+
+.notice {
+  margin: 0;
+  padding: 0.5rem 0.75rem;
+  border-left: 3px solid var(--warning);
+  background: var(--surface);
+  font-size: 0.9rem;
+}
+
+.notice.error {
+  border-left-color: var(--danger);
+}
+
+.player {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.viewport {
+  position: relative;
+  width: min(100%, 68vh);
+  aspect-ratio: 1;
+  background: #000;
+  border: 1px solid var(--border);
+}
+
+.viewport img {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  image-rendering: pixelated;
+}
+
+.reticle {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 9%;
+  aspect-ratio: 1;
+  transform: translate(-50%, -50%);
+  border: 1px solid rgba(110, 168, 254, 0.8);
+  border-radius: 50%;
+  pointer-events: none;
+}
+
+.stamp {
+  position: absolute;
+  left: 0.5rem;
+  bottom: 0.4rem;
+  font-variant-numeric: tabular-nums;
+  text-shadow: 0 0 4px #000;
+}
+
+.controls {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+}
+
+.controls input[type='range'] {
+  width: auto;
+  flex: 1;
+  min-width: 120px;
+  padding: 0;
+}
+
+.speed {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  font-size: 0.85rem;
+  color: var(--muted);
+}
+
+.meta {
+  display: grid;
+  grid-template-columns: max-content 1fr;
+  gap: 0.2rem 1rem;
+  margin: 0;
+  font-size: 0.9rem;
+}
+
+.meta dt {
+  color: var(--muted);
+}
+
+.meta dd {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+.caveat {
+  font-size: 0.8rem;
+  max-width: 68vh;
+}
+
+.sky-context {
+  width: 100%;
+  aspect-ratio: 1;
+  border: 1px solid var(--border);
+}
+
+.footer {
+  padding: 1rem 1.5rem;
+  border-top: 1px solid var(--border);
+  font-size: 0.8rem;
+}
+
+@media (max-width: 1100px) {
+  .layout {
+    grid-template-columns: 1fr;
+  }
+}

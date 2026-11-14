@@ -1,0 +1,19 @@
+# dependencies and builds
+node_modules/
+dist/
+.venv/
+__pycache__/
+.pytest_cache/
+.ruff_cache/
+
+# local config and data
+.env
+*.fits
+*.part
+
+# OS / editor files
+.DS_Store
+Thumbs.db
+desktop.ini
+.idea/
+.vscode/

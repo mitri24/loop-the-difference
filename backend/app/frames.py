@@ -1,0 +1,105 @@
+import hashlib
+import os
+import random
+import threading
+import time
+import warnings
+from pathlib import Path
+
+import httpx
+import numpy as np
+from astropy.io import fits
+from astropy.wcs import WCS, FITSFixedWarning
+from PIL import Image
+from reproject import reproject_interp
+
+SPHEREX_PIXEL_SCALE_ARCSEC = 6.15
+# A cutout is aligned with the detector, the target grid with north: √2 covers any rotation.
+ROTATION_MARGIN = 1.42
+DOWNLOAD_ATTEMPTS = 5
+RETRY_BASE_S = 2.0
+# IRSA answers "503 Server busy, retry later" under load.
+_RETRY_STATUS = {429, 500, 502, 503, 504}
+
+
+def cutout_url(access_url: str, ra: float, dec: float, size_deg: float) -> str:
+    return f"{access_url}?center={ra:.6f},{dec:.6f}&size={size_deg * ROTATION_MARGIN:.4f}"
+
+
+def fetch_cutout(client: httpx.Client, url: str, directory: Path) -> Path:
+    directory.mkdir(parents=True, exist_ok=True)
+    path = directory / f"{hashlib.sha256(url.encode()).hexdigest()[:24]}.fits"
+    if path.exists():
+        return path
+    partial = path.with_name(f"{path.name}.{os.getpid()}-{threading.get_ident()}.part")
+    for attempt in range(1, DOWNLOAD_ATTEMPTS + 1):
+        try:
+            with client.stream("GET", url) as response:
+                response.raise_for_status()
+                with partial.open("wb") as file:
+                    for chunk in response.iter_bytes():
+                        file.write(chunk)
+            break
+        except httpx.HTTPError as exc:
+            if attempt == DOWNLOAD_ATTEMPTS or not _retryable(exc):
+                partial.unlink(missing_ok=True)
+                raise
+            time.sleep(RETRY_BASE_S * 2 ** (attempt - 1) + random.uniform(0, 1))
+    partial.replace(path)
+    return path
+
+
+def _retryable(exc: httpx.HTTPError) -> bool:
+    if isinstance(exc, httpx.HTTPStatusError):
+        return exc.response.status_code in _RETRY_STATUS
+    return isinstance(exc, httpx.TransportError)
+
+
+def read_image(path: Path) -> tuple[np.ndarray, WCS]:
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore", FITSFixedWarning)
+        with fits.open(path) as hdul:
+            hdu = hdul["IMAGE"]
+            return hdu.data.astype(np.float64), WCS(hdu.header)
+
+
+def target_grid(
+    ra: float, dec: float, size_deg: float, pixel_scale_arcsec: float = SPHEREX_PIXEL_SCALE_ARCSEC
+) -> tuple[WCS, tuple[int, int]]:
+    """Common grid for all frames: centred on the target, north up, east left."""
+    size_px = max(16, round(size_deg * 3600 / pixel_scale_arcsec))
+    wcs = WCS(naxis=2)
+    wcs.wcs.ctype = ["RA---TAN", "DEC--TAN"]
+    wcs.wcs.crval = [ra, dec]
+    wcs.wcs.crpix = [(size_px + 1) / 2, (size_px + 1) / 2]
+    scale = pixel_scale_arcsec / 3600
+    wcs.wcs.cdelt = [-scale, scale]
+    return wcs, (size_px, size_px)
+
+
+def align(
+    data: np.ndarray, wcs: WCS, target: WCS, shape: tuple[int, int]
+) -> tuple[np.ndarray, float]:
+    """Resample onto the target grid and remove the background level; returns image and coverage."""
+    aligned, footprint = reproject_interp((data, wcs), target, shape_out=shape)
+    covered = footprint > 0
+    coverage = float(covered.mean())
+    aligned[~covered] = np.nan
+    if coverage > 0:
+        aligned -= np.nanmedian(aligned)
+    return aligned, coverage
+
+
+def render_png(images: list[np.ndarray], directory: Path) -> list[str]:
+    """One shared stretch for all frames, so brightness stays comparable while blinking."""
+    lo, hi = np.nanpercentile(np.stack(images), [1.0, 99.5])
+    span = hi - lo if hi > lo else 1.0
+    names = []
+    for index, image in enumerate(images):
+        normalized = np.clip((image - lo) / span, 0, 1)
+        stretched = np.arcsinh(10 * normalized) / np.arcsinh(10)
+        pixels = np.nan_to_num(stretched * 255, nan=0).astype(np.uint8)
+        name = f"frame_{index:02d}.png"
+        Image.fromarray(np.flipud(pixels)).save(directory / name)
+        names.append(name)
+    return names

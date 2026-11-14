@@ -1,0 +1,89 @@
+import httpx
+import numpy as np
+import pytest
+from astropy.wcs import WCS
+from PIL import Image
+
+from app import frames
+from app.frames import align, render_png, target_grid
+
+RA, DEC = 133.795, -7.245
+
+
+def _rotated_image_with_star(rotation_deg: float, size: int = 100) -> tuple[np.ndarray, WCS]:
+    """Synthetic exposure, rotated like a real SPHEREx visit, with a star exactly on the target."""
+    wcs = WCS(naxis=2)
+    wcs.wcs.ctype = ["RA---TAN", "DEC--TAN"]
+    wcs.wcs.crval = [RA, DEC]
+    wcs.wcs.crpix = [size / 2, size / 2]
+    scale = 6.15 / 3600
+    theta = np.radians(rotation_deg)
+    wcs.wcs.cd = scale * np.array([[-np.cos(theta), np.sin(theta)], [np.sin(theta), np.cos(theta)]])
+    y, x = np.mgrid[:size, :size]
+    star_x, star_y = wcs.wcs.crpix[0] - 1, wcs.wcs.crpix[1] - 1
+    data = 100 * np.exp(-((x - star_x) ** 2 + (y - star_y) ** 2) / (2 * 1.5**2)) + 5.0
+    return data, wcs
+
+
+def test_alignment_puts_the_target_in_the_centre_for_any_rotation():
+    target, shape = target_grid(RA, DEC, 0.1)
+    centre = (shape[0] - 1) / 2
+
+    for rotation in (0, 30, 135):
+        image, coverage = align(*_rotated_image_with_star(rotation), target, shape)
+
+        assert coverage == 1.0
+        peak = np.unravel_index(np.nanargmax(image), image.shape)
+        assert abs(peak[0] - centre) <= 1
+        assert abs(peak[1] - centre) <= 1
+
+
+def test_partial_overlap_reports_coverage_and_masks_the_rest():
+    data, wcs = _rotated_image_with_star(0, size=40)
+    target, shape = target_grid(RA + 0.05, DEC, 0.1)
+
+    image, coverage = align(data, wcs, target, shape)
+
+    assert 0 < coverage < 1
+    assert np.isnan(image).sum() == round((1 - coverage) * image.size)
+
+
+def test_frames_share_one_stretch(tmp_path):
+    names = render_png([np.zeros((20, 20)), np.full((20, 20), 10.0)], tmp_path)
+
+    assert names == ["frame_00.png", "frame_01.png"]
+    dark, bright = (np.asarray(Image.open(tmp_path / name)) for name in names)
+    assert dark.mean() < bright.mean()
+
+
+def _client(responses: list[httpx.Response], calls: list[int]) -> httpx.Client:
+    def handler(request: httpx.Request) -> httpx.Response:
+        calls.append(1)
+        return responses[len(calls) - 1]
+
+    return httpx.Client(transport=httpx.MockTransport(handler))
+
+
+def test_busy_archive_is_retried(tmp_path, monkeypatch):
+    monkeypatch.setattr(frames.time, "sleep", lambda _: None)
+    calls: list[int] = []
+    busy = httpx.Response(503, text="Server busy, retry later.")
+    client = _client([busy, busy, httpx.Response(200, content=b"FITS")], calls)
+
+    path = frames.fetch_cutout(client, "https://irsa.example/cutout.fits", tmp_path)
+
+    assert path.read_bytes() == b"FITS"
+    assert len(calls) == 3
+    assert not list(tmp_path.glob("*.part"))
+
+
+def test_missing_file_is_not_retried(tmp_path, monkeypatch):
+    monkeypatch.setattr(frames.time, "sleep", lambda _: None)
+    calls: list[int] = []
+    client = _client([httpx.Response(404)], calls)
+
+    with pytest.raises(httpx.HTTPStatusError):
+        frames.fetch_cutout(client, "https://irsa.example/missing.fits", tmp_path)
+
+    assert len(calls) == 1
+    assert not list(tmp_path.iterdir())

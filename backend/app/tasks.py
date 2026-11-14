@@ -1,0 +1,116 @@
+from concurrent.futures import ThreadPoolExecutor
+from pathlib import Path
+
+import httpx
+from rq import get_current_job
+
+from app.archive import group_epochs, search_observations, select_frames
+from app.config import get_settings
+from app.frames import (
+    SPHEREX_PIXEL_SCALE_ARCSEC,
+    align,
+    cutout_url,
+    fetch_cutout,
+    read_image,
+    render_png,
+    target_grid,
+)
+from app.models import Frame, FrameManifest
+
+MIN_COVERAGE = 0.5
+
+
+def manifest_path(cache_dir: Path, key: str) -> Path:
+    return cache_dir / "frames" / key / "manifest.json"
+
+
+def build_frames(
+    key: str, ra: float, dec: float, size_deg: float, detector: int, max_frames: int
+) -> dict:
+    """Worker job: find the observations, cut them out, align them and render the blink frames."""
+    settings = get_settings()
+    observations = [o for o in search_observations(ra, dec, settings) if o.detector == detector]
+    selected = select_frames(observations, max_frames)
+    urls = [cutout_url(o.access_url, ra, dec, size_deg) for o in selected]
+    _report(0, len(selected))
+
+    warnings: list[str] = []
+    downloaded = []
+    with (
+        httpx.Client(timeout=settings.http_timeout_s, follow_redirects=True) as client,
+        ThreadPoolExecutor(max_workers=settings.download_workers) as pool,
+    ):
+        futures = [
+            pool.submit(fetch_cutout, client, url, settings.cache_dir / "cutouts") for url in urls
+        ]
+        for done, (obs, url, future) in enumerate(
+            zip(selected, urls, futures, strict=True), start=1
+        ):
+            try:
+                downloaded.append((obs, url, future.result()))
+            except httpx.HTTPError:
+                warnings.append(
+                    f"{obs.obs_id}: archive did not deliver the cutout, frame skipped "
+                    "(requesting the same view again retries it)"
+                )
+            _report(done, len(selected))
+
+    target, shape = target_grid(ra, dec, size_deg)
+    kept, images = [], []
+    for obs, url, path in downloaded:
+        data, wcs = read_image(path)
+        image, coverage = align(data, wcs, target, shape)
+        if coverage < MIN_COVERAGE:
+            warnings.append(
+                f"{obs.obs_id}: only {coverage:.0%} of the field covered, frame skipped"
+            )
+            continue
+        kept.append((obs, url, coverage))
+        images.append(image)
+
+    epochs = len(group_epochs([obs for obs, _, _ in kept]))
+    if len(kept) < 2:
+        warnings.append("Cannot compare epochs: fewer than two usable observations")
+    elif epochs < 2:
+        warnings.append("No usable time baseline: all usable observations come from one epoch")
+
+    out_dir = manifest_path(settings.cache_dir, key).parent
+    out_dir.mkdir(parents=True, exist_ok=True)
+    names = render_png(images, out_dir) if images else []
+    manifest = FrameManifest(
+        collection=settings.spherex_collection,
+        ra=ra,
+        dec=dec,
+        size_deg=size_deg,
+        detector=detector,
+        pixel_scale_arcsec=SPHEREX_PIXEL_SCALE_ARCSEC,
+        epochs=epochs,
+        complete=len(downloaded) == len(selected),
+        frames=[
+            Frame(
+                index=index,
+                url=f"/api/frames/{key}/{name}",
+                obs_id=obs.obs_id,
+                date=obs.date,
+                mjd=obs.mjd,
+                detector=obs.detector,
+                wavelength_min_um=obs.wavelength_min_um,
+                wavelength_max_um=obs.wavelength_max_um,
+                coverage=round(coverage, 3),
+                source_url=url,
+            )
+            for index, ((obs, url, coverage), name) in enumerate(zip(kept, names, strict=True))
+        ],
+        warnings=warnings,
+    )
+    partial = out_dir / "manifest.json.part"
+    partial.write_text(manifest.model_dump_json())
+    partial.replace(manifest_path(settings.cache_dir, key))
+    return manifest.model_dump()
+
+
+def _report(done: int, total: int) -> None:
+    job = get_current_job()
+    if job is not None:
+        job.meta.update(progress=done, total=total)
+        job.save_meta()

@@ -1,0 +1,17 @@
+# Local development only (applied automatically by "docker compose up").
+# Production-like run without it: docker compose -f docker-compose.yml up --build
+services:
+  api:
+    command: ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000", "--reload"]
+    ports:
+      - "8000:8000"
+    environment:
+      WATCHFILES_FORCE_POLLING: "true"
+    volumes:
+      - ./backend:/app
+      - cache:/data/cache
+
+  worker:
+    volumes:
+      - ./backend:/app
+      - cache:/data/cache
