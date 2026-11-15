@@ -6,7 +6,7 @@ export function ObservationImage({ src, alt, visible = true }: { src: string; al
   const [attempt, setAttempt] = useState(0)
   return <>
     <img src={attempt ? `${src}${src.includes('?') ? '&' : '?'}retry=${attempt}` : src}
-      alt={alt} style={{ visibility: visible ? 'visible' : 'hidden' }}
+      alt={alt} decoding="async" fetchPriority={visible ? 'high' : 'low'} style={{ visibility: visible ? 'visible' : 'hidden' }}
       onError={() => setFailed(true)} onLoad={() => setFailed(false)} />
     {failed && visible && <div className="image-error" role="alert">
       <span>This observation image could not load.</span>

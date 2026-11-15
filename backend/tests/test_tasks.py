@@ -328,3 +328,43 @@ def test_a_deep_field_of_the_same_release_is_no_mix(monkeypatch, settings, tmp_p
     codes = [c["code"] for c in manifest["checks"]]
     assert "MIXED_RELEASES" not in codes
     assert "RELEASE_UNAVAILABLE" not in codes
+
+
+def test_preview_is_published_before_slow_cutout(monkeypatch, settings, tmp_path):
+    from threading import Event
+
+    from app.models import FrameManifest
+
+    observations = [_observation(100), _observation(290), _observation(470)]
+    _offline_archive(monkeypatch, settings, tmp_path, observations)
+    published = Event()
+    original_render = tasks._render_frames
+    previews = []
+
+    def render(*args, **kwargs):
+        result = original_render(*args, **kwargs)
+        if kwargs.get("preview"):
+            path = settings.cache_dir / "frames" / "job" / "preview.json"
+            preview = FrameManifest.model_validate_json(path.read_text())
+            assert preview.preview and not preview.complete and not preview.stacked
+            assert not preview.differences
+            assert not (path.parent / "manifest.json").exists()
+            assert all("preview_" in f.url for f in preview.frames)
+            assert any(c.code == "PREVIEW" for c in preview.checks)
+            previews.append(result)
+            published.set()
+        return result
+
+    def fetch(client, url, directory):
+        if "/100.fits" in url:
+            assert published.wait(3), "a slow first request blocked ready observations"
+        return tmp_path / url.split("?")[0].rsplit("/", 1)[1]
+
+    monkeypatch.setattr(tasks, "_render_frames", render)
+    monkeypatch.setattr(tasks, "fetch_cutout", fetch)
+    final = build_frames("job", RA, DEC, SIZE_DEG, 6, 12, stack=True)
+    assert previews
+    assert final["complete"] and not final["preview"] and final["stacked"]
+    assert [f["obs_id"] for f in final["frames"]] == [o.obs_id for o in observations]
+    assert all("preview_" not in f["url"] for f in final["frames"])
+    assert "PREVIEW" not in [c["code"] for c in final["checks"]]

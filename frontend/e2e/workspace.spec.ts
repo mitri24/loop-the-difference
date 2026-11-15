@@ -27,8 +27,9 @@ const job = (data = manifest): FrameJob => ({ job_id: 'fixture', status: 'finish
   progress: 2, total: 2, manifest: data, error: null })
 const transparentPng = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+aD1sAAAAASUVORK5CYII=', 'base64')
 async function fixtures(page: Page, data = manifest) {
-  await page.route('**/api/**', async (route) => {
+  await page.route(url => url.pathname.startsWith('/api/') || url.pathname.startsWith('/analysis/api/'), async (route) => {
     const url = new URL(route.request().url())
+    if (url.pathname.startsWith('/analysis/')) return route.fulfill({ json: { target: {ra: manifest.ra, dec: manifest.dec}, observations: [], visits: [], checks: [], query_urls: [], fov_arcmin: 12 } })
     if (url.pathname.endsWith('.png')) return route.fulfill({ contentType: 'image/png', body: transparentPng })
     if (url.pathname === '/api/resolve') return route.fulfill({ json: { name: 'Polaris', ra: manifest.ra, dec: manifest.dec } })
     if (url.pathname === '/api/observations') return route.fulfill({ json: summary })
@@ -473,7 +474,9 @@ test('fixture: Explore picks a region on the sky, Investigate shows its images, 
   await expect(page.locator('.stamp')).toContainText('2026-09-10')
   await page.getByRole('button', { name: 'Hide map' }).click()
   await expect(page.locator('.sky-area.overview .sky-stage')).toBeHidden()
-  await page.getByRole('button', { name: 'Fold the timeline' }).click()
+  await page.getByRole('button', { name: 'Observation history' }).click()
+  await expect(page.locator('.observation-timeline')).toBeVisible()
+  await page.keyboard.press('Escape')
   await expect(page.locator('.observation-timeline')).toBeHidden()
   const bounds = await page.evaluate(() => ({ w: document.documentElement.scrollWidth, h: document.documentElement.scrollHeight }))
   expect(bounds).toEqual({ w: 1440, h: 900 })
@@ -498,4 +501,71 @@ test('panel width: keyboard and double-click resize within limits and persist pe
   expect(await width()).toBeCloseTo(start, 0)
   await page.setViewportSize({ width: 800, height: 900 })
   expect(await width()).toBeCloseTo(400, 0)
+})
+
+test('fixture: vertical thumbnails select the large image and its own metadata', async ({ page }, info) => {
+  const frames = Array.from({ length: 12 }, (_, i) => ({ ...frame(i),
+    date: new Date(Date.UTC(2026, 0, i + 1, 12)).toISOString(), mjd: 61000 + i,
+  }))
+  await fixtures(page, { ...manifest, frames })
+  for (const width of [320,375,390,600,768,1024,1280,1366,1440,1920]) {
+    await page.setViewportSize({width,height:900})
+    await page.goto('/?ra=37.954542&dec=89.264111')
+    const gallery=page.getByRole('region',{name:'Observation images'})
+    const metadata=page.getByRole('region',{name:'Selected observation metadata'})
+    await expect(gallery.locator('.observation-card')).toHaveCount(12)
+    await expect(gallery).not.toContainText('Coverage')
+    await gallery.getByRole('button',{name:/^Show observation 12,/}).click()
+    await expect(page.locator('.stamp')).toContainText('2026-01-12')
+    await expect(metadata).toContainText('2026-01-12')
+    await expect(metadata).toContainText('96 %')
+    await gallery.getByRole('button',{name:/^Show observation 11,/}).click()
+    await metadata.getByRole('button',{name:'Use observation 11 as A',exact:true}).click()
+    await expect(page.locator('.blink-chip').first()).toContainText('2026-01-11')
+    const last=gallery.getByRole('button',{name:/^Show observation 12,/})
+    await last.focus()
+    await page.keyboard.press('ArrowUp')
+    await expect(page.locator('.stamp')).toContainText('2026-01-11')
+    await expect(metadata).toContainText('2026-01-11')
+    const image=(await page.locator('.player .viewport').boundingBox())!
+    const rail=(await gallery.boundingBox())!
+    expect(rail.x+rail.width).toBeLessThanOrEqual(image.x)
+    expect(Math.abs(rail.y-image.y)).toBeLessThan(2)
+    expect(Math.abs(rail.height-image.height)).toBeLessThan(2)
+    expect(rail.width).toBeLessThanOrEqual(90)
+    const player=(await page.locator('.observation-player').boundingBox())!
+    if(player.width>=850) {
+      const details=(await metadata.boundingBox())!
+      expect(details.x).toBeGreaterThanOrEqual(image.x+image.width)
+      expect(details.height).toBeLessThanOrEqual(image.height+1)
+    }
+    expect(await page.evaluate(()=>document.documentElement.scrollWidth)).toBeLessThanOrEqual(width+1)
+    if ([390,1440,1920].includes(width)) await page.screenshot({path:info.outputPath(`image-browser-${width}.png`)})
+  }
+})
+
+test('fixture: observation history opens beside the comparison and closes without losing the frame', async ({ page }, info) => {
+  await fixtures(page)
+  await page.goto('/?ra=37.954542&dec=89.264111&band=6')
+  await expect(page.locator('.stamp')).toBeVisible()
+  await page.getByRole('button', { name: 'Next frame', exact: true }).click()
+  const stamp = await page.locator('.stamp').textContent()
+  for (const width of [320, 375, 390, 600, 768, 1024, 1280, 1366, 1440, 1920]) {
+    for (const height of [600, 700, 768, 900]) {
+      await page.setViewportSize({ width, height })
+      const trigger = page.getByRole('button', { name: 'Observation history' })
+      await fits(page, trigger)
+      await hitTarget(trigger)
+      await trigger.click()
+      await fits(page, page.locator('.fpanel'))
+      await expect(page.locator('.observation-timeline')).toBeVisible()
+      await hitTarget(page.getByRole('button', { name: 'Close panel' }))
+      expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(width + 1)
+      if (height === 900 && [390, 1440].includes(width)) await page.screenshot({ path: info.outputPath(`history-${width}.png`) })
+      await page.keyboard.press('Escape')
+      await expect(trigger).toBeFocused()
+      await expect(page.locator('.stamp')).toHaveText(stamp!)
+      await expect(page.locator('.bottom-bar')).toHaveCount(0)
+    }
+  }
 })

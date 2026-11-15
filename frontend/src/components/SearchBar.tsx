@@ -1,3 +1,4 @@
+import { useState } from 'react'
 import { CHALLENGE_TARGETS } from '../targets'
 import type { TargetQuery } from '../url'
 import { openTarget } from './TargetForm'
@@ -20,11 +21,14 @@ interface Props {
   onShow: (query: TargetQuery) => void
   onFind: (name: string, base: TargetQuery) => void
   onShare: () => void
+  onDraftChange?: (query: TargetQuery) => void
 }
 
 // Top of the workspace: one input for a name or "RA, Dec", the example targets, Surprise me and Share.
-export function SearchBar({ value, onChange, draft, busy, onShow, onFind, onShare }: Props) {
+export function SearchBar({ value, onChange, draft, busy, onShow, onFind, onShare, onDraftChange }: Props) {
+  const [examplesOpen, setExamplesOpen] = useState(false)
   const submit = () => {
+    setExamplesOpen(false)
     const position = splitCoordinates(value)
     if (position) onShow({ ...draft, ...position })
     else if (value.trim()) onFind(value.trim(), draft)
@@ -32,22 +36,32 @@ export function SearchBar({ value, onChange, draft, busy, onShow, onFind, onShar
   return (
     <header className="hud" id="workspace-tools">
       <div className="hud-row">
-        <span className="brand" title="Loop the Difference · SPHEREx observation workspace"><span className="brand-mark" aria-hidden="true">＋</span><span className="brand-name">Loop the Difference</span></span>
+        <span className="brand" title="Loop the Difference · SPHEREx observation workspace"><span className="brand-name">Loop the Difference</span></span>
         <form className="global-search" role="search" onSubmit={(event) => { event.preventDefault(); submit() }}>
+          <span className="search-mark" aria-hidden="true" />
           <label className="sr-only" htmlFor="sky-search">Target name or RA, Dec</label>
-          <input id="sky-search" data-testid="sky-search" placeholder="Name or RA, Dec – e.g. Barnard's Star or 269.45, 4.69"
+          <input id="sky-search" data-testid="sky-search" placeholder="Object name or RA, Dec"
             value={value} onChange={(event) => onChange(event.target.value)} autoComplete="off" />
-          <button type="submit" className="primary" disabled={busy || !value.trim()}>Compare</button>
+          <select className="search-band" aria-label="Search band" value={draft.band} disabled={busy}
+            onChange={(event) => onDraftChange?.({ ...draft, band: Number(event.target.value) })}>
+            {[1, 2, 3, 4, 5, 6].map((band) => <option key={band} value={band}>D{band}</option>)}
+          </select>
+          <button type="submit" className="primary search-submit" aria-label="Compare" title="Find and compare" disabled={busy || !value.trim()}>
+            {busy ? '…' : <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" aria-hidden="true"><circle cx="10.5" cy="10.5" r="6.5" /><path d="m16 16 4.5 4.5" /></svg>}
+          </button>
         </form>
+        <div className="header-actions">
+        <button type="button" className="examples-toggle" aria-expanded={examplesOpen} aria-controls="search-examples" onClick={() => setExamplesOpen(!examplesOpen)}>Examples <span aria-hidden="true">⌄</span></button>
         <button type="button" className="share-button" onClick={onShare} title="Copy this comparison link">Share</button>
+        </div>
       </div>
-      <div className="hud-chips" role="group" aria-label="Examples">
+      <div id="search-examples" className="hud-chips" role="group" aria-label="Examples" hidden={!examplesOpen}>
         {CHALLENGE_TARGETS.map((target) => (
           <button type="button" key={target.label} className="chip" disabled={busy} title={target.hint ?? target.label}
-            onClick={() => openTarget(target, draft, { onShow, onFind })}>{target.label.split(' · ')[0]}</button>
+            onClick={() => { setExamplesOpen(false); openTarget(target, draft, { onShow, onFind }) }}>{target.label.split(' · ')[0]}</button>
         ))}
         <button type="button" className="chip" disabled={busy} title="Open a random example target"
-          onClick={() => openTarget(CHALLENGE_TARGETS[Math.floor(Math.random() * CHALLENGE_TARGETS.length)], draft, { onShow, onFind })}>Surprise me</button>
+          onClick={() => { setExamplesOpen(false); openTarget(CHALLENGE_TARGETS[Math.floor(Math.random() * CHALLENGE_TARGETS.length)], draft, { onShow, onFind }) }}>Surprise me</button>
       </div>
     </header>
   )

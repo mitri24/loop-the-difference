@@ -32,7 +32,7 @@ from app.models import (
 from app.smallbodies import router as smallbodies_router
 
 _JOB_ID = re.compile(r"^[0-9a-f]{16}$")
-_FRAME_FILE = re.compile(r"^(frame_\d{2}|diff_\d{2}_\d{2})\.png$")
+_FRAME_FILE = re.compile(r"^((?:preview_\d{3}_)?frame_\d{2}|diff_\d{2}_\d{2})\.png$")
 
 SettingsDep = Annotated[Settings, Depends(get_settings)]
 

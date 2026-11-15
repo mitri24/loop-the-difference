@@ -65,6 +65,7 @@ def submit(
         raise QueueFull()
     # Failed, expired or incomplete: start over (downloaded cutouts stay cached).
     manifest_path(settings.cache_dir, job_id).unlink(missing_ok=True)
+    (manifest_path(settings.cache_dir, job_id).parent / "preview.json").unlink(missing_ok=True)
     with suppress(NoSuchJobError):
         Job.fetch(job_id, connection=redis).delete()
     queue.enqueue(
@@ -142,12 +143,18 @@ def status(redis: Redis, settings: Settings, job_id: str) -> FrameJob:
     progress = int(job.meta.get("progress", 0))
     total = int(job.meta.get("total", 0))
     state = job.get_status()
+    preview_path = cached.parent / "preview.json"
+    preview = (
+        FrameManifest.model_validate_json(preview_path.read_text())
+        if preview_path.is_file()
+        else None
+    )
     if state == JobStatus.FAILED:
-        return FrameJob(job_id=job_id, status="failed", error=_last_error(job))
+        return FrameJob(job_id=job_id, status="failed", error=_last_error(job), manifest=preview)
     if state == JobStatus.FINISHED:
         return FrameJob(job_id=job_id, status="not_found")
     running = "started" if state == JobStatus.STARTED else "queued"
-    return FrameJob(job_id=job_id, status=running, progress=progress, total=total)
+    return FrameJob(job_id=job_id, status=running, progress=progress, total=total, manifest=preview)
 
 
 def _last_error(job: Job) -> str:

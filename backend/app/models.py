@@ -116,6 +116,7 @@ class FrameManifest(BaseModel):
     # False when the archive did not deliver every frame: the next request retries.
     complete: bool = True
     stacked: bool = False
+    preview: bool = False
     # Manifests written before this field existed come from pipeline version 1.
     pipeline_version: int = 1
     frames: list[Frame]

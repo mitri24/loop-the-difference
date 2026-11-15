@@ -84,3 +84,45 @@ def test_worker_takes_the_queues_from_its_setting(monkeypatch, settings, setting
     worker.main()
 
     assert taken == queues
+
+
+def test_running_job_serves_preview_without_claiming_completion(monkeypatch, settings):
+    from types import SimpleNamespace
+
+    from rq.job import JobStatus
+
+    from app.models import FrameManifest
+
+    preview = FrameManifest(
+        collection="spherex_dr1",
+        ra=10,
+        dec=20,
+        size_deg=0.2,
+        detector=6,
+        pixel_scale_arcsec=6.15,
+        epochs=1,
+        frames=[],
+        warnings=[],
+        preview=True,
+        complete=False,
+    )
+    folder = jobs.manifest_path(settings.cache_dir, "job").parent
+    folder.mkdir(parents=True)
+    (folder / "preview.json").write_text(preview.model_dump_json())
+    monkeypatch.setattr(
+        jobs.Job,
+        "fetch",
+        lambda *_, **__: SimpleNamespace(
+            meta={"progress": 2, "total": 12},
+            get_status=lambda: JobStatus.STARTED,
+        ),
+    )
+    running = jobs.status(None, settings, "job")
+    assert running.status == "started"
+    assert running.manifest.preview
+    assert (running.progress, running.total) == (2, 12)
+    final = preview.model_copy(update={"preview": False, "complete": True})
+    jobs.manifest_path(settings.cache_dir, "job").write_text(final.model_dump_json())
+    finished = jobs.status(None, settings, "job")
+    assert finished.status == "finished"
+    assert finished.manifest.complete and not finished.manifest.preview

@@ -17,12 +17,13 @@ import { markerPosition, skyToFrame } from '../motion'
 import { SEARCH_AREA_LABEL, type Prediction } from '../track'
 import type { Check, Frame, FrameManifest, ProperMotion } from '../types'
 import { CheckBadge, checksForFrame } from './EvidencePanel'
+import { LazyThumbnail } from './LazyThumbnail'
 import { ObservationImage } from './ObservationImage'
 
 interface Props {
   frames: Frame[]
   checks?: Check[]
-  grid: Pick<FrameManifest, 'ra' | 'dec' | 'size_deg' | 'collection'>
+  grid: Pick<FrameManifest, 'ra' | 'dec' | 'size_deg' | 'collection'> & Partial<Pick<FrameManifest, 'pixel_scale_arcsec'>>
   motion: ProperMotion | null
   // Possible track from the user's marks, at the frame dates where a straight line is valid.
   predictions?: Prediction[]
@@ -144,7 +145,7 @@ export function BlinkPlayer({
   return (
     <div
       ref={playerRef}
-      className="player"
+      className="player observation-player"
       role="group"
       tabIndex={0}
       aria-label="Observation player. Space to play, arrow keys to step, A and B show those frames."
@@ -159,15 +160,17 @@ export function BlinkPlayer({
         </div>
       )}
       <div className="viewport">
-        {/* All frames stay mounted, so they load once and switching is instant. */}
-        {frames.map((f, i) => (
+        {/* Load only the visible frame and its next playback partner. */}
+        {[index, nextIndex(index, count, blinkPair)].filter((i, n, all) => all.indexOf(i) === n).map((i) => {
+          const f = frames[i]
+          return (
           <ObservationImage
             key={f.url}
             src={f.url}
             alt={`SPHEREx detector ${f.detector}, ${f.date.slice(0, 10)}`}
             visible={i === index}
           />
-        ))}
+        )})}
         <div className="reticle" aria-hidden="true" />
         {marker && (
           <div
@@ -268,7 +271,43 @@ export function BlinkPlayer({
         </div>
       )}
 
+      <section className="observation-gallery" aria-label="Observation images">
+        <div className="observation-strip" tabIndex={0} aria-label="Scrollable observation images" onKeyDown={event => {
+          const buttons = [...event.currentTarget.querySelectorAll<HTMLButtonElement>('.observation-preview')]
+          const focused = buttons.indexOf(event.target as HTMLButtonElement)
+          if (focused < 0) return
+          const next = event.key === 'ArrowDown' ? Math.min(count - 1, focused + 1)
+            : event.key === 'ArrowUp' ? Math.max(0, focused - 1)
+            : event.key === 'Home' ? 0 : event.key === 'End' ? count - 1 : null
+          if (next === null) return
+          event.preventDefault(); event.stopPropagation(); setMode('all'); show(next); buttons[next]?.focus()
+        }}>
+          {frames.map((f, i) => (
+            <article className={`observation-card${i === index ? ' current' : ''}`} key={`${f.url}-${i}`}>
+              <button type="button" className="observation-preview" aria-pressed={i === index}
+                aria-label={`Show observation ${i + 1}, ${utcMinute(f.date)}`}
+                title={`${utcMinute(f.date)} · D${f.detector} · ${lambdaText(f)}`}
+                onClick={() => { setMode('all'); show(i) }}>
+                <LazyThumbnail src={f.url} alt={`SPHEREx observation ${i + 1}`} />
+                <i className="thumbnail-centre" aria-hidden="true" />
+                <span>{i + 1}{pair?.a === i ? ' · A' : ''}{pair?.b === i ? ' · B' : ''}</span>
+              </button>
+            </article>
+          ))}
+        </div>
+      </section>
+
+      <section className="selected-observation" aria-label="Selected observation metadata">
+      <h3>Observation {index + 1} of {count}</h3>
       <dl className="meta">
+        <dt>Epoch</dt><dd>{frame.epoch + 1}</dd>
+        <dt>Exposures</dt><dd>{frame.n_combined}{frame.n_combined > 1 ? ' (stack)' : ' (single exposure)'}</dd>
+        <dt>Release</dt><dd>{frame.release ?? releaseLabel(grid.collection)}</dd>
+        <dt>Wavelength at target</dt><dd>{lambdaText(frame)}</dd>
+        {frame.date_end && <><dt>Observation end</dt><dd>{utcMinute(frame.date_end)}</dd></>}
+        <dt>Masked pixels</dt><dd>{frame.masked_fraction == null ? 'Not reported' : `${(frame.masked_fraction * 100).toFixed(1)} %`}</dd>
+        <dt>Field centre</dt><dd>RA {grid.ra.toFixed(6)}° · Dec {grid.dec.toFixed(6)}°</dd>
+        <dt>Image scale</dt><dd>{grid.pixel_scale_arcsec == null ? 'Pixel scale not reported' : `${grid.pixel_scale_arcsec}″/px`} · {grid.size_deg}° field</dd>
         <dt>Observed</dt>
         <dd>{frame.date.replace('T', ' ').replace('Z', ' UTC')}</dd>
         <dt>Detector</dt>
@@ -302,6 +341,15 @@ export function BlinkPlayer({
           </a>
         </dd>
       </dl>
+      {pair && <div className="gallery-pair-actions">
+        {(['a', 'b'] as const).map(which => <button key={which} type="button"
+          disabled={pair[which === 'a' ? 'b' : 'a'] === index} aria-pressed={pair[which] === index}
+          aria-label={`Use observation ${index + 1} as ${which.toUpperCase()}`}
+          onClick={() => { choose(which, index); setMode('ab') }}>
+          {pair[which] === index ? `${which.toUpperCase()} selected` : `Set ${which.toUpperCase()}`}
+        </button>)}
+      </div>}
+      </section>
     </div>
   )
 }

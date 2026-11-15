@@ -8,7 +8,7 @@ export default defineConfig({
     chunkSizeWarningLimit: 3000,
   },
   server: {
-    proxy: { '/api': 'http://localhost:8000' },
+    proxy: { '/api': 'http://localhost:8000', '/analysis': { target: 'http://localhost:8080', changeOrigin: true } },
   },
   test: {
     include: ['src/**/*.test.{ts,tsx}'],

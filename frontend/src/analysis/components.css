@@ -1,0 +1,1362 @@
+/* Component styles. Only tokens from tokens.css — no raw colours here (design-system.md). */
+
+.reference-analysis *,
+.reference-analysis *::before,
+.reference-analysis *::after {
+  box-sizing: border-box;
+}
+.reference-analysis html,
+.reference-analysis body,
+.reference-analysis #root {
+  height: 100%;
+}
+.reference-analysis body {
+  margin: 0;
+  background: var(--surface-0);
+  color: var(--text-primary);
+  font: var(--weight-regular) var(--text-md) / var(--leading) var(--font-sans);
+  -webkit-font-smoothing: antialiased;
+}
+.reference-analysis a {
+  color: var(--accent);
+}
+.reference-analysis a:hover {
+  color: var(--accent-hover);
+}
+.reference-analysis :focus-visible {
+  outline: 2px solid var(--focus-ring);
+  outline-offset: 2px;
+}
+.reference-analysis .mono {
+  font-family: var(--font-mono);
+  font-size: 0.92em;
+}
+.reference-analysis .muted {
+  color: var(--text-muted);
+}
+.reference-analysis .small {
+  font-size: var(--text-sm);
+}
+.reference-analysis .sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+}
+.reference-analysis .pixelated {
+  image-rendering: pixelated;
+}
+.reference-analysis .h2 {
+  font-size: var(--text-sm);
+  font-weight: var(--weight-bold);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--text-secondary);
+  margin: 0 0 var(--space-3);
+}
+.reference-analysis .h3 {
+  font-size: var(--text-md);
+  font-weight: var(--weight-medium);
+  margin: var(--space-4) 0 var(--space-2);
+}
+
+/* ---------------------------------------------------------------- form controls */
+.reference-analysis .field {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  margin: 0 0 var(--space-3);
+  border: 0;
+  padding: 0;
+  min-width: 0;
+}
+.reference-analysis .field > span,
+.reference-analysis .field > legend {
+  font-size: var(--text-sm);
+  color: var(--text-secondary);
+  padding: 0;
+  margin-bottom: var(--space-1);
+}
+.reference-analysis .field--inline {
+  flex-direction: row;
+  align-items: center;
+  gap: var(--space-2);
+  margin: 0;
+}
+.reference-analysis .field--inline > span {
+  margin: 0;
+}
+.reference-analysis .field-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: var(--space-2);
+}
+.reference-analysis input:not([type]),
+.reference-analysis input[type="text"],
+.reference-analysis select {
+  width: 100%;
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  color: var(--text-primary);
+  font: inherit;
+  padding: 7px var(--space-3);
+  min-height: 36px;
+}
+.reference-analysis .field--inline select {
+  width: auto;
+}
+.reference-analysis input:not([type]):focus,
+.reference-analysis select:focus {
+  border-color: var(--focus-ring);
+  outline: none;
+}
+.reference-analysis input[type="range"] {
+  accent-color: var(--accent);
+}
+.reference-analysis input[type="checkbox"],
+.reference-analysis input[type="radio"] {
+  accent-color: var(--accent);
+}
+.reference-analysis .check {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  font-size: var(--text-sm);
+  color: var(--text-secondary);
+  cursor: pointer;
+}
+.reference-analysis .or {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  color: var(--text-muted);
+  font-size: var(--text-xs);
+  margin: calc(-1 * var(--space-1)) 0 var(--space-2);
+}
+.reference-analysis .or::before,
+.reference-analysis .or::after {
+  content: "";
+  flex: 1;
+  height: 1px;
+  background: var(--border);
+}
+.reference-analysis .picked {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  flex-wrap: wrap;
+  font-size: var(--text-sm);
+  background: var(--accent-subtle);
+  border-radius: var(--radius-md);
+  padding: var(--space-2);
+  margin-bottom: var(--space-3);
+}
+
+.reference-analysis .btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-1);
+  min-height: 34px;
+  padding: 0 var(--space-3);
+  border-radius: var(--radius-md);
+  border: 1px solid var(--border-strong);
+  background: var(--surface-2);
+  color: var(--text-primary);
+  font: inherit;
+  font-weight: var(--weight-medium);
+  cursor: pointer;
+  transition: background var(--dur-fast) var(--ease), border-color var(--dur-fast) var(--ease);
+}
+.reference-analysis .btn:hover:not(:disabled) {
+  background: var(--surface-3);
+}
+.reference-analysis .btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+.reference-analysis .btn--primary {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: var(--text-on-accent);
+}
+.reference-analysis .btn--primary:hover:not(:disabled) {
+  background: var(--accent-hover);
+}
+.reference-analysis .btn--ghost {
+  background: transparent;
+}
+.reference-analysis .btn--sm {
+  min-height: 26px;
+  padding: 0 var(--space-2);
+  font-size: var(--text-sm);
+}
+.reference-analysis .btn--block {
+  width: 100%;
+  min-height: 40px;
+}
+
+.reference-analysis .seg {
+  display: inline-flex;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  overflow: hidden;
+  margin-bottom: var(--space-3);
+}
+.reference-analysis .seg--full {
+  display: flex;
+  margin-bottom: var(--space-1);
+}
+.reference-analysis .seg__btn {
+  flex: 1;
+  padding: 6px var(--space-3);
+  background: var(--surface-2);
+  border: 0;
+  border-right: 1px solid var(--border);
+  color: var(--text-secondary);
+  font: inherit;
+  font-size: var(--text-sm);
+  text-align: center;
+  cursor: pointer;
+}
+.reference-analysis .seg__btn:last-child {
+  border-right: 0;
+}
+.reference-analysis .seg__btn.is-active {
+  background: var(--accent-subtle);
+  color: var(--accent);
+  font-weight: var(--weight-medium);
+}
+
+/* Band picker: identity colour on a left edge + the band name (never colour alone). */
+.reference-analysis .band-picker {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: var(--space-1);
+}
+.reference-analysis .band-option {
+  display: flex;
+  flex-direction: column;
+  padding: 6px var(--space-2);
+  border: 1px solid var(--border);
+  border-left: 4px solid var(--band-color);
+  border-radius: var(--radius-sm);
+  background: var(--surface-2);
+  cursor: pointer;
+  font-size: var(--text-xs);
+  color: var(--text-secondary);
+}
+.reference-analysis .band-option input {
+  position: absolute;
+  opacity: 0;
+  pointer-events: none;
+}
+.reference-analysis .band-option strong {
+  color: var(--text-primary);
+  font-size: var(--text-sm);
+}
+.reference-analysis .band-option.is-active {
+  background: var(--surface-3);
+  border-color: var(--text-secondary);
+  border-left-color: var(--band-color);
+}
+.reference-analysis .band-option:focus-within {
+  outline: 2px solid var(--focus-ring);
+}
+.reference-analysis .band-option--d1, .reference-analysis .band-chip--d1 { --band-color: var(--band-d1); }
+.reference-analysis .band-option--d2, .reference-analysis .band-chip--d2 { --band-color: var(--band-d2); }
+.reference-analysis .band-option--d3, .reference-analysis .band-chip--d3 { --band-color: var(--band-d3); }
+.reference-analysis .band-option--d4, .reference-analysis .band-chip--d4 { --band-color: var(--band-d4); }
+.reference-analysis .band-option--d5, .reference-analysis .band-chip--d5 { --band-color: var(--band-d5); }
+.reference-analysis .band-option--d6, .reference-analysis .band-chip--d6 { --band-color: var(--band-d6); }
+.reference-analysis .band-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: var(--text-xs);
+  font-weight: var(--weight-medium);
+  color: var(--text-primary);
+  padding: 1px 6px;
+  border-radius: var(--radius-sm);
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+}
+.reference-analysis .band-chip::before {
+  content: "";
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--band-color);
+}
+
+/* ---------------------------------------------------------------- demo targets */
+.reference-analysis .demo-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+.reference-analysis .demo {
+  width: 100%;
+  text-align: left;
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 2px var(--space-2);
+  padding: var(--space-2) var(--space-3);
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  color: var(--text-primary);
+  font: inherit;
+  cursor: pointer;
+}
+.reference-analysis .demo:hover:not(:disabled) {
+  border-color: var(--accent);
+}
+.reference-analysis .demo span:not(.band-chip) {
+  grid-column: 1;
+  font-size: var(--text-xs);
+  color: var(--text-muted);
+}
+.reference-analysis .demo .band-chip {
+  grid-column: 2;
+  grid-row: 1;
+}
+
+/* ---------------------------------------------------------------- blink */
+.reference-analysis .blink:focus {
+  outline: none;
+}
+.reference-analysis .blink__stage {
+  display: flex;
+  justify-content: center;
+}
+.reference-analysis .blink__image-wrap {
+  position: relative;
+  width: min(100%, 520px);
+  aspect-ratio: 1;
+  background: var(--img-nodata);
+  border-radius: var(--radius-sm);
+  overflow: hidden;
+}
+.reference-analysis .blink__image {
+  width: 100%;
+  height: 100%;
+  display: block;
+}
+.reference-analysis .crosshair {
+  position: absolute;
+  width: 34px;
+  height: 34px;
+  transform: translate(-50%, -50%);
+  pointer-events: none;
+  transition: left var(--dur-med) var(--ease), top var(--dur-med) var(--ease);
+}
+.reference-analysis .crosshair::before,
+.reference-analysis .crosshair::after {
+  content: "";
+  position: absolute;
+  background: var(--overlay-target);
+}
+/* Gapped crosshair: never hides the pixel it points at. */
+.reference-analysis .crosshair::before {
+  left: 0;
+  right: 0;
+  top: 50%;
+  height: 2px;
+  margin-top: -1px;
+  mask: linear-gradient(90deg, #000 35%, transparent 35% 65%, #000 65%);
+}
+.reference-analysis .crosshair::after {
+  top: 0;
+  bottom: 0;
+  left: 50%;
+  width: 2px;
+  margin-left: -1px;
+  mask: linear-gradient(180deg, #000 35%, transparent 35% 65%, #000 65%);
+}
+.reference-analysis .blink__stamp {
+  position: absolute;
+  left: var(--space-2);
+  top: var(--space-2);
+  display: flex;
+  flex-direction: column;
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+  background: var(--img-label-bg);
+  padding: 4px 6px;
+  border-radius: var(--radius-sm);
+}
+.reference-analysis .blink__stamp strong {
+  font-size: var(--text-sm);
+}
+.reference-analysis .blink__compass {
+  position: absolute;
+  right: var(--space-2);
+  top: var(--space-2);
+  font-size: var(--text-xs);
+  color: var(--text-secondary);
+  background: var(--img-label-bg);
+  padding: 2px 6px;
+  border-radius: var(--radius-sm);
+}
+.reference-analysis .blink__scale {
+  position: absolute;
+  right: var(--space-3);
+  bottom: var(--space-3);
+  height: 3px;
+  background: var(--text-primary);
+}
+.reference-analysis .blink__scale span {
+  position: absolute;
+  bottom: 5px;
+  right: 0;
+  font-size: var(--text-xs);
+}
+.reference-analysis .blink__controls {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2) var(--space-3);
+  margin: var(--space-3) 0;
+  justify-content: center;
+}
+.reference-analysis .filmstrip {
+  list-style: none;
+  display: flex;
+  gap: var(--space-2);
+  overflow-x: auto;
+  padding: 0 0 var(--space-2);
+  margin: 0 0 var(--space-3);
+}
+.reference-analysis .filmstrip__item {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  padding: 3px;
+  border: 2px solid transparent;
+  border-radius: var(--radius-sm);
+  background: var(--surface-2);
+  color: var(--text-secondary);
+  font: inherit;
+  font-size: var(--text-xs);
+  cursor: pointer;
+}
+.reference-analysis .filmstrip__item img {
+  width: 72px;
+  height: 72px;
+}
+.reference-analysis .filmstrip__item.is-active {
+  border-color: var(--accent);
+  color: var(--text-primary);
+}
+.reference-analysis .meta-grid {
+  display: grid;
+  grid-template-columns: max-content 1fr;
+  gap: var(--space-1) var(--space-4);
+  font-size: var(--text-sm);
+  margin: 0;
+}
+.reference-analysis .meta-grid dt {
+  color: var(--text-muted);
+}
+.reference-analysis .meta-grid dd {
+  margin: 0;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.reference-analysis .src-link {
+  margin-right: var(--space-2);
+}
+
+.reference-analysis .flags {
+  display: inline-flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+.reference-analysis .flag {
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+  padding: 0 5px;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border-strong);
+  color: var(--text-secondary);
+}
+.reference-analysis .flag--hard {
+  border-color: var(--status-fail);
+  color: var(--text-primary);
+}
+.reference-analysis .flag--degraded,
+.reference-analysis .flag--artifact {
+  border-color: var(--status-warn);
+}
+.reference-analysis .flag--info {
+  border-style: dashed;
+  color: var(--text-muted);
+}
+
+/* ---------------------------------------------------------------- difference */
+.reference-analysis .diff__pickers {
+  display: grid;
+  grid-template-columns: 1fr 1fr auto;
+  gap: var(--space-3);
+  align-items: end;
+  margin-bottom: var(--space-3);
+}
+.reference-analysis .diff__pickers .field {
+  margin: 0;
+}
+@media (max-width: 700px) {
+  .reference-analysis .diff__pickers {
+    grid-template-columns: 1fr;
+  }
+}
+.reference-analysis .diff__row {
+  display: grid;
+  grid-template-columns: 1fr 3fr 1fr;
+  gap: var(--space-3);
+  align-items: start;
+}
+@media (max-width: 700px) {
+  .reference-analysis .diff__row {
+    grid-template-columns: 1fr 1fr;
+  }
+  .reference-analysis .diff__main {
+    grid-column: 1 / -1;
+    order: -1;
+  }
+}
+.reference-analysis .diff figure {
+  margin: 0;
+}
+.reference-analysis .diff__thumb img {
+  width: 100%;
+  aspect-ratio: 1;
+  border-radius: var(--radius-sm);
+}
+.reference-analysis .diff figcaption {
+  font-size: var(--text-xs);
+  color: var(--text-muted);
+  margin-top: var(--space-1);
+}
+.reference-analysis .diff__main .blink__image-wrap {
+  width: 100%;
+}
+.reference-analysis .legend-diverging {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-1) var(--space-2);
+}
+.reference-analysis .swatch {
+  display: inline-block;
+  width: 12px;
+  height: 12px;
+  border-radius: 2px;
+}
+.reference-analysis .swatch--pos { background: var(--div-pos); }
+.reference-analysis .swatch--mid { background: var(--div-mid); border: 1px solid var(--border-strong); }
+.reference-analysis .swatch--neg { background: var(--div-neg); }
+.reference-analysis .residual-marker {
+  position: absolute;
+  width: 26px;
+  height: 26px;
+  transform: translate(-50%, -50%);
+  border-radius: 50%;
+  border: 1.5px solid var(--overlay-residual);
+  background: transparent;
+  color: var(--overlay-residual);
+  font-size: 10px;
+  padding: 0;
+  cursor: pointer;
+}
+.reference-analysis .residual-marker span {
+  position: absolute;
+  top: -15px;
+  left: 50%;
+  transform: translateX(-50%);
+  text-shadow: 0 0 3px var(--img-label-shadow);
+}
+.reference-analysis .residual-marker.is-unknown {
+  border-style: dashed;
+  border-color: var(--status-warn);
+  color: var(--status-warn);
+}
+.reference-analysis .residual-marker.is-selected {
+  border-width: 3px;
+}
+.reference-analysis .residuals {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+.reference-analysis .residual {
+  padding: var(--space-2) var(--space-3);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--surface-2);
+  font-size: var(--text-sm);
+  cursor: pointer;
+}
+.reference-analysis .residual.is-selected {
+  border-color: var(--accent);
+}
+.reference-analysis .residual p {
+  margin: var(--space-1) 0 0;
+  color: var(--text-secondary);
+}
+.reference-analysis .residual__badge {
+  font-size: var(--text-xs);
+  font-weight: var(--weight-medium);
+  margin-right: var(--space-2);
+  padding: 0 6px;
+  border-radius: var(--radius-sm);
+}
+.reference-analysis .residual__badge.is-known {
+  border: 1px solid var(--border-strong);
+  color: var(--text-secondary);
+}
+.reference-analysis .residual__badge.is-unknown {
+  border: 1px solid var(--status-warn);
+  color: var(--status-warn);
+}
+
+/* ---------------------------------------------------------------- alerts & progress */
+.reference-analysis .alert {
+  border-radius: var(--radius-md);
+  padding: var(--space-2) var(--space-3);
+  font-size: var(--text-sm);
+  border: 1px solid;
+  background: var(--surface-2);
+}
+.reference-analysis .alert ul {
+  margin: var(--space-1) 0 var(--space-2);
+  padding-left: var(--space-4);
+}
+.reference-analysis .alert--fail { border-color: var(--status-fail); }
+.reference-analysis .alert--warn { border-color: var(--status-warn); }
+.reference-analysis .progress {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  font-size: var(--text-sm);
+  color: var(--text-secondary);
+  margin-bottom: var(--space-3);
+}
+.reference-analysis .progress__bar {
+  height: 6px;
+  border-radius: 3px;
+  background: var(--surface-3);
+  overflow: hidden;
+}
+.reference-analysis .progress__bar div {
+  height: 100%;
+  background: var(--accent);
+  transition: width var(--dur-med) var(--ease);
+}
+
+/* ---------------------------------------------------------------- evidence */
+.reference-analysis .evidence__group {
+  font-size: var(--text-xs);
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  margin: var(--space-3) 0 var(--space-2);
+}
+.reference-analysis .evidence section:first-child .evidence__group {
+  margin-top: 0;
+}
+.reference-analysis .checks {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+.reference-analysis .check-item {
+  display: grid;
+  grid-template-columns: 20px 1fr;
+  gap: var(--space-2);
+  font-size: var(--text-sm);
+}
+.reference-analysis .check-item__icon {
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  font-size: 11px;
+  font-weight: var(--weight-bold);
+  color: var(--surface-0);
+  background: var(--status-color);
+}
+.reference-analysis .check-item--ok { --status-color: var(--status-ok); }
+.reference-analysis .check-item--info { --status-color: var(--status-info); }
+.reference-analysis .check-item--warn { --status-color: var(--status-warn); }
+.reference-analysis .check-item--fail { --status-color: var(--status-fail); }
+.reference-analysis .check-item__title {
+  font-weight: var(--weight-medium);
+}
+.reference-analysis .check-item__label {
+  margin-left: var(--space-2);
+  font-size: var(--text-xs);
+  font-weight: var(--weight-regular);
+  color: var(--text-muted);
+}
+.reference-analysis .check-item__detail {
+  color: var(--text-secondary);
+  font-size: var(--text-xs);
+}
+
+/* ---------------------------------------------------------------- charts */
+.reference-analysis .plot {
+  width: 100%;
+}
+.reference-analysis .plot svg {
+  display: block;
+  max-width: 100%;
+}
+.reference-analysis .plot__legend {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-1) var(--space-3);
+  font-size: var(--text-sm);
+  color: var(--text-secondary);
+  margin-bottom: var(--space-2);
+}
+.reference-analysis .plot__legend-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+}
+.reference-analysis .plot__legend-sep {
+  width: 1px;
+  height: 14px;
+  background: var(--border);
+}
+.reference-analysis .plot__table-toggle {
+  margin-left: auto;
+}
+.reference-analysis .plot__tick {
+  fill: var(--text-muted);
+  font-size: var(--text-xs);
+  font-family: var(--font-mono);
+}
+.reference-analysis .plot__axis-label {
+  fill: var(--text-secondary);
+  font-size: var(--text-sm);
+}
+.reference-analysis .plot__tooltip rect {
+  fill: var(--surface-3);
+  stroke: var(--border-strong);
+}
+.reference-analysis .plot__tooltip text {
+  fill: var(--text-secondary);
+  font-size: var(--text-xs);
+}
+.reference-analysis .plot__tooltip .plot__tooltip-title {
+  fill: var(--text-primary);
+  font-weight: var(--weight-medium);
+}
+.reference-analysis .table-wrap {
+  max-height: 340px;
+  overflow: auto;
+}
+.reference-analysis .data-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: var(--text-sm);
+  font-variant-numeric: tabular-nums;
+}
+.reference-analysis .data-table th,
+.reference-analysis .data-table td {
+  text-align: left;
+  padding: 4px var(--space-2);
+  border-bottom: 1px solid var(--border);
+}
+.reference-analysis .data-table th {
+  position: sticky;
+  top: 0;
+  background: var(--surface-1);
+  color: var(--text-muted);
+  font-weight: var(--weight-medium);
+}
+
+.reference-analysis .spectrum__controls {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-3);
+  margin-bottom: var(--space-3);
+}
+.reference-analysis .obs__summary {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2) var(--space-3);
+  align-items: center;
+  margin-bottom: var(--space-3);
+  font-size: var(--text-sm);
+}
+.reference-analysis details summary {
+  cursor: pointer;
+  color: var(--text-secondary);
+  font-size: var(--text-sm);
+  margin-top: var(--space-3);
+}
+.reference-analysis details ul {
+  padding-left: var(--space-4);
+  overflow-wrap: anywhere;
+}
+
+/* Other telescopes at the CADC (Observations panel): one collapsible row per archive,
+   previews as small linked thumbnails. "Canada" is a text badge, not a colour. */
+.reference-analysis .archives {
+  margin-top: var(--space-5);
+  border-top: 1px solid var(--border);
+  padding-top: var(--space-3);
+}
+.reference-analysis .archive {
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--surface-2);
+  padding: var(--space-2) var(--space-3);
+  margin-top: var(--space-2);
+}
+.reference-analysis .archive summary {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: var(--space-1) var(--space-2);
+  margin: 0;
+  color: var(--text-primary);
+}
+.reference-analysis .archive__name { font-weight: var(--weight-medium); }
+.reference-analysis .archive__badge {
+  font-size: var(--text-xs);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-sm);
+  padding: 0 var(--space-1);
+  color: var(--text-secondary);
+}
+.reference-analysis .archive__meta {
+  font-size: var(--text-xs);
+  color: var(--text-muted);
+  overflow-wrap: anywhere;
+}
+.reference-analysis .archive__thumbs {
+  list-style: none;
+  padding: 0;
+  margin: var(--space-2) 0 0;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(76px, 1fr));
+  gap: var(--space-2);
+}
+.reference-analysis .archive__thumbs li {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+.reference-analysis .archive__thumbs a {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  aspect-ratio: 1;
+  /* Grey, not black: a preview still loading (~3 s through the CADC redirects) must not
+     look like a black image. */
+  background: var(--surface-3);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  overflow: hidden;
+}
+.reference-analysis .archive__thumbs a:hover,
+.reference-analysis .archive__thumbs a:focus-visible { border-color: var(--accent); }
+.reference-analysis .archive__thumbs img {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+}
+.reference-analysis .archive__thumbs img.is-broken { display: none; }
+.reference-analysis .archive__noprev {
+  font-size: var(--text-xs);
+  color: var(--text-muted);
+  text-align: center;
+  padding: var(--space-1);
+}
+.reference-analysis .archive__cap {
+  font-size: 10px;
+  color: var(--text-muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.reference-analysis .empty {
+  max-width: 60ch;
+  margin: var(--space-5) auto;
+  color: var(--text-secondary);
+}
+.reference-analysis .empty h3 {
+  color: var(--text-primary);
+  font-size: var(--text-xl);
+  margin: 0 0 var(--space-2);
+}
+
+/* Known asteroids/comets from JPL SBIdent: diamonds labelled with the epoch. */
+.reference-analysis .sso-marker {
+  position: absolute;
+  width: 16px;
+  height: 16px;
+  transform: translate(-50%, -50%) rotate(45deg);
+  border: 2px solid var(--overlay-gaia);
+  pointer-events: auto;
+}
+.reference-analysis .sso-marker span {
+  position: absolute;
+  transform: rotate(-45deg);
+  left: 14px;
+  top: -12px;
+  font-size: 10px;
+  color: var(--overlay-gaia);
+  text-shadow: 0 0 3px var(--img-label-shadow);
+}
+.reference-analysis .sso-bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2) var(--space-3);
+  margin-top: var(--space-3);
+}
+.reference-analysis .sso-bar .progress {
+  flex: 1 1 240px;
+  margin: 0;
+}
+
+/* ================================================================ full-screen sky layout
+   The sky fills the viewport. Everything else floats over it: search bar (top centre),
+   dock of icon buttons (right edge; bottom bar on mobile), one floating panel at a time.
+   Aladin keeps its own controls at top-left (frame, coordinates, grid, SIMBAD) and
+   bottom-left (zoom, field of view); our UI stays clear of those corners. */
+.reference-analysis .app {
+  position: fixed;
+  inset: 0;
+  overflow: hidden;
+  background: var(--sky-bg);
+}
+.reference-analysis .sky {
+  position: absolute;
+  inset: 0;
+}
+/* Aladin adds .aladin-container { position: relative }, which defeats `inset`: size the
+   container explicitly or the WebGL canvas collapses to 1 px (QUALITY.md log #4). */
+.reference-analysis .sky__aladin {
+  width: 100%;
+  height: 100%;
+}
+.reference-analysis .sky__loading,
+.reference-analysis .sky__error {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  color: var(--text-muted);
+  pointer-events: none;
+}
+.reference-analysis .sky__error {
+  color: var(--status-fail);
+}
+
+/* Glass surface shared by every floating element. */
+.reference-analysis .searchbar,
+.reference-analysis .chip,
+.reference-analysis .toast,
+.reference-analysis .dock,
+.reference-analysis .fpanel {
+  /* No backdrop-filter: blurring over a WebGL canvas that redraws every frame costs a
+     full-screen GPU pass per frame while panning (Aladin's own UI has none). */
+  background: var(--surface-glass);
+  border: 1px solid var(--border);
+  box-shadow: var(--shadow-1);
+}
+
+/* ---------------------------------------------------------------- HUD (top centre) */
+.reference-analysis .hud {
+  position: absolute;
+  top: var(--space-3);
+  left: 50%;
+  transform: translateX(-50%);
+  width: min(560px, calc(100vw - 2 * 340px));
+  min-width: 320px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--space-2);
+  z-index: 20;
+  pointer-events: none;
+}
+.reference-analysis .hud > * {
+  pointer-events: auto;
+}
+.reference-analysis .searchbar {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: 4px 4px 4px var(--space-3);
+  border-radius: 999px;
+}
+.reference-analysis .searchbar:focus-within {
+  border-color: var(--focus-ring);
+}
+.reference-analysis .searchbar__input {
+  flex: 1;
+  min-width: 0;
+  background: transparent !important;
+  border: 0 !important;
+  padding: 6px 0 !important;
+  min-height: 34px;
+  color: var(--text-primary);
+  font: inherit;
+}
+.reference-analysis .searchbar__input:focus {
+  outline: none;
+}
+.reference-analysis .searchbar__band {
+  width: auto !important;
+  min-height: 32px !important;
+  padding: 0 var(--space-2) !important;
+  border-radius: 999px !important;
+  font-size: var(--text-sm);
+}
+.reference-analysis .searchbar__go {
+  width: 36px;
+  min-height: 36px;
+  padding: 0;
+  border-radius: 50%;
+}
+.reference-analysis .brand__mark {
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  border: 3px solid var(--accent);
+  box-shadow: inset 0 0 0 3px var(--surface-1), inset 0 0 0 9px var(--accent);
+  flex: none;
+}
+.reference-analysis .chip {
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: center;
+  gap: 2px var(--space-2);
+  max-width: 100%;
+  padding: 4px var(--space-3);
+  border-radius: 999px;
+  font-size: var(--text-sm);
+  color: var(--text-secondary);
+}
+.reference-analysis button.chip {
+  font: inherit;
+  font-size: var(--text-sm);
+  cursor: pointer;
+}
+.reference-analysis button.chip:hover {
+  border-color: var(--border-strong);
+}
+.reference-analysis .target-chip strong {
+  color: var(--text-primary);
+}
+.reference-analysis .status-chip {
+  color: var(--text-primary);
+}
+.reference-analysis .sky-blink-chip {
+  padding: 2px 4px 2px 2px;
+  color: var(--text-primary);
+}
+.reference-analysis .sky-blink-chip .icon-btn {
+  width: 26px;
+  height: 26px;
+  color: var(--accent);
+  font-size: 11px;
+}
+.reference-analysis .release-list {
+  padding-left: var(--space-4);
+  margin: 0 0 var(--space-2);
+  font-size: var(--text-sm);
+}
+.reference-analysis .spinner {
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  border: 2px solid var(--border-strong);
+  border-top-color: var(--accent);
+  animation: spin 0.9s linear infinite;
+}
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .reference-analysis .spinner {
+    animation: none;
+  }
+}
+.reference-analysis .toast {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-2) var(--space-2) var(--space-2) var(--space-3);
+  border-radius: var(--radius-md);
+  font-size: var(--text-sm);
+}
+.reference-analysis .toast--fail {
+  border-color: var(--status-fail);
+}
+.reference-analysis .icon-btn {
+  display: inline-grid;
+  place-items: center;
+  width: 30px;
+  height: 30px;
+  border-radius: var(--radius-md);
+  border: 0;
+  background: transparent;
+  color: var(--text-secondary);
+  cursor: pointer;
+}
+.reference-analysis .icon-btn:hover {
+  background: var(--surface-3);
+  color: var(--text-primary);
+}
+
+/* ---------------------------------------------------------------- dock (right edge) */
+.reference-analysis .dock {
+  position: absolute;
+  top: 50%;
+  right: var(--space-3);
+  transform: translateY(-50%);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  padding: var(--space-1);
+  border-radius: var(--radius-lg);
+  z-index: 30;
+}
+.reference-analysis .dock__btn {
+  position: relative;
+  display: grid;
+  place-items: center;
+  width: 44px;
+  height: 44px;
+  border-radius: var(--radius-md);
+  border: 0;
+  background: transparent;
+  color: var(--text-secondary);
+  cursor: pointer;
+  transition: background var(--dur-fast) var(--ease), color var(--dur-fast) var(--ease);
+}
+.reference-analysis .dock__btn:hover {
+  background: var(--surface-3);
+  color: var(--text-primary);
+}
+.reference-analysis .dock__btn.is-active {
+  background: var(--accent-subtle);
+  color: var(--accent);
+}
+/* Text label on hover/focus: icons never stand alone for sighted users either. */
+.reference-analysis .dock__btn::after {
+  content: attr(data-label);
+  position: absolute;
+  right: calc(100% + 10px);
+  top: 50%;
+  transform: translateY(-50%);
+  white-space: nowrap;
+  padding: 4px var(--space-2);
+  border-radius: var(--radius-sm);
+  background: var(--surface-3);
+  color: var(--text-primary);
+  font-size: var(--text-xs);
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity var(--dur-fast) var(--ease);
+}
+.reference-analysis .dock__btn:hover::after,
+.reference-analysis .dock__btn:focus-visible::after {
+  opacity: 1;
+}
+.reference-analysis .dock__badge {
+  position: absolute;
+  top: 2px;
+  right: 2px;
+  min-width: 16px;
+  height: 16px;
+  padding: 0 4px;
+  border-radius: 8px;
+  background: var(--surface-3);
+  color: var(--text-primary);
+  font-size: 10px;
+  line-height: 16px;
+  font-weight: var(--weight-bold);
+}
+.reference-analysis .dock__btn.has-fail .dock__badge {
+  background: var(--status-fail);
+}
+
+/* ---------------------------------------------------------------- floating panel */
+.reference-analysis .fpanel {
+  position: absolute;
+  top: var(--space-3);
+  right: calc(var(--space-3) + 52px + var(--space-3));
+  bottom: var(--space-3);
+  width: min(400px, calc(100vw - 120px));
+  display: flex;
+  flex-direction: column;
+  border-radius: var(--radius-lg);
+  z-index: 25;
+  outline: none;
+  animation: panel-in var(--dur-med) var(--ease);
+}
+.reference-analysis .fpanel--wide {
+  width: min(540px, calc(100vw - 120px));
+}
+@keyframes panel-in {
+  from {
+    opacity: 0;
+    transform: translateX(12px);
+  }
+}
+.reference-analysis .fpanel__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: var(--space-2) var(--space-2) var(--space-2) var(--space-4);
+  border-bottom: 1px solid var(--border);
+}
+.reference-analysis .fpanel__title {
+  margin: 0;
+  font-size: var(--text-md);
+  font-weight: var(--weight-bold);
+}
+.reference-analysis .fpanel__body {
+  flex: 1;
+  overflow-y: auto;
+  padding: var(--space-4);
+}
+.reference-analysis .target-card {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  font-size: var(--text-sm);
+  padding: var(--space-3);
+  margin-bottom: var(--space-4);
+  border-radius: var(--radius-md);
+  background: var(--surface-2);
+}
+.reference-analysis .about ol {
+  padding-left: var(--space-4);
+}
+
+/* With a panel open, the HUD moves into the free space between Aladin's top-left widget
+   (~330 px) and the panel, so the panel never covers the search bar. */
+.reference-analysis .app.has-panel .hud {
+  left: 340px;
+  transform: none;
+  width: min(560px, calc(100vw - 340px - 488px - var(--space-3)));
+  align-items: flex-start;
+}
+.reference-analysis .app.has-panel--wide .hud {
+  width: min(560px, calc(100vw - 340px - 628px - var(--space-3)));
+}
+.reference-analysis .legend-diverging > span {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  white-space: nowrap;
+}
+
+/* Narrow desktop: the HUD goes under Aladin's frame/coordinate widget. */
+@media (max-width: 1100px) {
+  /* 48 px: clear of Aladin's left icon column; 64 px: below its frame widget. */
+  .reference-analysis .hud,
+  .reference-analysis .app.has-panel .hud,
+  .reference-analysis .app.has-panel--wide .hud {
+    left: 48px;
+    transform: none;
+    top: 64px;
+    min-width: 0;
+    width: min(520px, calc(100vw - 48px - 64px - var(--space-3)));
+    align-items: flex-start;
+  }
+  .reference-analysis .app.has-panel .hud {
+    width: min(520px, calc(100vw - 48px - 488px - var(--space-3)));
+  }
+  .reference-analysis .app.has-panel--wide .hud {
+    width: min(520px, calc(100vw - 48px - 628px - var(--space-3)));
+  }
+}
+
+/* ---------------------------------------------------------------- mobile */
+@media (max-width: 700px) {
+  .reference-analysis .sky {
+    top: 60px;
+    bottom: 60px;
+  }
+  .reference-analysis .hud {
+    top: var(--space-2);
+    left: var(--space-2);
+    right: var(--space-2);
+    width: auto;
+    min-width: 0;
+  }
+  .reference-analysis .searchbar__band,
+  .reference-analysis .target-chip {
+    display: none; /* details live in the Target panel; keeps Aladin's widget visible */
+  }
+  .reference-analysis .dock {
+    top: auto;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    transform: none;
+    flex-direction: row;
+    justify-content: space-around;
+    border-radius: 0;
+    border-width: 1px 0 0;
+    padding: 4px var(--space-2) calc(4px + env(safe-area-inset-bottom));
+  }
+  .reference-analysis .dock__btn {
+    width: 40px;
+    height: 44px;
+  }
+  .reference-analysis .dock__btn::after {
+    display: none;
+  }
+  .reference-analysis .fpanel,
+  .reference-analysis .fpanel--wide {
+    top: auto;
+    left: 0;
+    right: 0;
+    bottom: 60px;
+    width: auto;
+    max-height: 72vh;
+    border-radius: var(--radius-lg) var(--radius-lg) 0 0;
+    animation-name: sheet-in;
+  }
+  @keyframes sheet-in {
+    from {
+      opacity: 0;
+      transform: translateY(16px);
+    }
+  }
+}

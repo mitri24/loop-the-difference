@@ -1,6 +1,7 @@
 import warnings
 from collections import Counter
-from concurrent.futures import ThreadPoolExecutor
+from collections.abc import Callable
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from itertools import combinations
 from pathlib import Path
 
@@ -119,8 +120,65 @@ def build_frames(
     urls = [cutout_url(o.access_url, ra, dec, size_deg) for o in selected]
     _report(0, len(selected))
 
-    downloaded, checks = download_cutouts(selected, urls, settings)
+    def publish_preview(downloaded, checks):
+        # Separate files: a provisional stretch must never overwrite immutable final PNGs.
+        count = len(downloaded)
+        if count > 12 or (count not in (1, 2) and count % 4 != 0):
+            return
+        _render_frames(
+            key,
+            ra,
+            dec,
+            size_deg,
+            detector,
+            downloaded,
+            list(checks),
+            selected,
+            failed,
+            collections,
+            settings,
+            stack=False,
+            preview=True,
+        )
 
+    # Start with widely separated dates; one slow cutout cannot block another ready image.
+    if len(selected) > 2:
+        selected = [selected[0], selected[-1], *selected[1:-1]]
+        urls = [cutout_url(o.access_url, ra, dec, size_deg) for o in selected]
+    downloaded, checks = download_cutouts(selected, urls, settings, on_ready=publish_preview)
+    downloaded.sort(key=lambda item: item[0].mjd)
+    return _render_frames(
+        key,
+        ra,
+        dec,
+        size_deg,
+        detector,
+        downloaded,
+        checks,
+        selected,
+        failed,
+        collections,
+        settings,
+        stack=stack,
+    )
+
+
+def _render_frames(
+    key,
+    ra,
+    dec,
+    size_deg,
+    detector,
+    downloaded,
+    checks,
+    selected,
+    failed,
+    collections,
+    settings,
+    *,
+    stack=False,
+    preview=False,
+) -> dict:
     target, shape = target_grid(ra, dec, size_deg)
     kept, images = [], []
     for obs, url, path in downloaded:
@@ -163,18 +221,23 @@ def build_frames(
 
     out_dir = manifest_path(settings.cache_dir, key).parent
     out_dir.mkdir(parents=True, exist_ok=True)
-    names = render_png(images, out_dir) if images else []
+    names = (
+        render_png(images, out_dir, prefix=f"preview_{len(downloaded):03d}_" if preview else "")
+        if images
+        else []
+    )
     frames = [
         _frame(index, f"/api/frames/{key}/{name}", epoch, [kept[i] for i in group])
         for index, ((epoch, group), name) in enumerate(zip(members, names, strict=True))
     ]
     checks += wavelength_checks([frame.wavelength_um for frame in frames], detector)
-    found, source_checks = find_sources(
-        images, [f.mjd for f in frames], target, shape, ra, dec, size_deg, settings.cache_dir
-    )
-    for frame, sources in zip(frames, found, strict=True):
-        frame.sources = sources
-    checks += source_checks
+    if not preview:
+        found, source_checks = find_sources(
+            images, [f.mjd for f in frames], target, shape, ra, dec, size_deg, settings.cache_dir
+        )
+        for frame, sources in zip(frames, found, strict=True):
+            frame.sources = sources
+        checks += source_checks
     differences = []
     if stack:
         for a, b in combinations(range(len(images)), 2):
@@ -204,6 +267,17 @@ def build_frames(
                 affects=["difference"],
             )
         )
+    if preview:
+        checks.append(
+            Check(
+                code="PREVIEW",
+                severity="blocker",
+                message="Preview · more observations are loading",
+                detail="Individual exposures with a provisional shared stretch. Source matching, "
+                "final stacks and difference checks are not ready yet.",
+                affects=["difference"],
+            )
+        )
     manifest = FrameManifest(
         collection=collection_key(collections),
         release=_releases([obs for obs, *_ in kept]),
@@ -214,7 +288,8 @@ def build_frames(
         pixel_scale_arcsec=SPHEREX_PIXEL_SCALE_ARCSEC,
         epochs=len(epochs),
         # A release that did not answer is retried on the next request.
-        complete=len(downloaded) == len(selected) and not failed,
+        complete=not preview and len(downloaded) == len(selected) and not failed,
+        preview=preview,
         stacked=stack,
         pipeline_version=PIPELINE_VERSION,
         frames=frames,
@@ -222,9 +297,10 @@ def build_frames(
         checks=checks,
         differences=differences,
     )
-    partial = out_dir / "manifest.json.part"
+    destination = out_dir / ("preview.json" if preview else "manifest.json")
+    partial = destination.with_suffix(".json.part")
     partial.write_text(manifest.model_dump_json())
-    partial.replace(manifest_path(settings.cache_dir, key))
+    partial.replace(destination)
     return manifest.model_dump()
 
 
@@ -339,7 +415,10 @@ def build_spectrum(ra: float, dec: float, collections: list[str] | None = None) 
 
 
 def download_cutouts(
-    selected: list[Observation], urls: list[str], settings: Settings
+    selected: list[Observation],
+    urls: list[str],
+    settings: Settings,
+    on_ready: Callable | None = None,
 ) -> tuple[list[tuple[Observation, str, Path]], list[Check]]:
     """Fetch the cutouts in parallel; a cutout the archive does not deliver becomes a check."""
     checks: list[Check] = []
@@ -348,12 +427,12 @@ def download_cutouts(
         httpx.Client(timeout=settings.http_timeout_s, follow_redirects=True) as client,
         ThreadPoolExecutor(max_workers=settings.download_workers) as pool,
     ):
-        futures = [
-            pool.submit(fetch_cutout, client, url, settings.cache_dir / "cutouts") for url in urls
-        ]
-        for done, (obs, url, future) in enumerate(
-            zip(selected, urls, futures, strict=True), start=1
-        ):
+        futures = {
+            pool.submit(fetch_cutout, client, url, settings.cache_dir / "cutouts"): (obs, url)
+            for obs, url in zip(selected, urls, strict=True)
+        }
+        for done, future in enumerate(as_completed(futures), start=1):
+            obs, url = futures[future]
             try:
                 downloaded.append((obs, url, future.result()))
             except httpx.HTTPError:
@@ -368,6 +447,9 @@ def download_cutouts(
                     )
                 )
             _report(done, len(selected))
+            if on_ready and downloaded and done < len(selected):
+                on_ready(sorted(downloaded, key=lambda item: item[0].mjd), checks)
+    downloaded.sort(key=lambda item: item[0].mjd)
     return downloaded, checks
 
 

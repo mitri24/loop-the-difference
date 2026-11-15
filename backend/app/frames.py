@@ -200,7 +200,7 @@ def align(
     return aligned, coverage
 
 
-def render_png(images: list[np.ndarray], directory: Path) -> list[str]:
+def render_png(images: list[np.ndarray], directory: Path, prefix: str = "") -> list[str]:
     """One shared stretch for all frames, so brightness stays comparable while blinking."""
     lo, hi = np.nanpercentile(np.stack(images), [1.0, 99.5])
     span = hi - lo if hi > lo else 1.0
@@ -209,7 +209,7 @@ def render_png(images: list[np.ndarray], directory: Path) -> list[str]:
         normalized = np.clip((image - lo) / span, 0, 1)
         stretched = np.arcsinh(10 * normalized) / np.arcsinh(10)
         pixels = np.nan_to_num(stretched * 255, nan=0).astype(np.uint8)
-        name = f"frame_{index:02d}.png"
+        name = f"{prefix}frame_{index:02d}.png"
         Image.fromarray(np.flipud(pixels)).save(directory / name)
         names.append(name)
     return names

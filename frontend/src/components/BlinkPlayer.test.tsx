@@ -21,7 +21,7 @@ const frame = (epoch: number, date: string): Frame => ({
   wavelength_um: 1.65,
   bandwidth_um: 0.04,
 })
-const grid = { ra: 10, dec: 20, size_deg: 0.05, collection: 'spherex_dr1' }
+const grid = { ra: 10, dec: 20, size_deg: 0.05, pixel_scale_arcsec: 6.15, collection: 'spherex_dr1' }
 
 describe('BlinkPlayer', () => {
   it('opens in Blink A↔B with labelled chips A and B', () => {
