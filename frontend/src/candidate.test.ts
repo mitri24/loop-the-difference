@@ -104,7 +104,8 @@ it('no state or verdict claims a result', () => {
 
 describe('placeLinkMarks', () => {
   const detection = source(10.002, 60, 122)
-  const manifest = { pixel_scale_arcsec: SCALE, frames: [frame('a', 61000, [detection]), frame('b', 61001), frame('c', 61000.0001)] }
+  const manifest = { ra: 10, dec: 60, size_deg: 0.2, pixel_scale_arcsec: SCALE,
+    frames: [frame('a', 61000, [detection]), frame('b', 61001), frame('c', 61000.0001)] }
 
   it('finds the detection again and keeps a clicked position, A the earlier', () => {
     const { marks, missing } = placeLinkMarks(manifest, [{ obs_id: 'b', ra: 10.01, dec: 60 }, { obs_id: 'a', ra: 10.002, dec: 60 }])
@@ -120,5 +121,8 @@ describe('placeLinkMarks', () => {
       .toMatchObject({ missing: 1, marks: [{ obs_id: 'a' }] })
     // c is less than a minute after a: the second mark is refused, as a click would be.
     expect(placeLinkMarks(manifest, [{ obs_id: 'a', ra: 10, dec: 60 }, { obs_id: 'c', ra: 10, dec: 60 }]).missing).toBe(1)
+    // An edited link: a position outside the frame never feeds the track.
+    expect(placeLinkMarks(manifest, [{ obs_id: 'a', ra: 10, dec: 60 }, { obs_id: 'b', ra: 11, dec: 60 }]))
+      .toMatchObject({ missing: 1, marks: [{ obs_id: 'a' }] })
   })
 })

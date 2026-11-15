@@ -24,11 +24,11 @@ const exported = new Date('2026-11-15T10:30:00Z')
 
 describe('marks file', () => {
   const doc = marksDocument({ link: 'https://example.org/?ra=1&dec=2&mark=a%3A1%2C2', target: 'Pluto', manifest, marks,
-    track: possibleTrack(marks, manifest, [61156.323055]), verdict: 'needs follow-up', exported, base: 'https://example.org/app/' })
+    track: possibleTrack(marks, manifest, [61156.323055]), verdict: 'needs follow-up', verdictChosen: false, exported, base: 'https://example.org/app/' })
 
   it('names its format, the caveat, the link back and the verdict', () => {
     expect(doc).toMatchObject({ format: MARKS_FORMAT, link: 'https://example.org/?ra=1&dec=2&mark=a%3A1%2C2', target: 'Pluto',
-      verdict: 'needs follow-up', exported_utc: '2026-11-15T10:30:00.000Z' })
+      verdict: 'needs follow-up', verdict_chosen: false, exported_utc: '2026-11-15T10:30:00.000Z' })
     expect(doc.note).toMatch(/unverified.*not a discovery/i)
     expect(doc.comparison).toMatchObject({ detector: 3, size_deg: 0.2, collections: ['spherex_dr1', 'spherex_qr3'] })
   })
@@ -38,6 +38,12 @@ describe('marks file', () => {
       frame: { obs_id: 'a', detector: 3, date_utc: '2026-04-25T21:55:00Z', image_url: 'https://example.org/api/frames/job/a.png',
         source_url: 'https://irsa.ipac.caltech.edu/a', release: 'DR1', epoch: 1 } })
     expect(doc.marks[1]).toMatchObject({ letter: 'B', position: 'as clicked', detection: null, frame: { obs_id: 'b' } })
+  })
+
+  it('gives each mark the time its position applies to, from its MJD (a stack: the mean of its exposures)', () => {
+    expect(doc.marks[0]).toMatchObject({ mjd: 61155.913413, time_utc: '2026-04-25T21:55:18.883Z' })
+    expect(doc.marks[0]).not.toHaveProperty('date_utc')
+    expect(doc.times).toMatch(/mean of a stack's exposures/)
   })
 
   it('carries the possible track in the units the panel shows', () => {

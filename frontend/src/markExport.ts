@@ -15,15 +15,21 @@ export interface MarksInput {
   marks: Mark[]
   track: PossibleTrack | null
   verdict: Verdict
+  // Whether the user picked the verdict; otherwise it is the panel's first choice.
+  verdictChosen: boolean
   exported: Date
   // Resolves the image URLs, which the API gives relative to the site.
   base: string
 }
 
-export function marksDocument({ link, target, manifest, marks, track, verdict, exported, base }: MarksInput) {
+const MJD_UNIX_EPOCH = 40587
+const mjdToIso = (mjd: number) => new Date((mjd - MJD_UNIX_EPOCH) * 86_400_000).toISOString()
+
+export function marksDocument({ link, target, manifest, marks, track, verdict, verdictChosen, exported, base }: MarksInput) {
   return {
     format: MARKS_FORMAT,
     note: 'Candidate marks are unverified and need checking. They are not a discovery.',
+    times: 'A mark\'s mjd and time_utc are the time its position applies to, the mean of a stack\'s exposures; its frame\'s date_utc and date_end_utc are the first and last exposure.',
     link,
     exported_utc: exported.toISOString(),
     target,
@@ -38,6 +44,7 @@ export function marksDocument({ link, target, manifest, marks, track, verdict, e
       collections: manifest.collection.split(',').map((c) => c.trim()).filter(Boolean),
     },
     verdict,
+    verdict_chosen: verdictChosen,
     marks: marks.map((mark, i) => {
       const frame = manifest.frames.find((f) => f.obs_id === mark.obs_id)
       const source = mark.source
@@ -47,8 +54,8 @@ export function marksDocument({ link, target, manifest, marks, track, verdict, e
         dec_deg: mark.dec,
         sigma_arcsec: mark.sigma_arcsec,
         position: source ? 'detection' : 'as clicked',
-        date_utc: mark.date,
         mjd: mark.mjd,
+        time_utc: mjdToIso(mark.mjd),
         detection: source ? {
           snr: source.snr,
           peak_mjy_sr: source.peak_mjy_sr,
@@ -103,5 +110,6 @@ export function downloadMarks(input: MarksInput): void {
   anchor.href = url
   anchor.download = marksFileName(input.target, input.exported)
   anchor.click()
-  window.setTimeout(() => URL.revokeObjectURL(url), 0)
+  // Some browsers (Safari) still read the file after the click returned.
+  window.setTimeout(() => URL.revokeObjectURL(url), 60_000)
 }

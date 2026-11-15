@@ -554,12 +554,16 @@ test('fixture: the marks file keeps marks, frames and verdict; its link opens th
   const [download] = await Promise.all([page.waitForEvent('download'), panel.getByRole('button', { name: 'Download marks' }).click()])
   expect(download.suggestedFilename()).toMatch(/^candidate-marks-.+-\d{4}-\d{2}-\d{2}\.json$/)
   const file = JSON.parse(await readFile(await download.path(), 'utf8'))
-  expect(file).toMatchObject({ format: 'loop-the-difference/candidate-marks@1', verdict: 'possible artifact',
+  // The address bar carries the marks too: a reload or a copied address keeps them.
+  expect(new URL(page.url()).searchParams.getAll('mark')).toHaveLength(2)
+  expect(file).toMatchObject({ format: 'loop-the-difference/candidate-marks@1', verdict: 'possible artifact', verdict_chosen: true,
     marks: [{ letter: 'A', position: 'detection', detection: { snr: 122 }, frame: { obs_id: 'fixture-0', detector: 6, source_url: 'https://example.test/fixture-0' } },
       { letter: 'B', position: 'as clicked', detection: null, frame: { obs_id: 'fixture-1' } }] })
   expect(file.link).toContain('mark=fixture-0')
   // A colleague opens the link from the file: the same comparison, the same marks, on this site.
   await page.goto(file.link)
+  await expect(panel.locator('.candidate-marks li')).toHaveText(marks)
+  await page.reload()
   await expect(panel.locator('.candidate-marks li')).toHaveText(marks)
   await expect(page.locator('.viewer .viewport .candidate-mark')).toHaveCount(2)
 })

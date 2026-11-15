@@ -111,12 +111,13 @@ export function candidateState(e: Evidence): CandidateState {
   return 'unverified'
 }
 
-/** Marks from a shared link in this comparison's frames, by the same rules as clicks; unknown frames are counted. */
-export function placeLinkMarks(manifest: Pick<FrameManifest, 'frames' | 'pixel_scale_arcsec'>, linked: LinkMark[]) {
+/** Marks from a shared link in this comparison's frames, by the same rules as clicks (inside the frame, one per
+ * frame, a minute apart); those that cannot be placed are counted. */
+export function placeLinkMarks(manifest: Pick<FrameManifest, 'frames' | 'pixel_scale_arcsec' | 'ra' | 'dec' | 'size_deg'>, linked: LinkMark[]) {
   let marks: Mark[] = []
   let missing = 0
   for (const link of linked) {
-    const frame = manifest.frames.find((f) => f.obs_id === link.obs_id)
+    const frame = insideFrame(link.ra, link.dec, manifest) ? manifest.frames.find((f) => f.obs_id === link.obs_id) : undefined
     const next = frame && addMark(marks, snapMark(frame, link.ra, link.dec, manifest.pixel_scale_arcsec))
     if (next && 'marks' in next) marks = next.marks
     else missing += 1
@@ -125,7 +126,8 @@ export function placeLinkMarks(manifest: Pick<FrameManifest, 'frames' | 'pixel_s
 }
 
 export type Candidate = ReturnType<typeof useCandidate>
-const START = { marks: [] as Mark[], notice: '', verdict: VERDICTS[0] as Verdict }
+// The verdict starts at the first choice; `verdictChosen` says whether the user picked it.
+const START = { marks: [] as Mark[], notice: '', verdict: VERDICTS[0] as Verdict, verdictChosen: false }
 
 /** Marks of one comparison: a new job id clears them; `allowed` false disarms clicks. Marks from a shared link
  * belong to the first comparison: they are placed once its final frames are there (`final`), and dropped when
@@ -142,18 +144,21 @@ export function useCandidate(jobId: string | null, allowed: boolean, final: Fram
     const placed = placeLinkMarks(final, pending.marks)
     setPending({ marks: [], jobId: null })
     setState({ jobId, ...START, marks: placed.marks,
-      notice: placed.missing ? `${placed.missing} ${placed.missing === 1 ? 'mark' : 'marks'} from the link could not be placed: ${placed.missing === 1 ? 'its frame is' : 'their frames are'} not in this comparison.` : '' })
+      notice: placed.missing ? `${placed.missing} ${placed.missing === 1 ? 'mark' : 'marks'} from the link could not be placed in this comparison.` : '' })
   }
   const add = (mark: Mark) =>
     setState((old) => {
       const next = addMark(old.marks, mark)
-      return 'error' in next ? { ...old, notice: next.error } : { ...old, marks: next.marks, notice: '', verdict: START.verdict }
+      return 'error' in next ? { ...old, notice: next.error } : { ...old, marks: next.marks, notice: '', verdict: START.verdict, verdictChosen: false }
     })
   return {
     marks: state.marks,
     notice: state.notice,
     verdict: state.verdict,
-    setVerdict: (verdict: Verdict) => setState((old) => ({ ...old, verdict })),
+    verdictChosen: state.verdictChosen,
+    setVerdict: (verdict: Verdict) => setState((old) => ({ ...old, verdict, verdictChosen: true })),
+    // The link's marks while they wait for their frames (the address bar keeps them meanwhile).
+    linked: pending.marks,
     armed,
     setArmed,
     markSource: (frame: Frame, source: DetectedSource) => add(markFromSource(frame, source)),
