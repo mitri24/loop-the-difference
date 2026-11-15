@@ -24,6 +24,7 @@ from app.frames import (
     R_BY_DETECTOR,
     SPHEREX_PIXEL_SCALE_ARCSEC,
     TARGET_FLAG_RADIUS_PX,
+    WAVELENGTH_MATCH_FRACTION,
     align,
     comparable_wavelengths,
     cutout_url,
@@ -51,7 +52,7 @@ MAX_SPECTRUM_POINTS = 100
 SPECTRUM_VERSION = 4
 # Bump whenever the rendered output changes: the job key changes, so cached results are rebuilt,
 # and `warm` removes frame folders whose manifest carries an older version.
-PIPELINE_VERSION = 10
+PIPELINE_VERSION = 11
 
 
 def manifest_path(cache_dir: Path, key: str) -> Path:
@@ -86,16 +87,33 @@ def epoch_checks(usable: int, epochs: int) -> list[Check]:
 def wavelength_checks(wavelengths: list[float | None], detector: int) -> list[Check]:
     """Were all frames of the blink observed through the same part of the filter?"""
     known = [w for w in wavelengths if w is not None]
-    if len(known) < 2 or comparable_wavelengths(min(known), max(known), detector):
+    if len(known) < 2:
         return []
+    lo, hi = min(known), max(known)
+    if comparable_wavelengths(lo, hi, detector, WAVELENGTH_MATCH_FRACTION):
+        return []
+    pct, r = delta_lambda_pct(lo, hi), R_BY_DETECTOR[detector]
+    spread = (
+        f"Effective wavelength ranges from {lo:.3f} to {hi:.3f} µm ({pct:.1f} %, "
+        f"{pct * r / 100:.2f} resolution elements λ/R of detector {detector}, R = {r})"
+    )
+    if comparable_wavelengths(lo, hi, detector):
+        return [
+            Check(
+                code="WAVELENGTH_CLOSE",
+                severity="warning",
+                message="Frames were observed at slightly different wavelengths",
+                detail=f"{spread}: more than half a resolution element, so spectral features can "
+                "mimic a brightness change; positions still compare",
+                affects=["difference"],
+            )
+        ]
     return [
         Check(
             code="WAVELENGTH_MISMATCH",
             severity="blocker",
             message="Frames were observed at different wavelengths",
-            detail=f"Effective wavelength ranges from {min(known):.3f} to {max(known):.3f} µm "
-            f"({delta_lambda_pct(min(known), max(known)):.1f} %, more than one resolution element "
-            f"1/R = {100 / R_BY_DETECTOR[detector]:.1f} % of detector {detector}); "
+            detail=f"{spread}: more than one resolution element; "
             "a direct difference needs wavelength-matched frames",
             affects=["difference"],
         )

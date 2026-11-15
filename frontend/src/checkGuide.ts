@@ -55,6 +55,10 @@ const GUIDE: Record<string, Guide> = {
     text: 'The selected observations cannot be directly subtracted: a wavelength change looks like a brightness change. Choose a compatible observation.',
     requires: 'Difference needs two observations at the same wavelength. Choose a compatible pair from the timeline.',
   },
+  WAVELENGTH_CLOSE: {
+    kind: 'limit', title: () => 'Slightly different wavelengths',
+    text: 'The images were observed more than half but at most one spectral resolution element apart. Positions compare directly; a brightness change can still be a spectral feature.',
+  },
   PREVIEW: {
     kind: 'info', shown: 'info', title: () => 'Preview',
     text: 'These first images are provisional; final images, source matching and difference checks are still being prepared. Wait until loading finishes.',
@@ -100,12 +104,12 @@ const EPOCH_CODES = ['NO_OBSERVATIONS', 'SINGLE_EPOCH', 'NO_TIME_BASELINE']
 // images are still loading; too few observations after missing images may change with a retry.
 function guideFor(code: string, codes: Set<string>): Guide | undefined {
   const guide = GUIDE[code]
-  if (!guide || ![...EPOCH_CODES, 'WAVELENGTH_MISMATCH'].includes(code)) return guide
+  if (!guide || ![...EPOCH_CODES, 'WAVELENGTH_MISMATCH', 'WAVELENGTH_CLOSE'].includes(code)) return guide
   if (codes.has('PREVIEW')) {
     return { kind: 'fixable', shown: 'warning', title: (n) => `${guide.title(n)} so far`,
       text: 'Only part of the observations has loaded so far, so this may change. Wait until loading finishes.', requires: GUIDE.PREVIEW.requires }
   }
-  if (code !== 'WAVELENGTH_MISMATCH' && (codes.has('CUTOUT_MISSING') || codes.has('RELEASE_UNAVAILABLE'))) {
+  if (EPOCH_CODES.includes(code) && (codes.has('CUTOUT_MISSING') || codes.has('RELEASE_UNAVAILABLE'))) {
     return { kind: 'fixable', title: guide.title, action: RETRY,
       text: 'Some images or releases did not load, so this may change after a retry. Retry before choosing another region.',
       requires: 'Difference needs two compatible observations, and some did not load. Retry first.' }
@@ -184,9 +188,9 @@ export function passedChecks(manifest: Pick<FrameManifest, 'preview' | 'frames' 
     passed.push({ code: 'EPOCHS', title: 'Enough observations', text: `Observations from ${manifest.epochs} epochs can be compared over time.` })
   }
   const known = manifest.frames.filter((frame) => frame.wavelength_um != null).length
-  if (n >= 2 && known === n && !found.has('WAVELENGTH_MISMATCH') && !found.has('WAVELENGTH_UNKNOWN')) {
+  if (n >= 2 && known === n && !['WAVELENGTH_MISMATCH', 'WAVELENGTH_CLOSE', 'WAVELENGTH_UNKNOWN'].some((code) => found.has(code))) {
     passed.push({ code: 'WAVELENGTH', title: 'Same wavelength',
-      text: 'All images were observed within one spectral resolution element of each other, so they compare directly.' })
+      text: 'All images were observed within half a spectral resolution element of each other, so they compare directly.' })
   }
   if (!found.has('CUTOUT_MISSING')) passed.push({ code: 'CUTOUTS', title: 'All images delivered', text: 'The archive delivered every requested image.' })
   if (!found.has('FLAGGED_PIXELS')) passed.push({ code: 'FLAGS', title: 'Target pixels usable', text: 'No image has pixels flagged as unusable next to the target.' })

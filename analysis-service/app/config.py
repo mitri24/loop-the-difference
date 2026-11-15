@@ -52,8 +52,9 @@ class Settings(BaseSettings):
     max_frames_per_job: int = 120
     # Minimum separation (days) between two frames for them to count as different
     # epochs. SPHEREx re-observes the sky every ~6 months; within one visit the same
-    # point is revisited over a few days at different wavelengths.
-    visit_gap_days: float = 20.0
+    # point is revisited over a few days at different wavelengths, so any gap from a few
+    # weeks up to months separates visits; 30 days as in the blink pipeline and its UI.
+    visit_gap_days: float = 30.0
     # Two frames are "wavelength-matched" when |Δλ| is below this fraction of one
     # spectral resolution element (λ / R).
     wavelength_match_fraction: float = 0.5

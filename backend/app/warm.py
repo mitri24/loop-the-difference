@@ -14,8 +14,9 @@ import shutil
 import sys
 import time
 from collections.abc import Callable
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from functools import partial
+from itertools import product
 from pathlib import Path
 
 from pydantic import ValidationError
@@ -46,6 +47,8 @@ TARGETS: list[tuple[str, str, str] | tuple[str, str]] = [
 ]
 # D6 plus one short-wavelength detector; view defaults from frontend/src/url.ts and App.tsx.
 DETECTORS = (6, 1)
+# Single exposures, then epoch stacks with their difference images (UI modes stacks, difference).
+STACK_MODES = (False, True)
 SIZE_DEG = 0.2
 MAX_FRAMES = 12
 
@@ -59,11 +62,18 @@ class WarmJob:
     ra: float | None = None
     dec: float | None = None
     name: str | None = None
+    stack: bool = False
+
+    @property
+    def view(self) -> str:
+        return f"D{self.detector} stacks" if self.stack else f"D{self.detector}"
 
     def key(self, collection: str) -> str | None:
         if self.ra is None or self.dec is None:
             return None
-        return job_id_for(collection, self.ra, self.dec, SIZE_DEG, self.detector, MAX_FRAMES)
+        return job_id_for(
+            collection, self.ra, self.dec, SIZE_DEG, self.detector, MAX_FRAMES, self.stack
+        )
 
 
 def plan(only: set[str] | None = None) -> list[WarmJob]:
@@ -72,12 +82,12 @@ def plan(only: set[str] | None = None) -> list[WarmJob]:
         label = target[0]
         if only and _slug(label) not in only:
             continue
-        for detector in DETECTORS:
+        for detector, stack in product(DETECTORS, STACK_MODES):
             if len(target) == 3:
                 ra, dec = parse_ra(target[1]), parse_dec(target[2])
-                jobs.append(WarmJob(label, detector, ra=ra, dec=dec))
+                jobs.append(WarmJob(label, detector, ra=ra, dec=dec, stack=stack))
             else:
-                jobs.append(WarmJob(label, detector, name=target[1]))
+                jobs.append(WarmJob(label, detector, name=target[1], stack=stack))
     return jobs
 
 
@@ -141,7 +151,7 @@ def run(
     for job in jobs:
         if args.dry_run:
             key = job.key(collection) or f"resolve:{job.name}"
-            print(f"{key} · {job.target} · D{job.detector}")
+            print(f"{key} · {job.target} · {job.view}")
             if not args.no_spectrum and job.target not in spectra:
                 spectra.add(job.target)
                 print(f"spectrum · {job.target}")
@@ -155,9 +165,7 @@ def run(
                     resolved[job.name] = resolver(job.name)
                 ra, dec = resolved[job.name]
                 # The UI sends the resolved degrees with six decimals (App.tsx toFixed(6)).
-                job = WarmJob(
-                    job.target, job.detector, parse_ra(f"{ra:.6f}"), parse_dec(f"{dec:.6f}")
-                )
+                job = replace(job, ra=parse_ra(f"{ra:.6f}"), dec=parse_dec(f"{dec:.6f}"))
             key = job.key(collection)
             cached = manifest_path(settings.cache_dir, key)
             if args.force:
@@ -171,7 +179,7 @@ def run(
             if not args.force and cached.is_file():
                 manifest = FrameManifest.model_validate_json(cached.read_text())
                 if manifest.complete:
-                    print(f"{key} · {job.target} · D{job.detector} · cached")
+                    print(f"{key} · {job.target} · {job.view} · cached")
                     continue
             result = build(
                 key=key,
@@ -180,17 +188,18 @@ def run(
                 size_deg=SIZE_DEG,
                 detector=job.detector,
                 max_frames=MAX_FRAMES,
+                stack=job.stack,
                 collections=collections,
             )
         except Exception as exc:  # one failed target must not stop the others
             failed += 1
-            print(f"FAILED · {job.target} · D{job.detector} · {exc}", file=sys.stderr)
+            print(f"FAILED · {job.target} · {job.view} · {exc}", file=sys.stderr)
             continue
         seconds = time.monotonic() - started
         state = "" if result["complete"] else " · INCOMPLETE (re-run to retry)"
         failed += not result["complete"]
         print(
-            f"{key} · {job.target} · D{job.detector} · {len(result['frames'])} frames · "
+            f"{key} · {job.target} · {job.view} · {len(result['frames'])} frames · "
             f"{seconds:.1f} s · {len(result['warnings'])} warnings{state}"
         )
     return 1 if failed else 0
