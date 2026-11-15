@@ -262,6 +262,30 @@ def test_collection_list_falls_back_when_irsa_is_silent(settings, monkeypatch):
     assert spherex_collections(settings) == ["spherex_dr1", "spherex_qr3"]
 
 
+def test_silent_irsa_without_a_list_uses_the_releases_with_stored_answers(settings, monkeypatch):
+    def unreachable(settings):
+        raise httpx.ConnectError("down")
+
+    monkeypatch.setattr(archive, "_fetch_collections", unreachable)
+    sia = settings.cache_dir / "sia"
+    sia.mkdir(parents=True, exist_ok=True)
+    for name in (
+        "spherex_dr1_deep_269.45200_4.69337.xml",
+        "spherex_qr3_37.95454_89.26411.xml",
+        "spherex_qr3_10.00000_-7.25000.xml",
+        "notes.xml",
+    ):
+        (sia / name).write_bytes(b"<VOTABLE/>")
+
+    # Barnard's Star lies only in the deep field: a warmed target keeps working while IRSA is down.
+    assert spherex_collections(settings) == ["spherex_dr1_deep", "spherex_qr3"]
+    # Kept like an old list, asked again in an hour, not on every request.
+    cached = collections_cache_path(settings.cache_dir)
+    assert cached.is_file()
+    monkeypatch.setattr(archive, "_fetch_collections", lambda s: pytest.fail("asked again"))
+    assert spherex_collections(settings) == ["spherex_dr1_deep", "spherex_qr3"]
+
+
 def _per_collection(answers: dict[str, bytes | None]):
     def fake_get(url, params, timeout):
         content = answers[params["COLLECTION"]]
