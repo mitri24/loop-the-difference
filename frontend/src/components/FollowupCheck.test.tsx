@@ -62,7 +62,7 @@ describe('FollowupCheck', () => {
     expect(html).not.toContain('Check all SPHEREx visits')
     expect(html).not.toContain('Incomplete')
     // A signal offers the next step after the follow-up's details: the same track in every detector.
-    expect(html.indexOf('<button type="button">Spectral fingerprint</button>')).toBeGreaterThan(html.lastIndexOf('</details>'))
+    expect(html.indexOf('>Spectral fingerprint</button>')).toBeGreaterThan(html.lastIndexOf('</details>'))
     // The chart in the app's chart frame, with its table.
     expect(html).toContain('<figure class="viz followup-chart"')
     expect(html).toContain('aria-label="S/N at 4 assumed distances from 20 to 2000 AU, best 7.2 at 310 AU over 2 visits"')

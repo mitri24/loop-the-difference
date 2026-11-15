@@ -42,7 +42,11 @@ const FINGERPRINT: Fingerprint = {
 const job = (status: FingerprintJob['status'], change: Partial<FingerprintJob> = {}): FingerprintJob => ({
   job_id: 'fp1', status, progress: 0, total: 0, fingerprint: null, error: null, ...change,
 })
-const REQUEST = { ra: '150', dec: '20', detector: 3, marked: [], distance_au: 307.6 } as unknown as FingerprintRequest
+const TRACK_MARK = { ra: '150', dec: '20', mjd: 61000, sigma_arcsec: 1 }
+const REQUEST: FingerprintRequest = {
+  ra: '150', dec: '20', detector: 3, marked: [{ obs_id: 'a', date: '2026-01-10T05:00:00Z', date_end: null }],
+  grid: { marks: [TRACK_MARK, { ...TRACK_MARK, mjd: 61180 }], d_min_au: 20, d_max_au: 2000, steps: 64 }, distance_au: 307.6,
+}
 const view = (state: Partial<Omit<FingerprintState, 'start'>>) => renderToStaticMarkup(
   <FingerprintView state={{ phase: 'idle', job: null, fingerprint: null, error: null, ...state }} start={() => undefined} />,
 )
@@ -86,6 +90,8 @@ describe('fingerprint result', () => {
   })
 
   it('offers the fingerprint with what it costs, then shows progress and errors with Retry', () => {
+    expect(renderToStaticMarkup(<FingerprintView state={{ phase: 'idle', job: null, fingerprint: null, error: null }} ready={false} start={() => undefined} />))
+      .toContain('<button type="button" disabled="">Spectral fingerprint</button><p class="candidate-hint">Needs the archive’s list of this field’s visits.</p>')
     const idle = view({})
     expect(idle).toContain('<button type="button">Spectral fingerprint</button>')
     expect(idle).toContain('all six detectors (0.75–5 µm) and tests for methane bands. Loads up to 48 IRSA cutouts; takes minutes.')
@@ -96,7 +102,8 @@ describe('fingerprint result', () => {
 
   it('leads with the CH₄ line and folds the spectrum, the bands, every visit with its cutout and the checks', () => {
     const html = view({ phase: 'done', fingerprint: FINGERPRINT })
-    const line = 'Fingerprint, 3 visits in D1–D6: CH₄ absorption 3.8σ – as in T/Y brown dwarfs or a cold giant planet; check with more visits'
+    // Usable fluxes in D4 only: v2 (D5) is flagged, v3 (D2) has no PSF total, v4 (D6) no cutout.
+    const line = 'Fingerprint, 3 visits in D4: CH₄ absorption 3.8σ – as in T/Y brown dwarfs or a cold giant planet; check with more visits'
     expect(html).toContain(`<p class="track-check-summary">${line}</p>`)
     expect(html.indexOf(line)).toBeLessThan(html.indexOf('<details'))
     expect(html).toContain('<summary>Spectrum, CH₄ bands, visits and checks</summary>')
@@ -109,6 +116,8 @@ describe('fingerprint result', () => {
     expect(html).toContain('<span class="sr-only">Caution: </span>Archive did not deliver a cutout')
     expect(html).not.toContain('Incomplete')
     expect(html).not.toMatch(/confirmed|discover/i)
+    expect(view({ phase: 'done', fingerprint: { ...FINGERPRINT, points: [FINGERPRINT.points[3]] } }))
+      .toContain('<p class="track-check-summary">Fingerprint: CH₄ absorption 3.8σ')
     expect(view({ phase: 'done', fingerprint: { ...FINGERPRINT, complete: false } }))
       .toContain('Incomplete: the archive did not answer every request. <button type="button">Retry</button>')
   })

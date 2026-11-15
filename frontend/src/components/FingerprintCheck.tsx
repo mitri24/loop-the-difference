@@ -6,6 +6,7 @@ import { Plot } from './SpectrumChart'
 
 export const FINGERPRINT = 'Spectral fingerprint'
 const HINT = 'Measures the track in the visits of all six detectors (0.75–5 µm) and tests for methane bands. Loads up to 48 IRSA cutouts; takes minutes.'
+const NEEDS_VISITS = 'Needs the archive’s list of this field’s visits.'
 
 function Details({ fingerprint }: { fingerprint: Fingerprint }) {
   const points = spectrumPoints(fingerprint)
@@ -41,18 +42,27 @@ function Details({ fingerprint }: { fingerprint: Fingerprint }) {
 // After a follow-up signal: the button, then progress, then the CH₄ result first and every detail folded.
 export function FingerprintCheck({ request }: { request: () => FingerprintRequest | null }) {
   const state = useFingerprint()
-  return <FingerprintView state={state} start={() => state.start(request())} />
+  const asked = request()
+  return <FingerprintView state={state} ready={asked != null} start={() => state.start(asked)} />
 }
 
-export function FingerprintView({ state: { phase, job, fingerprint, error }, start }: {
+/** The CH₄ result in one line, with the usable visits and the detectors they come from, e.g. "D2, D3, D5". */
+export function summaryLine(fingerprint: Fingerprint): string {
+  const detectors = [...new Set(spectrumPoints(fingerprint).filter((p) => !p.flagged).map((p) => p.detector))].sort((a, b) => a - b)
+  const measured = detectors.length > 0 ? `, ${visitsText(fingerprint.visits_measured)} in ${detectors.map((d) => `D${d}`).join(', ')}` : ''
+  return `Fingerprint${measured}: ${fingerprint.methane.summary}`
+}
+
+export function FingerprintView({ state: { phase, job, fingerprint, error }, ready = true, start }: {
   state: Omit<FingerprintState, 'start'>
+  ready?: boolean
   start: () => void
 }) {
   if (phase === 'idle') {
     return (
       <div className="followup">
-        <button type="button" onClick={start}>{FINGERPRINT}</button>
-        <p className="candidate-hint">{HINT}</p>
+        <button type="button" onClick={start} disabled={!ready}>{FINGERPRINT}</button>
+        <p className="candidate-hint">{ready ? HINT : NEEDS_VISITS}</p>
       </div>
     )
   }
@@ -66,9 +76,7 @@ export function FingerprintView({ state: { phase, job, fingerprint, error }, sta
   }
   return (
     <div className="followup">
-      <p className="track-check-summary">
-        Fingerprint, {visitsText(fingerprint.visits_measured)} in D1–D6: {fingerprint.methane.summary}
-      </p>
+      <p className="track-check-summary">{summaryLine(fingerprint)}</p>
       {!fingerprint.complete && (
         <p className="notice">
           Incomplete: the archive did not answer every request. <button type="button" onClick={start}>Retry</button>
