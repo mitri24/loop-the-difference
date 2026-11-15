@@ -153,13 +153,14 @@
 .inspector[hidden] { display:none; }
 .inspector-head { flex:none; display:flex; align-items:flex-start; gap:var(--space-1); padding:var(--space-1); border-bottom:1px solid var(--border); }
 .inspector-tabs { flex:1; display:flex; flex-wrap:wrap; gap:2px; min-width:0; }
-.inspector-tabs [role='tab'] { display:inline-flex; align-items:center; gap:var(--space-1); min-width:0; min-height:30px; padding:0 var(--space-2); border:1px solid transparent; border-radius:999px; background:transparent; color:var(--text-secondary); font-size:var(--text-xs); white-space:nowrap; }
+.inspector-tabs [role='tab'] { display:inline-flex; align-items:center; gap:var(--space-1); min-width:0; min-height:30px; padding:0 6px; border:1px solid transparent; border-radius:999px; background:transparent; color:var(--text-secondary); font-size:var(--text-xs); white-space:nowrap; }
 .inspector-tabs [role='tab']:hover { color:var(--text-primary); background:var(--surface-2); }
 .inspector-tabs [role='tab'][aria-selected='true'] { color:var(--accent); border-color:var(--accent); background:var(--accent-subtle); }
 .tab-count { min-width:18px; padding:0 5px; border-radius:var(--radius-md); background:var(--surface-3); color:var(--text-primary); font-size:10px; font-variant-numeric:tabular-nums; text-align:center; }
 .tab-count.alert { background:var(--status-fail); color:var(--surface-0); }
 .inspector-close { display:none; flex:none; width:36px; min-height:32px; padding:0; background:transparent; border-color:transparent; }
-.inspector-expand { flex:none; min-height:30px; padding:0 var(--space-2); background:transparent; font-size:var(--text-xs); }
+.inspector-expand { flex:none; width:30px; min-width:30px; min-height:30px; padding:0; background:transparent; border-color:transparent; color:var(--text-secondary); font-size:var(--text-md); }
+.inspector-expand:hover { color:var(--text-primary); border-color:var(--border-strong); }
 .inspector-panel { flex:1; min-height:0; overflow-y:auto; overscroll-behavior:contain; padding:var(--space-3); display:flex; flex-direction:column; gap:var(--space-3); container-type:inline-size; scrollbar-width:thin; font-size:var(--text-sm); }
 .inspector-panel[hidden] { display:none; }
 .inspector-panel:focus:not(:focus-visible) { outline:none; }
