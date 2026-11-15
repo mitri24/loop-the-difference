@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
+import { Skeleton } from './Skeleton'
 import { createSmallBodies, getSmallBodiesJob } from '../api'
-import { MAX_GAP_DAYS, epochFor } from '../smallBodyLayer'
+import { MAX_GAP_DAYS, epochFor, observerText } from '../smallBodyLayer'
 import type { SmallBodiesJob, SmallBodiesRequest, SmallBody, SmallBodyEpoch } from '../types'
 
 const POLL_MS = 3000
@@ -84,9 +85,12 @@ export function SmallBodies({
       {!ready && <p className="muted">Needs frames: the lookup uses their observation times.</p>}
       {job?.status === 'not_found' && <p className="notice">The lookup expired – look it up again.</p>}
       {running && job && (
-        <p className="progress" role="status">
-          {progressText(job)}
-        </p>
+        <div aria-busy="true">
+          <p className="progress" role="status">
+            {progressText(job)}
+          </p>
+          <Skeleton variant="line" lines={Math.max(1, job.total)} />
+        </div>
       )}
       {(error ?? job?.error) && (
         <p className="notice error" role="alert">
@@ -99,6 +103,7 @@ export function SmallBodies({
             <li key={epoch.mjd}>
               <p className="small-body-epoch">
                 <time dateTime={epoch.date}>{utc(epoch.date)}</time>
+                {` · ${observerText(epoch)}`}
                 {epoch === shown && <strong> · markers on the shown frame</strong>}
                 {' · '}
                 <a href={epoch.source_url} target="_blank" rel="noreferrer">
@@ -131,12 +136,13 @@ export function SmallBodies({
       )}
       {job?.status === 'finished' && (
         <p className="caveat">
-          Known sources from NASA/JPL SBIdent, computed for the Earth&apos;s centre: SPHEREx orbits
-          about 7,000 km from it, so positions shift by 5–10″ (1–2 SPHEREx pixels) for main-belt
-          asteroids and by far more for close near-Earth objects. Markers ◇ appear on frames within{' '}
-          {MAX_GAP_DAYS} day of a looked-up time, moved along JPL&apos;s rates. A marker is a
-          catalogue match, not a detection; a moving source without one is a candidate that needs
-          verification.
+          Known sources from NASA/JPL SBIdent, seen from SPHEREx at each looked-up time (its orbit
+          position from JPL Horizons). Markers ◇ appear on frames within {MAX_GAP_DAYS} day of a
+          looked-up time, moved along JPL&apos;s rates. On frames at other times, and for a time seen
+          from the Earth&apos;s centre, the parallax of SPHEREx&apos;s orbit 7,000 km around that
+          centre remains: typically a few ″, up to ~10″ (1.5 SPHEREx pixels) for main-belt
+          asteroids, far more for close near-Earth objects. A marker is a catalogue match, not a
+          detection; a moving source without one is a candidate that needs verification.
         </p>
       )}
     </section>

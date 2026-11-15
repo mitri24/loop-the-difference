@@ -24,8 +24,8 @@ const point = (mjd: number, wavelength: number, flux: number, extra: Partial<Spe
 })
 
 describe('BrightnessChart', () => {
-  it('mirrors the backend resolving power per detector', () => {
-    expect(R_BY_DETECTOR).toEqual({ 1: 41, 2: 41, 3: 41, 4: 35, 5: 110, 6: 130 })
+  it('uses the shared resolving power per detector (comparabilityParameters.test.ts keeps it equal to the backend)', () => {
+    expect(R_BY_DETECTOR).toEqual({ 1: 39, 2: 41, 3: 41, 4: 35, 5: 112, 6: 128 })
   })
 
   it('takes one resolution element around the centre, R from the given detector or its range', () => {
@@ -33,13 +33,13 @@ describe('BrightnessChart', () => {
     expect(w.lo).toBeCloseTo(2.0 * (1 - 1 / 82))
     expect(w.hi).toBeCloseTo(2.0 * (1 + 1 / 82))
     expect((w.hi - w.lo) / 2.0).toBeCloseTo(1 / 41)
-    expect(wavelengthWindow(4.6)!.r).toBe(130)
+    expect(wavelengthWindow(4.6)!.r).toBe(128)
     expect(wavelengthWindow(7)).toBeNull()
   })
 
   it('puts flux ticks on round values', () => {
-    expect(niceTicks([96.3, 137.9])).toEqual({ values: [100, 110, 120, 130], decimals: 0 })
-    expect(niceTicks([-0.83, 1.27])).toEqual({ values: [-0.5, 0, 0.5, 1], decimals: 1 })
+    expect(niceTicks([96.3, 137.9])).toEqual({ values: [100, 110, 120, 130], decimals: 0, step: 10 })
+    expect(niceTicks([-0.83, 1.27])).toEqual({ values: [-0.5, 0, 0.5, 1], decimals: 1, step: 0.5 })
   })
 
   it('keeps the points in the window, oldest first', () => {

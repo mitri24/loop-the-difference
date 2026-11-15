@@ -8,7 +8,7 @@ from astropy.table import Table
 
 from app import sources
 from app.catalogs import position_at
-from app.frames import target_grid
+from app.frames import Aligned, target_grid
 from app.sources import (
     FWHM_PX,
     MATCH_RADIUS_ARCSEC,
@@ -31,14 +31,27 @@ RA, DEC, SIZE_DEG = 133.795, -7.245, 0.05
 MJD = 60800.7
 
 
-def _sky(shape, stars, seed=1):
+def _star(shape, x, y, amplitude, fwhm=FWHM_PX):
+    rows, cols = np.mgrid[: shape[0], : shape[1]]
+    return amplitude * np.exp(-((cols - x) ** 2 + (rows - y) ** 2) / (2 * (fwhm / 2.3548) ** 2))
+
+
+def _sky_image(shape, stars, seed=1):
     """Unit Gaussian noise with Gaussian stars of the SPHEREx grid PSF at (x, y, amplitude)."""
-    y, x = np.mgrid[: shape[0], : shape[1]]
     image = np.random.default_rng(seed).normal(0.0, 1.0, shape)
-    sigma = FWHM_PX / 2.3548
-    for sx, sy, amplitude in stars:
-        image += amplitude * np.exp(-((x - sx) ** 2 + (y - sy) ** 2) / (2 * sigma**2))
+    for star in stars:
+        image += _star(shape, *star)
     return image
+
+
+def _frame(image, covered=None):
+    """Unit variance; NaN is sky outside the exposure unless `covered` says it is masked."""
+    usable = np.isfinite(image)
+    return Aligned(image, np.where(usable, 1.0, np.nan), usable if covered is None else covered)
+
+
+def _sky(shape, stars, seed=1):
+    return _frame(_sky_image(shape, stars, seed))
 
 
 def _pixel(grid, ra, dec):
@@ -48,10 +61,10 @@ def _pixel(grid, ra, dec):
 
 def test_finds_every_injected_star_at_its_position_brightest_first():
     stars = [(10.3, 12.6, 40.0), (40.0, 30.2, 80.0), (25.7, 44.1, 20.0)]
-    image = _sky((60, 60), stars)
+    image = _sky_image((60, 60), stars)
     image[:, :4] = np.nan  # outside the cutout
 
-    found, capped = detect(image)
+    found, capped = detect(_frame(image))
 
     assert not capped
     assert [d.peak for d in found] == sorted((d.peak for d in found), reverse=True)
@@ -261,6 +274,86 @@ def test_every_listed_detection_stands_five_sigma_above_the_noise():
 
     assert found
     assert min(d.snr for d in found) >= THRESHOLD_SIGMA
+
+
+def test_the_threshold_follows_the_variance_of_each_pixel():
+    image = _sky_image((60, 60), [(15.0, 30.0, 12.0), (45.0, 30.0, 12.0)])
+    # The right half is 4× noisier, e.g. fewer exposures were stacked there.
+    image[:, 30:] += np.random.default_rng(2).normal(0.0, np.sqrt(15.0), (60, 30))
+    variance = np.where(np.arange(60) < 30, 1.0, 16.0) * np.ones((60, 1))
+
+    found, _ = detect(Aligned(image, variance, np.ones(image.shape, dtype=bool)))
+
+    # The same star stands out in the quiet half and not in the noisy one.
+    assert [(round(d.x), round(d.y)) for d in found] == [(15, 30)]
+
+
+def test_a_structured_sky_neither_hides_stars_nor_adds_any():
+    stars = [(8.0 + 9 * (i % 8), 8.0 + 9 * (i // 8), 12.0) for i in range(64)]
+    rows, cols = np.mgrid[:80, :80]
+    # A 10σ ramp across the field and a broad 8σ halo, as from a nebula or a bright star.
+    sky = 10 * (cols / 79 - 0.5) + 8 * np.exp(-((cols - 55) ** 2 + (rows - 25) ** 2) / (2 * 12**2))
+
+    found, _ = detect(_frame(_sky_image((80, 80), stars) + sky))
+
+    assert len(found) == 64
+    assert all(min(np.hypot(d.x - x, d.y - y) for x, y, _ in stars) < 0.5 for d in found)
+
+
+@pytest.mark.parametrize("level", [0.8, 0.3])  # its peak pixel only; its four brightest pixels
+def test_a_masked_core_does_not_move_the_centroid(level):
+    x, y = 20.3, 20.6
+    image = _sky_image((41, 41), [(x, y, 400.0)])
+    image[_star((41, 41), x, y, 400.0) > level * 400.0] = np.nan  # flagged, e.g. saturated
+
+    (found,), _ = detect(_frame(image, covered=np.ones(image.shape, dtype=bool)))
+
+    assert (found.x, found.y) == (pytest.approx(x, abs=0.1), pytest.approx(y, abs=0.1))
+    assert found.snr > 10
+
+
+def test_a_saturated_core_too_large_to_fit_is_placed_by_its_rim():
+    x, y = 20.3, 20.6
+    star = _star((41, 41), x, y, 1e5) + _star((41, 41), x, y, 300.0, fwhm=6.0)  # core and wings
+    image = _sky_image((41, 41), [(8.0, 33.0, 40.0)]) + star
+    image[star > 100.0] = np.nan  # a 7×7 saturated core
+
+    found, _ = detect(_frame(image, covered=np.ones(image.shape, dtype=bool)))
+
+    near = [d for d in found if np.hypot(d.x - x, d.y - y) < 10]
+    assert len(near) == 1  # one source, no spurious peaks on the rim of the core
+    assert (near[0].x, near[0].y) == (pytest.approx(x, abs=0.3), pytest.approx(y, abs=0.3))
+    assert [(round(d.x), round(d.y)) for d in found if d not in near] == [(8, 33)]
+    grid, shape = target_grid(RA, DEC, SIZE_DEG)
+    labelled = label(found, grid, shape, MJD, [], [])
+    assert [s.saturated for s in labelled] == [d in near for d in found]
+
+
+def test_a_saturated_core_cut_by_the_grid_edge_is_skipped():
+    x, y = 4.3, 20.6  # the 7×7 core reaches column 1: its rim would only lie on one side
+    star = _star((41, 41), x, y, 1e5) + _star((41, 41), x, y, 300.0, fwhm=6.0)
+    image = _sky_image((41, 41), []) + star
+    image[star > 100.0] = np.nan
+
+    found, _ = detect(_frame(image, covered=np.ones(image.shape, dtype=bool)))
+
+    assert [d for d in found if np.hypot(d.x - x, d.y - y) < 10] == []
+
+
+def test_the_local_sky_in_row_blocks_equals_one_block_and_the_median(monkeypatch):
+    image = _sky_image((40, 37), [(12.0, 20.0, 50.0)])
+    image[np.random.default_rng(5).random(image.shape) < 0.2] = np.nan
+    image[:, :6] = np.nan  # outside the exposure: some squares hold no usable pixel
+    monkeypatch.setattr(sources, "SKY_ROWS", 40)
+    whole = sources._local_sky(_frame(image))
+    monkeypatch.setattr(sources, "SKY_ROWS", 7)
+
+    assert np.array_equal(sources._local_sky(_frame(image)), whole)
+    padded = np.pad(image, sources.SKY_BOX_PX // 2, constant_values=np.nan)
+    squares = np.lib.stride_tricks.sliding_window_view(padded, (11, 11)).reshape(40, 37, -1)
+    with pytest.warns(RuntimeWarning, match="All-NaN"):
+        median = np.nanmedian(squares, axis=-1)
+    assert np.array_equal(whole, np.nan_to_num(median, nan=0.0))
 
 
 def test_a_g8_star_matches_its_detection_2_px_away_a_g12_star_does_not():

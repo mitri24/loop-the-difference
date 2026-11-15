@@ -22,14 +22,17 @@ export const wiseUrl = (ra: number, dec: number, rDeg: number, mirror = VIZIER_M
   `${mirror}/viz-bin/votable?-source=II/328/allwise&-c=${cone(ra, dec)}&-c.rd=${rDeg}&-out.max=${MAX_SOURCES}&-sort=W1mag&-out=AllWISE,RAJ2000,DEJ2000,W1mag,W2mag`
 
 // TAP always answers with a table, also for an empty field; votable/td keeps the rows readable.
+// Brightest first: by V, then Gaia G where V is missing. The service speaks ADQL 2.0 (no NULLS LAST,
+// no COALESCE); its PostgreSQL sorts objects without a magnitude last.
 export const simbadUrl = (ra: number, dec: number, rDeg: number) =>
   `https://simbad.cfa.harvard.edu/simbad/sim-tap/sync?request=doQuery&lang=adql&format=votable/td&query=${encodeURIComponent(
-    `SELECT TOP ${MAX_SOURCES} main_id, ra, dec, otype, pmra, pmdec FROM basic WHERE CONTAINS(POINT('ICRS', ra, dec), CIRCLE('ICRS', ${ra}, ${dec}, ${rDeg})) = 1`,
+    `SELECT TOP ${MAX_SOURCES} main_id, ra, dec, otype, pmra, pmdec FROM basic LEFT JOIN allfluxes ON basic.oid = allfluxes.oidref WHERE CONTAINS(POINT('ICRS', ra, dec), CIRCLE('ICRS', ${ra}, ${dec}, ${rDeg})) = 1 ORDER BY V, G`,
   )}`
 
-// Asteroids move: the epoch is the shown frame's time, passed as Julian Date.
+// Asteroids move: the epoch is the shown frame's time, passed as Julian Date. SkyBoT has no
+// SPHEREx observer: like the mark check (knownObjects.ts) it answers for the Earth's centre.
 export const skybotUrl = (ra: number, dec: number, rDeg: number, mjd: number) =>
-  `https://ssp.imcce.fr/webservices/skybot/api/conesearch.php?-ep=${mjd + 2400000.5}&-ra=${ra}&-dec=${dec}&-rd=${rDeg}&-mime=votable&-output=object&-from=LoopTheDifference`
+  `https://ssp.imcce.fr/webservices/skybot/api/conesearch.php?-ep=${mjd + 2400000.5}&-ra=${ra}&-dec=${dec}&-rd=${rDeg}&-mime=votable&-output=object&-observer=500&-from=LoopTheDifference`
 
 /** Query radius in degrees: a bit wider than the view, never smaller than the frames, at most 1°. */
 export const catalogRadius = (fovDeg: number, sizeDeg: number) =>
@@ -128,6 +131,18 @@ export const sourceName = (data: Record<string, string> = {}) =>
   data.main_id || data.Name || data.AllWISE || data.Source || data.label || ''
 
 export type LayerKey = 'gaia' | 'wise' | 'simbad' | 'skybot'
+
+// A loaded marker as plain data, for drawing it on the SPHEREx images as well (BlinkPlayer).
+export interface SkyMark {
+  ra: number
+  dec: number
+  name: string
+}
+export const NO_MARKS: Record<LayerKey, SkyMark[]> = { gaia: [], wise: [], simbad: [], skybot: [] }
+const toMarks = (sources: unknown[]): SkyMark[] => sources.map((source) => {
+  const s = source as { ra: number; dec: number; data?: Record<string, string> }
+  return { ra: s.ra, dec: s.dec, name: sourceName(s.data) }
+})
 export type LayerStatus = 'off' | 'loading' | 'ready' | 'none' | 'unavailable'
 /** A loaded catalogue, 'none' for a field without objects, null when the service failed. */
 export type LayerResult<T> = T | 'none' | null
@@ -299,6 +314,7 @@ function useLayer(
   view: View | null,
   mjd: number | null,
   report: (key: LayerKey, status: LayerStatus) => void,
+  reportMarks: (key: LayerKey, marks: SkyMark[]) => void,
 ) {
   // One catalogue per layer, refilled in place: removing it would close Aladin's shared table.
   const catalog = useRef<Promise<Catalog> | null>(null)
@@ -333,10 +349,13 @@ function useLayer(
     }
     if (!on || !view || epoch == null) {
       show(null)
+      reportMarks(key, [])
       return
     }
     const settle = (result: LayerResult<unknown[]>) => {
-      show(result === 'none' || !result ? NO_SOURCES : result)
+      const sources = result === 'none' || !result ? NO_SOURCES : result
+      show(sources)
+      reportMarks(key, toMarks(sources))
       report(key, layerStatus(result))
     }
     const hit = cache.peek(view, epoch)
@@ -352,7 +371,7 @@ function useLayer(
     return () => {
       stale = true
     }
-  }, [key, aladin, on, view, epoch, report, cache])
+  }, [key, aladin, on, view, epoch, report, reportMarks, cache])
 }
 
 /**
@@ -421,10 +440,16 @@ export function useCatalogLayers(
     (key: LayerKey, s: LayerStatus) => setStatus((old) => ({ ...old, [key]: s })),
     [],
   )
-  useLayer('gaia', aladin, enabled.gaia, view, epoch, report)
-  useLayer('wise', aladin, enabled.wise, view, epoch, report)
-  useLayer('simbad', aladin, enabled.simbad, view, epoch, report)
-  useLayer('skybot', aladin, enabled.skybot, view, epoch, report)
+  // The markers each layer shows, for the SPHEREx images too.
+  const [marks, setMarks] = useState<Record<LayerKey, SkyMark[]>>(NO_MARKS)
+  const reportMarks = useCallback(
+    (key: LayerKey, list: SkyMark[]) => setMarks((old) => (old[key] === list || (old[key].length === 0 && list.length === 0) ? old : { ...old, [key]: list })),
+    [],
+  )
+  useLayer('gaia', aladin, enabled.gaia, view, epoch, report, reportMarks)
+  useLayer('wise', aladin, enabled.wise, view, epoch, report, reportMarks)
+  useLayer('simbad', aladin, enabled.simbad, view, epoch, report, reportMarks)
+  useLayer('skybot', aladin, enabled.skybot, view, epoch, report, reportMarks)
 
   const shownStatus = (key: LayerKey): LayerStatus => (enabled[key] ? status[key] : 'off')
   return {
@@ -435,5 +460,6 @@ export function useCatalogLayers(
       skybot: shownStatus('skybot'),
     },
     skybotDate: epoch == null ? null : isoDate(epoch),
+    marks,
   }
 }

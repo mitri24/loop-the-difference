@@ -1,32 +1,56 @@
 /* One workspace, two stages. Explore: the full Aladin sky to choose a region.
    Investigate: the SPHEREx images large in the middle, the timeline under them, the sky as a small
-   overview map. Search bar on top, dock and one floating panel on the right. Breakpoints match useResizable.ts. */
-:root { --dock-w:72px; --z-map:0; --z-chrome:10; --z-panel:20; --z-feedback:30; }
+   overview map in the top-right corner and the inspector (one menu for everything about the comparison) under it.
+   Search bar on top; no sidebar: controls open as a sheet on demand. Breakpoints match useResizable.ts. */
+:root { --z-map:0; --z-chrome:10; --z-panel:20; --z-menu:25; --z-feedback:30; --hud-pad-y:10px; }
 
 .shell {
   position:fixed; inset:0;
   display:grid;
-  grid-template-columns:minmax(0,1fr) auto var(--dock-w);
+  grid-template-columns:minmax(0,1fr) auto;
   grid-template-rows:auto minmax(0,1fr) auto;
-  grid-template-areas:'hud panel dock' 'main panel dock' 'bar panel dock';
+  grid-template-areas:'hud hud' 'main panel' 'bar panel';
   height:100dvh;
   padding:env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left);
   background:var(--surface-0);
   isolation:isolate;
 }
 
-/* Search bar: its own row, so Aladin's corner tools stay uncovered. */
-.hud { grid-area:hud; z-index:var(--z-chrome); display:flex; flex-direction:column; gap:var(--space-2); padding:var(--space-2) var(--space-3); background:var(--surface-1); border-bottom:1px solid var(--border); min-width:0; }
-.hud-row { display:flex; align-items:center; gap:var(--space-3); min-width:0; }
-.brand { display:flex; align-items:center; gap:var(--space-2); white-space:nowrap; font-weight:650; }
-.brand-mark { width:28px; height:28px; display:grid; place-items:center; border:1px solid var(--accent); color:var(--accent); font-size:20px; font-weight:300; }
-.global-search { display:flex; gap:var(--space-2); flex:1; min-width:0; max-width:640px; margin-inline:auto; }
-.global-search input { flex:1; width:0; }
-.share-button { background:transparent; }
-.hud-chips { display:flex; gap:var(--space-1); overflow-x:auto; scrollbar-width:none; justify-content:center; }
+/* Search bar: its own row, so Aladin's corner tools stay uncovered. A sheet starts under it, so the bar keeps its
+   width and buttons; its menus open above the sheet. */
+.hud { grid-area:hud; position:relative; z-index:var(--z-menu); padding:var(--hud-pad-y) 16px; background:var(--surface-0); min-width:0; container-type:inline-size; }
+.hud-row { display:grid; grid-template-columns:minmax(max-content,1fr) minmax(260px,660px) minmax(max-content,1fr); align-items:center; gap:16px; min-width:0; }
+/* The search centred, the tools right; the first column stays empty so the search keeps the middle. */
+.hud-row > .search-group { grid-column:2; }
+.hud-row > .header-actions { grid-column:3; }
+.search-group { position:relative; display:flex; align-items:center; gap:8px; min-width:0; }
+.global-search { flex:1; display:flex; align-items:center; gap:8px; min-width:0; padding:4px 4px 4px 14px; border:1px solid var(--border-strong); border-radius:999px; background:var(--surface-1); }
+.global-search:focus-within { border-color:var(--accent); }
+.global-search input { flex:1; min-width:0; width:0; min-height:32px; padding:4px 0; border:0; background:transparent; box-shadow:none; }
+.global-search input:focus { outline:none; }
+.search-mark { width:16px; height:16px; flex:none; border:3px solid var(--accent); border-radius:50%; box-shadow:inset 0 0 0 2px var(--surface-1),inset 0 0 0 6px var(--accent); }
+.global-search .search-band { width:auto; min-height:30px; padding:0 6px; border:0; border-radius:999px; background:transparent; font-size:var(--text-xs); }
+.global-search .search-submit { display:grid; place-items:center; flex:none; width:34px; min-height:34px; padding:0; border-radius:50%; }
+.header-actions { display:flex; justify-content:flex-end; align-items:center; gap:8px; }
+.examples-toggle { min-height:32px; padding:4px 8px; background:transparent; border-color:transparent; color:var(--muted); font-size:var(--text-xs); }
+.hud-chips { position:absolute; top:calc(100% + 6px); left:0; display:flex; flex-wrap:wrap; gap:6px; width:min(360px,calc(100cqw - 32px)); padding:12px; border:1px solid var(--border-strong); border-radius:var(--radius-md); background:var(--surface-1); box-shadow:0 8px 24px #0006; }
+.hud-chips[hidden] { display:none; }
 .chip { flex:none; min-height:32px; padding:var(--space-1) var(--space-3); border-radius:999px; font-size:var(--text-xs); background:var(--surface-2); }
+@media (max-width:1000px) { .hud-row { grid-template-columns:minmax(0,1fr) auto; } .hud-row > .search-group { grid-column:1; } .hud-row > .header-actions { grid-column:2; } }
+/* A narrow bar leaves out what does not fit instead of overlapping it. */
+@container (max-width:640px) { .hud-row { grid-template-columns:minmax(0,1fr) auto; } .hud-row > .search-group { grid-column:1; } .hud-row > .header-actions { grid-column:2; } }
+@media (max-width:700px) { .hud { padding:8px; } .hud-row { gap:6px; } .search-mark { display:none; } .global-search { padding-left:12px; } .examples-toggle { padding:4px; } }
 
 .stage { grid-area:main; position:relative; min-width:0; min-height:0; overflow:hidden; }
+/* Full map (Explore): the sky reaches the top of the window and the search bar floats over it, transparent; only its
+   search field and buttons take clicks. Aladin's own top controls move below it (--hud-h, measured by App). */
+.shell:has(> .stage.explore) > .stage { grid-row:1 / 3; grid-column:1 / -1; }
+.shell:has(> .stage.explore) > .hud { background:transparent; pointer-events:none; }
+.shell:has(> .stage.explore) > .hud .hud-row > *,.shell:has(> .stage.explore) > .hud .hud-chips { pointer-events:auto; }
+.shell:has(> .stage.explore) > .hud :is(.examples-toggle, .header-tool, .header-more) { background:var(--surface-glass); border-color:var(--border); }
+.stage.explore .sky-view :is(.aladin-cooFrame, .aladin-location, .aladin-projection-control, .aladin-fullScreen-control) { margin-top:var(--hud-h, 64px); }
+/* Aladin keeps its left toolbar 3rem below its top row; the bar's height comes on top. */
+.stage.explore .sky-view .aladin-widgets-toolbar { margin-top:calc(var(--hud-h, 64px) + 3rem); }
 
 /* The sky: the whole stage in Explore; Aladin follows the element's size. */
 .sky-area { position:absolute; inset:0; overflow:hidden; }
@@ -39,37 +63,156 @@
 .explore-actions { position:absolute; z-index:var(--z-chrome); left:50%; bottom:96px; transform:translateX(-50%); display:flex; flex-wrap:wrap; justify-content:center; gap:var(--space-2); width:max-content; max-width:calc(100% - 32px); }
 .pick-card { display:flex; align-items:center; gap:var(--space-2); padding:var(--space-1) var(--space-1) var(--space-1) var(--space-3); background:var(--surface-glass); border:1px solid var(--border-strong); border-radius:var(--radius-md); font-family:var(--font-mono); font-size:var(--text-xs); }
 .explore-actions > button { background:var(--surface-glass); }
+.explore-cue { font-family:var(--font-sans); font-size:var(--text-sm); }
+.explore-cue > span { padding-block:var(--space-1); }
 
-/* Investigate: the sky shrinks to an overview map in its own column beside the viewer, width from its handle. */
-.stage.investigate { display:grid; grid-template-columns:minmax(0,1fr) auto; grid-template-rows:minmax(0,1fr); }
+/* Investigate: the sky shrinks to an overview map, width from its handle. From 701 px it holds the window's top-right
+   corner like a minimap: nothing above it or to its right, nothing over it. The stage's children join the shell grid,
+   so the map starts at the top beside the search bar and a sheet opens between the page and the map. */
 .stage.investigate > .viewer { position:relative; inset:auto; }
+@media (width > 700px) {
+  .shell:has(> .stage.investigate) { grid-template-columns:minmax(0,1fr) auto auto; grid-template-areas:'hud hud map' 'main panel map' 'bar panel map'; }
+  .stage.investigate { display:contents; }
+  .stage.investigate > .viewer { grid-area:main; min-height:0; }
+  /* Level with the search bar. */
+  .stage.investigate > .sky-area.overview { grid-area:map; margin-top:var(--hud-pad-y); max-width:none; }
+}
+@media (width > 700px) and (max-width:1023px) {
+  .shell:has(> .stage.investigate) { grid-template-columns:minmax(0,1fr) auto; grid-template-areas:'hud map' 'main map' 'bar map'; }
+  /* The map column is narrow here: the inspector's panel gives its content the width. */
+  .inspector .inspector-panel { padding-inline:var(--space-2); }
+}
 .sky-area.overview { position:relative; inset:auto; align-self:start; margin:var(--space-3) var(--space-3) var(--space-3) 0; z-index:var(--z-chrome); width:var(--map-w); max-width:calc(100% - 24px); height:calc(var(--map-w) * .75 + 36px); max-height:calc(100% - 24px); overflow:visible; background:var(--surface-1); border:1px solid var(--border-strong); border-radius:var(--radius-md); }
 .sky-area.overview .sky-stage { top:36px; overflow:hidden; border-radius:0 0 var(--radius-md) var(--radius-md); }
 .sky-area.overview .map-caption { display:none; }
 .sky-area.overview.collapsed { width:auto; height:36px; }
 .sky-area.overview.collapsed .sky-stage { visibility:hidden; pointer-events:none; width:var(--map-w); height:calc(var(--map-w) * .75); }
 .overview-bar { position:relative; height:36px; display:flex; align-items:center; justify-content:space-between; gap:var(--space-2); padding:0 var(--space-1) 0 var(--space-3); font-size:var(--text-xs); }
-.overview-bar button { min-height:28px; padding:0 var(--space-2); background:transparent; font-size:var(--text-xs); }
+.overview-bar > span:first-child { min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.overview-bar button { flex:none; min-height:28px; padding:0 var(--space-2); background:transparent; font-size:var(--text-xs); white-space:nowrap; }
+.overview-actions { display:flex; gap:var(--space-1); }
+.overview-bar .overview-icon { width:28px; min-width:28px; padding:0; font-size:var(--text-md); }
+/* Expanded: the map opens large over the page, under the search bar and the viewer head (mode switch, section bar)
+   and under any sheet; its bar keeps the corner and the column width, so nothing moves. Escape or Dock brings it back. */
+@media (width > 700px) {
+  .stage.investigate > .sky-area.overview.expanded { display:contents; }
+  .sky-area.overview.expanded > .overview-bar { grid-area:map; align-self:start; z-index:var(--z-chrome); width:var(--map-w); margin:var(--hud-pad-y) var(--space-3) 0 0; background:var(--surface-1); border:1px solid var(--border-strong); border-radius:var(--radius-md); }
+  .sky-area.overview.expanded > .sky-stage { grid-row:2 / -1; grid-column:1 / -1; inset:calc(var(--map-below) + var(--space-2)) var(--space-3) var(--space-3) auto; width:clamp(var(--map-w), 50%, 900px); z-index:var(--z-chrome); background:var(--surface-1); border:1px solid var(--border-strong); border-radius:var(--radius-md); box-shadow:0 12px 32px var(--shadow-color); }
+}
 
 /* The SPHEREx cutout viewer: modes at the image, the image as large as the stage allows. */
 .viewer { position:absolute; inset:0; display:flex; flex-direction:column; min-width:0; }
-.viewer-head { flex:none; display:flex; flex-wrap:wrap; align-items:center; gap:var(--space-2) var(--space-3); padding:var(--space-2) var(--space-3); border-bottom:1px solid var(--border); }
-.viewer-head .target-summary { padding:0; border:0; flex-direction:column; gap:0; min-width:0; }
-.viewer-head .mode-switch { flex:1 1 280px; max-width:420px; flex-direction:row; align-items:center; }
-.back-button { background:transparent; }
+/* The viewer head is the dividing line under the search bar that carries the loading bar; on phones it holds Inspect. */
+.viewer-head { position:relative; flex:none; display:flex; flex-wrap:wrap; align-items:center; gap:var(--space-2) var(--space-3); border-bottom:1px solid var(--border); }
 .viewer-body { flex:1; min-height:0; overflow-y:auto; overscroll-behavior:contain; padding:var(--space-3); display:flex; flex-direction:column; gap:var(--space-3); container-type:size; scrollbar-width:thin; }
-.viewer .player { display:grid; grid-template-columns:minmax(0,1fr); gap:var(--space-2); }
-.viewer .player .blink-mode { order:-1; display:flex; gap:var(--space-1); }
-.viewer .viewport { width:clamp(160px, min(100cqw, 100cqh - 120px), 1100px); justify-self:center; }
-.viewer .controls .speed { width:auto; }
-@container (min-width:760px) {
-  .viewer .player { grid-template-columns:auto minmax(220px, 340px); grid-template-areas:'mode mode' 'view pair' 'view meta' 'view note' 'controls controls'; align-items:start; justify-content:center; }
-  .viewer .viewport { grid-area:view; width:clamp(200px, min(100cqw - 380px, 100cqh - 130px), 1100px); }
-  .viewer .player > .controls { grid-area:controls; }
-  .viewer .player > .blink-mode { grid-area:mode; }
-  .viewer .player > .blink-pair { grid-area:pair; }
-  .viewer .player > .meta { grid-area:meta; }
-  .viewer .player > .notice { grid-area:note; }
+/* One screen, no page scrolling, left-aligned: thumbnails | image | A and B as a comparison table that fills the rest
+   of the width, the transport bar under the image. --img is the largest square that leaves the table its minimum
+   width and the bar (and a line above the player, --reserve) their height; the viewer body is the size container. */
+.viewer .player {
+  --rail:64px; --gap:var(--space-3); --bar:44px; --reserve:0px; --side-min:clamp(300px, 30cqw, 420px);
+  --img:clamp(120px, min(100cqw - var(--rail) - var(--side-min) - 2 * var(--gap), 100cqh - var(--reserve) - var(--bar) - 2 * var(--gap)), 1100px);
+  display:grid; grid-template-columns:var(--rail) var(--img) minmax(0,1fr); grid-template-rows:var(--img) auto auto;
+  grid-template-areas:'rail view side' 'bar bar side' 'note note side'; gap:var(--gap); justify-content:start; align-items:start;
+}
+.viewer-body:has(> .notice) > .player,.viewer-body:has(> .view-back) > .player { --reserve:calc(44px + var(--space-3)); }
+/* Below about 480 px of viewer the bar wraps into two rows: reserve them. */
+@container (max-width:499px) {
+  .viewer .player { --bar:88px; }
+}
+/* One frame: no thumbnails. */
+.viewer .player:not(:has(> .observation-gallery)) {
+  --rail:0px; grid-template-columns:var(--img) minmax(0,1fr); grid-template-areas:'view side' 'bar side' 'note side';
+}
+.viewer .player > .observation-gallery { grid-area:rail; position:relative; width:var(--rail); height:var(--img); margin:0; overflow:hidden; }
+/* "All" plays every frame; the thumbnails scroll under it. */
+.viewer .observation-gallery > .play-all { position:absolute; top:0; left:0; right:0; min-height:28px; padding:0; border-color:transparent; background:transparent; color:var(--accent); font-size:var(--text-xs); }
+.viewer .observation-strip { position:absolute; inset:32px 0 0; flex-direction:column; overflow-x:hidden; overflow-y:auto; }
+.viewer .observation-card { flex:none; width:100%; }
+.viewer .player > .viewport,.viewer .player > .diff-blocker { grid-area:view; width:var(--img); }
+.viewer .player > .controls { grid-area:bar; min-width:0; }
+.viewer .player > .notice { grid-area:note; }
+.viewer .player > .player-side { grid-area:side; align-self:stretch; min-height:0; max-height:calc(var(--img) + var(--bar) + var(--gap)); overflow-y:auto; overscroll-behavior:contain; scrollbar-width:thin; }
+/* The difference view: image | side column with the epoch choice and legend. */
+.viewer .player.diff-player {
+  --side-min:clamp(220px, 30cqw, 340px);
+  --img:clamp(160px, min(100cqw - var(--side-min) - var(--gap), 100cqh - var(--reserve)), 1100px);
+  --side:min(420px, max(var(--side-min), 100cqw - var(--img) - var(--gap)));
+  grid-template-columns:var(--img) var(--side); grid-template-rows:auto; grid-template-areas:'view side';
+}
+.viewer .diff-player > .player-side { max-height:var(--img); }
+/* Narrow viewers (tablet columns, phones): the table goes under the image and the bar; the image keeps at least
+   280 px and the viewer may scroll below it. */
+@container (max-width:699px) {
+  .viewer .player {
+    --img:max(120px, min(100cqw - var(--rail) - var(--gap), max(280px, 100cqh - var(--reserve) - var(--bar) - 2 * var(--gap)), 1100px));
+    grid-template-columns:var(--rail) var(--img); grid-template-rows:var(--img) auto auto auto;
+    grid-template-areas:'rail view' 'bar bar' 'note note' 'side side';
+  }
+  .viewer .player:not(:has(> .observation-gallery)) { grid-template-columns:var(--img); grid-template-areas:'view' 'bar' 'note' 'side'; }
+  .viewer .player > .player-side { max-height:none; overflow:visible; }
+  .viewer .player.diff-player { --img:clamp(160px, 100cqw, 1100px); grid-template-columns:var(--img); grid-template-rows:auto auto; grid-template-areas:'view' 'side'; }
+  .viewer .diff-player > .player-side { max-height:none; overflow:visible; }
+}
+
+/* The inspector (components/Inspector.tsx): one menu for everything about the comparison – a tab per kind, one
+   bounded panel; only the panel scrolls, switching never resizes the viewer or the map. From 701 px it hangs under
+   the overview map, as wide as the map, down to the window's bottom; on phones it is a bottom sheet. */
+.inspector { container:inspector / inline-size; display:flex; flex-direction:column; min-height:0; background:var(--surface-1); border:1px solid var(--border-strong); border-radius:var(--radius-md); }
+.inspector[hidden] { display:none; }
+.inspector-head { flex:none; display:flex; align-items:flex-start; gap:var(--space-1); padding:var(--space-1); border-bottom:1px solid var(--border); }
+.inspector-tabs { flex:1; display:flex; flex-wrap:wrap; gap:2px; min-width:0; }
+.inspector-tabs [role='tab'] { display:inline-flex; align-items:center; gap:var(--space-1); min-width:0; min-height:30px; padding:0 6px; border:1px solid transparent; border-radius:999px; background:transparent; color:var(--text-secondary); font-size:var(--text-xs); white-space:nowrap; }
+.inspector-tabs [role='tab']:hover { color:var(--text-primary); background:var(--surface-2); }
+.inspector-tabs [role='tab'][aria-selected='true'] { color:var(--accent); border-color:var(--accent); background:var(--accent-subtle); }
+.tab-count { min-width:18px; padding:0 5px; border-radius:var(--radius-md); background:var(--surface-3); color:var(--text-primary); font-size:10px; font-variant-numeric:tabular-nums; text-align:center; }
+.tab-count.alert { background:var(--status-fail); color:var(--surface-0); }
+.inspector-close { display:none; flex:none; width:36px; min-height:32px; padding:0; background:transparent; border-color:transparent; }
+.inspector-expand { flex:none; width:30px; min-width:30px; min-height:30px; padding:0; background:transparent; border-color:transparent; color:var(--text-secondary); font-size:var(--text-md); }
+.inspector-expand:hover { color:var(--text-primary); border-color:var(--border-strong); }
+.inspector-panel { flex:1; min-height:0; overflow-y:auto; overscroll-behavior:contain; padding:var(--space-3); display:flex; flex-direction:column; gap:var(--space-3); container-type:inline-size; scrollbar-width:thin; font-size:var(--text-sm); }
+.inspector-panel[hidden] { display:none; }
+.inspector-panel:focus:not(:focus-visible) { outline:none; }
+.inspector-panel > h3 { margin:var(--space-2) 0 0; font-size:var(--text-md); }
+.inspector-panel svg,.inspector-panel table { max-width:100%; }
+.tab-loading { display:flex; flex-direction:column; gap:var(--space-3); }
+/* The loading player: the same grid, grey frames in place of the pair, the thumbnails, the image and the bar. */
+.player-skeleton > .player-side { gap:var(--space-2); }
+.player-skeleton .transport { padding-block:var(--space-3); }
+.inspect-toggle { display:none; }
+/* A narrow inspector (the map column on tablets, a short landscape phone): the tabs in one row that scrolls sideways,
+   so the panel keeps its height. */
+@container inspector (max-width:259px) {
+  .inspector-tabs { flex-wrap:nowrap; overflow-x:auto; scrollbar-width:none; }
+  .inspector-tabs [role='tab'] { flex:none; }
+}
+@media (width > 700px) {
+  /* A grid item in the map column, as wide as the column (the map card sets it: the inspector's own content never
+     widens it), under the card (its height measured by App) down to the window's bottom. */
+  .stage.investigate > .inspector { grid-area:map; align-self:end; justify-self:stretch; position:relative; z-index:var(--z-chrome);
+    height:calc(100% - var(--hud-pad-y) - var(--map-card-h, 0px) - 2 * var(--space-3)); margin:0 var(--space-3) var(--space-3) 0; }
+  /* Minimized, the card keeps the map's width, so the inspector keeps its width and only moves up. */
+  .stage.investigate:has(> .inspector:not([hidden])) > .sky-area.overview.collapsed { width:var(--map-w); }
+  /* Expand: wider over the images, from the right edge, at the same height; nothing beside it moves. */
+  .stage.investigate > .inspector.expanded { position:absolute; right:0; bottom:0; width:min(55vw, 960px);
+    box-shadow:0 12px 32px var(--shadow-color); }
+  /* Expanded, the map lies over the page; the inspector waits under it. */
+  .stage.investigate:has(> .sky-area.expanded) > .inspector { visibility:hidden; }
+}
+/* A minimized map keeps Aladin at its size but hidden; Aladin gives its reticle and widgets their own visibility,
+   so clip the hidden map too: nothing of it may show or take clicks over the inspector below the bar. */
+.sky-area.overview.collapsed > .sky-stage { clip-path:inset(100%); }
+
+/* On-demand sheets (options, layers, about) open from the header; narrow headers fold them into "⋯". */
+.header-tools { display:contents; }
+.header-tool { min-height:32px; padding:4px 8px; background:transparent; border-color:transparent; color:var(--muted); font-size:var(--text-xs); }
+.header-tool[aria-expanded='true'] { color:var(--accent); border-color:var(--accent); }
+.header-more { display:none; min-width:36px; font-size:var(--text-md); }
+.header-more-menu { position:absolute; top:calc(100% - 2px); right:16px; z-index:1; display:flex; flex-direction:column; align-items:stretch; gap:2px; padding:var(--space-1); border:1px solid var(--border-strong); border-radius:var(--radius-md); background:var(--surface-1); box-shadow:0 8px 24px var(--shadow-color); }
+.header-more-menu[hidden] { display:none; }
+.header-more-menu .header-tool { justify-content:flex-start; min-height:40px; padding:0 var(--space-4); }
+@container (max-width:899px) {
+  .header-tools { display:none; }
+  .header-more { display:inline-flex; }
 }
 
 /* Timeline under the viewer: height from its top edge, collapsible to its heading. */
@@ -91,16 +234,18 @@
 .resizer-y { left:0; right:0; top:-6px; height:12px; cursor:ns-resize; }
 .resizer-y::after { left:50%; top:5px; height:2px; width:48px; transform:translateX(-50%); }
 
-/* Floating panel next to the dock: width from its handle, only the body scrolls. */
-.fpanel { grid-area:panel; position:relative; z-index:var(--z-panel); display:flex; flex-direction:column; width:clamp(320px, var(--panel-w), min(60vw, 960px)); min-height:0; background:var(--surface-1); border-left:1px solid var(--border); }
+/* The on-demand sheet beside the stage: width from its handle, only the body scrolls. */
+/* The sheet lies over the page at its right edge (left of the overview map): nothing beside it moves or shrinks. */
+.fpanel { grid-area:main; justify-self:end; position:relative; z-index:var(--z-panel); display:flex; flex-direction:column; width:clamp(320px, var(--panel-w), min(60vw, 960px)); max-width:100%; min-height:0; background:var(--surface-1); border-left:1px solid var(--border); box-shadow:-12px 0 32px var(--shadow-color); }
 .fpanel > .resizer-y { display:none; }
 .fpanel-header { flex:none; display:flex; align-items:center; justify-content:space-between; gap:var(--space-3); padding:var(--space-3) var(--space-4); border-bottom:1px solid var(--border); }
 .fpanel-header h2 { font-size:var(--text-lg); }
 .close-button { flex:none; width:40px; padding:0; background:transparent; border-color:transparent; }
 .fpanel-body { flex:1; min-height:0; overflow-y:auto; overscroll-behavior:contain; padding:var(--space-4); container-type:inline-size; scrollbar-width:thin; }
 .fpanel-body > section { display:flex; flex-direction:column; gap:var(--space-4); }
+/* Charts draw at their measured width (components/Chart.tsx); this only keeps a chart inside the panel while it re-measures. */
 .fpanel-body svg,.fpanel-body table { max-width:100%; }
-.fpanel-body svg { width:100%; height:auto; }
+.fpanel-body svg { height:auto; }
 .fpanel-actions { flex:none; display:grid; gap:var(--space-2); padding:var(--space-3) var(--space-4); border-top:1px solid var(--border); }
 .fpanel-actions .primary { justify-content:space-between; }
 @container (min-width:560px) {
@@ -112,34 +257,24 @@
 }
 
 /* Dock: icon + word, count badge, red badge for a blocking check. */
-.dock { grid-area:dock; z-index:var(--z-chrome); display:flex; flex-direction:column; gap:var(--space-1); padding:var(--space-2) var(--space-1); background:var(--surface-1); border-left:1px solid var(--border); overflow-y:auto; scrollbar-width:none; }
-.dock button { position:relative; flex-direction:column; gap:2px; min-height:56px; padding:var(--space-1); background:transparent; border-color:transparent; font-size:11px; }
-.dock button.selected { color:var(--accent); background:var(--accent-subtle); border-color:var(--accent); }
-.dock-icon { font-size:18px; line-height:1; }
-.dock-badge { position:absolute; top:2px; right:4px; min-width:16px; padding:0 4px; border-radius:var(--radius-md); font-size:10px; background:var(--accent); color:var(--text-on-accent); }
-.dock-badge.alert { background:var(--status-fail); }
 
 .share-feedback { position:fixed; z-index:var(--z-feedback); top:calc(env(safe-area-inset-top) + 96px); left:50%; transform:translateX(-50%); width:min(440px,calc(100% - 32px)); background:var(--surface-2); border:1px solid var(--accent); padding:var(--space-2); display:flex; align-items:center; justify-content:space-between; gap:var(--space-2); }
 .share-feedback button { flex:none; }
 
-/* 701–1023 px: the panel lies over the stage (not over the timeline), the dock stays. */
+/* ≤ 1023 px: the sheet lies over the stage (not over the timeline). */
 @media (max-width:1023px) {
-  .shell { grid-template-columns:minmax(0,1fr) var(--dock-w); grid-template-areas:'hud dock' 'main dock' 'bar dock'; }
+  .shell { grid-template-columns:minmax(0,1fr); grid-template-areas:'hud' 'main' 'bar'; }
   .fpanel { grid-area:main; justify-self:end; max-width:100%; border-right:1px solid var(--border); }
   .map-hint { display:none; }
 }
 
-/* ≤ 700 px: the dock becomes a bottom row; the panel is a bottom sheet between stage and timeline
-   with a height handle; the overview map starts folded. */
+/* ≤ 700 px: the sheet is a bottom sheet between stage and timeline with a height handle; the overview map
+   starts folded. */
 @media (max-width:700px) {
-  :root { --dock-h:60px; }
-  .shell { grid-template-columns:minmax(0,1fr); grid-template-rows:auto minmax(48px,1fr) minmax(0,max-content) auto var(--dock-h);
-    grid-template-areas:'hud' 'main' 'panel' 'bar' 'dock'; }
-  .brand-name,.share-button { display:none; }
+  .shell { grid-template-columns:minmax(0,1fr); grid-template-rows:auto minmax(48px,1fr) minmax(0,max-content) auto;
+    grid-template-areas:'hud' 'main' 'panel' 'bar'; }
   .hud-chips { justify-content:flex-start; }
   .global-search input { font-size:16px; }
-  .dock { flex-direction:row; padding:var(--space-1); border-left:0; border-top:1px solid var(--border); overflow-x:auto; overflow-y:hidden; }
-  .dock button { flex:1 0 52px; min-height:48px; }
   .fpanel { grid-area:panel; justify-self:stretch; width:auto; height:var(--sheet-h); max-height:100%; border:0; border-top:1px solid var(--border-strong); border-radius:var(--radius-lg) var(--radius-lg) 0 0; }
   .fpanel > .resizer-x { display:none; }
   .fpanel > .resizer-y { display:block; }
@@ -156,12 +291,42 @@
   .stage.investigate > .viewer { flex:1; min-height:0; }
   .sky-area.overview { flex:none; width:auto; max-width:none; height:min(calc(var(--map-w) * .75 + 36px), 50%); margin:0; border-width:1px 0 0; border-radius:0; }
   .sky-area.overview.collapsed { height:36px; }
+  .overview-expand { display:none; }
+  /* The inspector: opened with Inspect in the viewer head, it takes the lower half of the stage; the images shrink
+     above it instead of being covered, so the player stays usable while inspecting. */
+  .inspect-toggle { display:inline-flex; margin-left:auto; }
+  /* The viewer keeps at least its head (the viewer body is a size container: its own minimum is its padding). */
+  .stage.investigate > .viewer { min-height:min-content; }
+  /* The overview map's bar spans the width under the images. */
+  .stage.investigate > .sky-area.overview { align-self:stretch; }
+  .stage.investigate > .inspector { position:relative; z-index:var(--z-chrome); flex:0 1 40%; min-height:160px; border-width:1px 0 0; border-radius:0; }
+  /* While inspecting, the image gives up its 280 px floor, so the image and the bar stay in view. */
+  .stage.investigate:has(> .inspector.open) .viewer .player {
+    --img:clamp(120px, min(100cqw - var(--rail) - var(--gap), 100cqh - var(--reserve) - var(--bar) - 2 * var(--gap)), 1100px);
+  }
+  .viewer-head { padding:var(--space-1) var(--space-3); }
+  .stage.investigate > .inspector:not(.open) { display:none; }
+  .shell:has(> .fpanel:not([hidden])) .stage.investigate > .inspector { display:none; }
+  .inspector-close { display:inline-flex; }
+  .inspector-expand { display:none; }
 }
 @media (max-height:600px) and (min-width:701px) {
-  .hud-chips { display:none; }
+
 }
 /* Short phones (landscape, high zoom): the panel goes before the sky; the examples stay in Target & options. */
 @media (max-width:700px) and (max-height:460px) {
-  .hud-chips { display:none; }
-  .shell { grid-template-rows:auto minmax(0,1fr) minmax(0,max-content) auto var(--dock-h); }
+
+  .shell { grid-template-rows:auto minmax(0,1fr) minmax(0,max-content) auto; }
 }
+
+/* Coverage: the observation history's summary above its timeline. */
+.history-summary { display:flex; flex-wrap:wrap; gap:var(--space-3); padding-bottom:var(--space-3); margin-bottom:var(--space-3); border-bottom:1px solid var(--border); font-size:var(--text-xs); }
+.history-summary span { display:flex; flex-direction:column; }
+.history-summary strong { font-size:var(--text-lg, 18px); color:var(--text); }
+@media (max-width:700px) {
+  .shell:has(> .fpanel:not([hidden])) .sky-area.overview { display:none; }
+}
+
+.lazy-thumbnail { display:block; width:100%; height:100%; }
+.thumbnail-placeholder { display:block; width:100%; height:100%; min-height:64px; background:var(--surface-2); }
+

@@ -43,10 +43,11 @@ export function DifferenceView({ manifest }: { manifest: FrameManifest }) {
     ['Epoch B', pair.b],
   ]
 
+  // Same arrangement as the blink player: image left, choices, legend and provenance beside it.
   return (
-    <div className="player">
+    <div className="player diff-player">
       {blocker ? (
-        <p className="notice error" role="alert">
+        <p className="notice error diff-blocker" role="alert">
           <strong>⛔ Blocker</strong> · {blocker}. Pick another pair of epochs.
         </p>
       ) : (
@@ -63,7 +64,8 @@ export function DifferenceView({ manifest }: { manifest: FrameManifest }) {
         </div>
       )}
 
-      <div className="controls">
+      <div className="player-side">
+      <div className="diff-pickers">
         <label className="epoch-pick">
           Epoch A (earlier)
           <select value={pair.a} onChange={(event) => selectA(Number(event.target.value))}>
@@ -126,6 +128,7 @@ export function DifferenceView({ manifest }: { manifest: FrameManifest }) {
           ]
         })}
       </dl>
+      </div>
     </div>
   )
 }

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { defaultBlinkPair, lambdaText, letterOf, nextIndex, releaseLabel, stampText } from './blink'
+import { compatiblePair, defaultBlinkPair, frameRelease, lambdaText, letterOf, nextIndex, releaseLabel, stampText } from './blink'
 import type { Frame } from './types'
 
 const frame = (epoch: number, date = '2026-03-10T12:00:00Z'): Frame => ({
@@ -27,6 +27,24 @@ describe('blink helpers', () => {
     expect(defaultBlinkPair([0, 0, 1, 1, 2, 2].map((e) => frame(e)))).toEqual({ a: 0, b: 4 })
   })
 
+  it('opens with a compatible pair: same wavelength, different epochs, the longest baseline, the earlier one as A', () => {
+    const at = (epoch: number, mjd: number, wavelength_um: number | null) => ({ ...frame(epoch), mjd, wavelength_um })
+    // D3 resolves λ/Δλ = 41, matched within half an element (±0.6 %): 1.65 and 1.70 µm differ, 1.65 and 1.66 µm match.
+    const frames = [at(0, 0, 1.65), at(0, 1, 1.7), at(1, 180, 1.7), at(2, 360, 1.66), at(2, 361, 1.8)]
+    expect(compatiblePair(frames)).toEqual({ a: 0, b: 3 })
+    expect(defaultBlinkPair(frames)).toEqual({ a: 0, b: 3 })
+    // The earlier frame is A whatever the order of the list.
+    expect(compatiblePair([at(2, 360, 1.65), at(0, 0, 1.65)])).toEqual({ a: 1, b: 0 })
+    // Equal baselines: the epochs further apart.
+    expect(compatiblePair([at(0, 0, 1.65), at(1, 0, 1.65), at(2, 0, 1.65)])).toEqual({ a: 0, b: 2 })
+  })
+
+  it('has no compatible pair within one epoch, across wavelengths or with unknown wavelengths', () => {
+    expect(compatiblePair([0, 0].map((e) => ({ ...frame(e), wavelength_um: 1.65 })))).toBeNull()
+    expect(compatiblePair([{ ...frame(0), wavelength_um: 1.65 }, { ...frame(1), wavelength_um: 1.75 }])).toBeNull()
+    expect(compatiblePair([frame(0), frame(1)])).toBeNull()
+  })
+
   it('uses the last frame as B with one epoch and no pair with one frame', () => {
     expect(defaultBlinkPair([0, 0, 0].map((e) => frame(e)))).toEqual({ a: 0, b: 2 })
     expect(defaultBlinkPair([frame(0)])).toBeNull()
@@ -50,5 +68,10 @@ describe('blink helpers', () => {
     expect(lambdaText({ ...frame(0), wavelength_um: 1.652, bandwidth_um: 0.04 })).toBe('λ 1.65 ± 0.02 µm')
     expect(releaseLabel('spherex_dr1')).toBe('SPHEREx DR1 (spherex_dr1)')
     expect(releaseLabel('TEST_FIXTURE')).toBe('TEST_FIXTURE')
+    // A search over several releases lists them instead of the raw comma-joined collection names.
+    expect(releaseLabel('spherex_dr1,spherex_dr1_deep,spherex_qr3,spherex_qr3_deep')).toBe('SPHEREx DR1 · DR1 deep · QR3 · QR3 deep')
+    expect(releaseLabel('spherex_dr1,TEST')).toBe('spherex_dr1,TEST')
+    expect(frameRelease({ release: 'QR3' }, 'spherex_dr1,spherex_qr3')).toBe('SPHEREx QR3')
+    expect(frameRelease({}, 'spherex_dr1')).toBe('SPHEREx DR1 (spherex_dr1)')
   })
 })

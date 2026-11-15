@@ -1,0 +1,41 @@
+[project]
+name = "spherex-blink-backend"
+version = "0.1.0"
+description = "FastAPI backend: finds real SPHEREx observations, aligns cutouts, builds blink/difference frames and spectra."
+requires-python = ">=3.11"
+dependencies = [
+    "fastapi>=0.115",
+    "uvicorn[standard]>=0.30",
+    "httpx>=0.27",
+    "numpy>=1.26",
+    "astropy>=6.1",
+    "astroquery>=0.4.7",
+    "reproject>=0.13",
+    "photutils>=1.12",
+    "pillow>=10.4",
+    "pydantic>=2.7",
+    "pydantic-settings>=2.3",
+    "mcp>=2.3.0,<3",
+]
+
+[dependency-groups]
+dev = ["pytest>=8", "pytest-asyncio>=0.23", "ruff>=0.5", "mypy>=1.10"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "B", "UP", "N", "SIM", "RUF"]
+# Greek letters, primes and × are intentional in scientific user-facing text.
+ignore = ["RUF001", "RUF002", "RUF003"]
+
+[tool.ruff.lint.per-file-ignores]
+"scripts/*" = ["E402"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+asyncio_mode = "auto"
+asyncio_default_fixture_loop_scope = "function"
+addopts = "-m 'not network'"
+markers = ["network: test hits real IRSA/CDS services (deselect with -m 'not network')"]

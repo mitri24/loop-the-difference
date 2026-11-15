@@ -45,7 +45,7 @@ async function pngSize(url: string) {
 
 export type LayerState = 'loaded' | 'failed'
 
-// One image layer per frame (or difference), all loaded once; `index` only switches opacity.
+// Only the current frame becomes a GPU layer; other images load when selected.
 // Returns per index whether its layer reached the sky, so a caption never names a missing frame.
 export function useFrameLayers(
   aladin: AladinInstance | null,
@@ -70,16 +70,18 @@ export function useFrameLayers(
 
   useEffect(() => {
     if (!aladin || !manifest || !enabled) return
-    const urls = manifest[kind].slice(0, MAX_LAYERS).map((item) => item.url)
-    const names = layerNames(urls.length)
+    const item = manifest[kind][index]
+    if (!item) return
+    const urls = [item.url]
+    const names = [`ltd-frame-${String(index).padStart(2, '0')}`]
     const loaded: ImageLayer[] = []
     let disposed = false
 
-    const report = (i: number, state: LayerState) => {
+    const report = (_i: number, state: LayerState) => {
       if (disposed) return
       setStates((old) => ({
         manifest,
-        byIndex: { ...(old.manifest === manifest ? old.byIndex : {}), [i]: state },
+        byIndex: { ...(old.manifest === manifest ? old.byIndex : {}), [index]: state },
       }))
     }
     const run = async () => {
@@ -96,8 +98,8 @@ export function useFrameLayers(
               wcs: gridWcs(manifest, size.width, size.height),
               // Aladin turns an initial opacity of 0 into 1, so it is set once the layer exists.
               successCallback: (_ra, _dec, _fov, added) => {
-                added.setOpacity(i === indexRef.current ? 1 : 0)
-                loaded[i] = added
+                added.setOpacity(index === indexRef.current ? 1 : 0)
+                loaded[index] = added
                 report(i, 'loaded')
                 resolve()
               },
@@ -125,7 +127,7 @@ export function useFrameLayers(
       layers.current = []
       names.forEach((name) => aladin.removeImageLayer(name))
     }
-  }, [aladin, manifest, enabled, kind])
+  }, [aladin, manifest, enabled, kind, index])
 
   return states.manifest === manifest ? states.byIndex : {}
 }

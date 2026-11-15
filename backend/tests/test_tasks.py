@@ -1,12 +1,13 @@
+import httpx
 import numpy as np
 import pytest
 from PIL import Image
 
 from app import sources, tasks
 from app.catalogs import gaia_cache_path, position_at
-from app.frames import target_grid
+from app.frames import Aligned, target_grid
 from app.models import Observation, ProperMotion
-from app.photometry import SKIP_NAN
+from app.photometry import SKIP_EDGE, SKIP_NAN
 from app.tasks import build_frames, build_spectrum, epoch_checks, stack_images, wavelength_checks
 
 RA, DEC, SIZE_DEG = 133.795, -7.245, 0.1
@@ -32,17 +33,58 @@ def test_two_epochs_pass_without_a_check():
     assert epoch_checks(4, 2) == []
 
 
-def test_median_stack_removes_a_cosmic_ray_and_keeps_the_footprint():
+def _aligned(image: np.ndarray, variance: float = 1.0) -> Aligned:
+    return Aligned(image, np.where(np.isnan(image), np.nan, variance), ~np.isnan(image))
+
+
+def test_stack_removes_a_cosmic_ray_and_keeps_the_footprint():
     clean = np.zeros((10, 10))
     clean[:, 0] = np.nan
     hit = clean.copy()
     hit[5, 5] = 1000.0
 
-    stacked = stack_images([clean, hit, clean])
+    stacked = stack_images([_aligned(clean), _aligned(hit), _aligned(clean)])
 
-    assert stacked[5, 5] == 0.0
-    assert np.isnan(stacked[:, 0]).all()
-    assert stack_images([hit]) is hit
+    assert stacked.image[5, 5] == 0.0
+    assert np.isnan(stacked.image[:, 0]).all()
+    assert np.isnan(stacked.variance[:, 0]).all()
+    assert not stacked.covered[:, 0].any()
+    assert stack_images([_aligned(hit)]).image is hit
+
+
+def test_stack_weights_each_exposure_by_its_sky_variance():
+    noisy, quiet, masked = np.full((4, 4), 4.0), np.full((4, 4), 1.0), np.full((4, 4), 2.0)
+    masked[0, 0] = np.nan
+
+    stacked = stack_images([_aligned(noisy, 4.0), _aligned(quiet, 1.0), _aligned(masked, 2.0)])
+
+    # Weights 1/4, 1 and 1/2 (none of the three is clipped: all lie within 3σ of the median 2).
+    assert stacked.image[1, 1] == pytest.approx((4 / 4 + 1 + 2 / 2) / (1 / 4 + 1 + 1 / 2))
+    assert stacked.variance[1, 1] == pytest.approx(1 / (1 / 4 + 1 + 1 / 2))
+    assert stacked.image[0, 0] == pytest.approx((4 / 4 + 1) / (1 / 4 + 1))
+    assert stacked.variance[0, 0] == pytest.approx(1 / (1 / 4 + 1))
+
+
+def test_a_stars_own_photon_noise_does_not_pull_its_stack_down():
+    # Same sky, so equal weights; the star's VARIANCE grows with its brightness in each exposure.
+    exposures = []
+    for level in (900.0, 1000.0, 1100.0):
+        image = np.zeros((5, 5))
+        image[2, 2] = level
+        exposures.append(Aligned(image, 1.0 + image / 10, np.ones((5, 5), dtype=bool)))
+
+    stacked = stack_images(exposures)
+
+    assert stacked.image[2, 2] == pytest.approx(1000.0)  # 1/VARIANCE per pixel gave 993.4
+    assert stacked.variance[2, 2] == pytest.approx((91 + 101 + 111) / 9)
+    assert stacked.variance[0, 0] == pytest.approx(1 / 3)
+
+
+def test_a_bright_star_that_differs_between_exposures_is_not_clipped():
+    # Each exposure sees the star at its own wavelength: up to 25 % apart, far beyond its noise.
+    star = [_aligned(np.full((3, 3), level)) for level in (900.0, 1000.0, 1050.0, 1250.0)]
+
+    assert stack_images(star).image[1, 1] == pytest.approx(1050.0)
 
 
 def _observation(mjd: float) -> Observation:
@@ -83,17 +125,20 @@ def _offline_archive(monkeypatch, settings, tmp_path, observations, flagged_targ
         unusable = np.zeros(shape, dtype=bool)
         unusable[:3] = True
         if flagged_target and path.name == "100.fits":
-            unusable[shape[0] // 2, shape[1] // 2] = True
-        return data, target, unusable
+            unusable[shape[0] // 2 + 1, shape[1] // 2] = True
+        data[unusable] = np.nan
+        return data, np.where(unusable, np.nan, 1.0), target, unusable
 
     monkeypatch.setattr(tasks, "read_image", read_image)
+    # The synthetic cutouts carry no ePSF table.
+    monkeypatch.setattr(tasks, "aperture_correction", lambda path, ra, dec: None)
     # Each visit sees the target through another part of the filter: λ grows with the MJD.
     monkeypatch.setattr(
         tasks, "wavelength_at", lambda path, ra, dec: (4.5 + int(path.stem) / 1000, 0.035)
     )
 
 
-def test_stacked_job_yields_one_median_frame_per_epoch(monkeypatch, settings, tmp_path):
+def test_stacked_job_yields_one_frame_per_epoch(monkeypatch, settings, tmp_path):
     observations = [_observation(start + i) for start in (100, 290, 470) for i in range(3)]
     _offline_archive(monkeypatch, settings, tmp_path, observations)
 
@@ -163,8 +208,9 @@ def test_exposure_job_numbers_the_epoch_of_every_frame(monkeypatch, settings, tm
         (1, 1, None),
     ]
     assert [f["obs_id"] for f in frames] == [o.obs_id for o in observations]
+    # The three flagged rows, and pixels of the next row that bilinear resampling touches them with.
     rows = target_grid(RA, DEC, SIZE_DEG)[1][0]
-    assert all(f["masked_fraction"] == round(3 / rows, 3) for f in frames)
+    assert all(3 / rows <= f["masked_fraction"] <= 4 / rows for f in frames)
     flagged = [c for c in manifest["checks"] if c["code"] == "FLAGGED_PIXELS"]
     assert [(c["severity"], c["affects"]) for c in flagged] == [("warning", ["obs:obs-100"])]
     # Without stacking the cosmic ray in exposure 100 stays visible.
@@ -173,12 +219,76 @@ def test_exposure_job_numbers_the_epoch_of_every_frame(monkeypatch, settings, tm
     assert manifest["differences"] == []
 
 
+def test_frames_carry_the_archive_metadata_and_a_stack_combines_it(monkeypatch, settings, tmp_path):
+    shared = {
+        "exposure_s": 113.5826,
+        "spatial_resolution_arcsec": 3.075,
+        "resolving_power": 127.8,
+        "calib_level": 2,
+        "instrument_name": "SPHEREx",
+        "facility_name": "SPHEREx",
+        "pixel_scale_arcsec": 6.15,
+    }
+    observations = [
+        _observation(mjd).model_copy(
+            update={
+                **shared,
+                "start_mjd": mjd - 0.0007,
+                "end_mjd": mjd + 0.0007,
+                "publisher_did": f"ivo://irsa.ipac/spherex_dr1?obs-{mjd}/D6",
+                "release_date": f"2026-10-0{i + 1}T12:00:00Z",
+            }
+        )
+        for i, mjd in enumerate([100, 101, 102, 290, 291, 292])
+    ]
+    # Exposure 291 lacks its exposure time and was calibrated to another level.
+    observations[4] = observations[4].model_copy(update={"exposure_s": None, "calib_level": 3})
+    _offline_archive(monkeypatch, settings, tmp_path, observations)
+
+    single = build_frames("job", RA, DEC, SIZE_DEG, 6, 12, stack=False)["frames"]
+    stacks = build_frames("job", RA, DEC, SIZE_DEG, 6, 12, stack=True)["frames"]
+
+    assert (single[0]["exposure_s"], single[0]["start_mjd"], single[0]["end_mjd"]) == (
+        113.5826,
+        100 - 0.0007,
+        100 + 0.0007,
+    )
+    assert [(f["exposure_s"], f["calib_level"]) for f in single[3:]] == [
+        (113.5826, 2),
+        (None, 3),
+        (113.5826, 2),
+    ]
+    first, second = stacks
+    assert first["exposure_s"] == pytest.approx(3 * 113.5826)
+    assert (first["start_mjd"], first["end_mjd"]) == (100 - 0.0007, 102 + 0.0007)
+    # Named by its first exposure, like obs_id; public once its last exposure is.
+    assert first["publisher_did"] == "ivo://irsa.ipac/spherex_dr1?obs-100/D6"
+    assert first["release_date"] == "2026-10-03T12:00:00Z"
+    assert {key: first[key] for key in shared if key != "exposure_s"} == {
+        key: value for key, value in shared.items() if key != "exposure_s"
+    }
+    # A stack claims no value its exposures disagree on or one of them lacks.
+    assert (second["exposure_s"], second["calib_level"], second["resolving_power"]) == (
+        None,
+        None,
+        127.8,
+    )
+
+
 def test_wavelength_spread_beyond_one_resolution_element_blocks_the_difference():
     (check,) = wavelength_checks([4.50, None, 4.60], detector=6)
 
     assert (check.code, check.severity) == ("WAVELENGTH_MISMATCH", "blocker")
     assert check.affects == ["difference"]
     assert "4.500" in check.detail and "4.600" in check.detail
+
+
+def test_wavelength_spread_within_one_resolution_element_warns():
+    (check,) = wavelength_checks([4.50, 4.53], detector=6)  # 0.85 λ/R at R = 128
+
+    assert (check.code, check.severity) == ("WAVELENGTH_CLOSE", "warning")
+    assert check.affects == ["difference"]
+    assert "0.85 resolution elements" in check.detail
 
 
 def test_matching_wavelengths_pass_without_a_check():
@@ -219,6 +329,48 @@ def test_spectrum_has_one_point_per_visit_of_every_detector(monkeypatch, setting
     assert spectrum["checks"][-1]["detail"] == (
         f"2 visits skipped: 1 {SKIP_NAN}, 1 no WCS-WAVE table"
     )
+
+
+@pytest.mark.parametrize(
+    ("factors", "fluxes"),
+    [
+        ({"100": 1.25, "290": 1.5}, [(62.5, 2.5), (60.0, 4.5)]),
+        ({"100": 1.25}, [(50.0, 2.0), (40.0, 3.0)]),
+    ],
+)
+def test_spectrum_is_corrected_to_total_flux_only_when_every_visit_has_an_epsf(
+    monkeypatch, settings, tmp_path, factors, fluxes
+):
+    _offline_archive(monkeypatch, settings, tmp_path, [_observation(100), _observation(290)])
+    measured = {"100": (50.0, 2.0, False), "290": (40.0, 3.0, False)}
+    monkeypatch.setattr(tasks, "forced_photometry", lambda path, ra, dec: measured[path.stem])
+    monkeypatch.setattr(tasks, "aperture_correction", lambda path, ra, dec: factors.get(path.stem))
+    monkeypatch.setattr(tasks, "find_proper_motion", lambda ra, dec, strict, cache_dir: None)
+
+    spectrum = build_spectrum(RA, DEC)
+
+    assert [(p["flux_ujy"], p["flux_err_ujy"]) for p in spectrum["points"]] == fluxes
+    (method,) = [c for c in spectrum["checks"] if c["code"] == "QUICK_LOOK_SPECTRUM"]
+    assert ("corrected to total flux" in method["detail"]) is (len(factors) == 2)
+
+
+def test_only_measured_points_are_corrected(monkeypatch, settings, tmp_path):
+    _offline_archive(monkeypatch, settings, tmp_path, [_observation(100), _observation(290)])
+    measured = {"100": (50.0, 2.0, False), "290": SKIP_EDGE}
+    monkeypatch.setattr(tasks, "forced_photometry", lambda path, ra, dec: measured[path.stem])
+
+    def correction(path, ra, dec):
+        assert path.stem == "100", "a target off the cutout has no aperture to correct"
+        return 1.25
+
+    monkeypatch.setattr(tasks, "aperture_correction", correction)
+    monkeypatch.setattr(tasks, "find_proper_motion", lambda ra, dec, strict, cache_dir: None)
+
+    spectrum = build_spectrum(RA, DEC)
+
+    assert [(p["flux_ujy"], p["flux_err_ujy"]) for p in spectrum["points"]] == [(62.5, 2.5)]
+    assert spectrum["checks"][0]["code"] == "QUICK_LOOK_SPECTRUM"
+    assert "(×1.25–1.25, total within ±3.2 px)" in spectrum["checks"][0]["detail"]
 
 
 def test_spectrum_follows_a_star_with_proper_motion_to_each_visit(monkeypatch, settings, tmp_path):
@@ -288,7 +440,7 @@ def test_every_frame_lists_its_sources_with_png_pixel_positions(monkeypatch, set
 
     def read_image(path):
         noise = np.random.default_rng(int(path.stem)).normal(0.0, 1.0, shape)
-        return noise + star, target, np.zeros(shape, dtype=bool)
+        return noise + star, np.ones(shape), target, np.zeros(shape, dtype=bool)
 
     monkeypatch.setattr(tasks, "read_image", read_image)
     monkeypatch.setattr(sources, "query_gaia", lambda *_: [])
@@ -296,7 +448,7 @@ def test_every_frame_lists_its_sources_with_png_pixel_positions(monkeypatch, set
 
     manifest = build_frames("job", RA, DEC, SIZE_DEG, 6, 12, stack=False)
 
-    assert manifest["pipeline_version"] == 10
+    assert manifest["pipeline_version"] == tasks.PIPELINE_VERSION
     for frame in manifest["frames"]:
         (source,) = frame["sources"]
         assert source["match"] == "none"
@@ -347,3 +499,60 @@ def test_a_deep_field_of_the_same_release_is_no_mix(monkeypatch, settings, tmp_p
     codes = [c["code"] for c in manifest["checks"]]
     assert "MIXED_RELEASES" not in codes
     assert "RELEASE_UNAVAILABLE" not in codes
+
+
+def test_preview_is_published_before_slow_cutout(monkeypatch, settings, tmp_path):
+    from threading import Event
+
+    from app.models import FrameManifest
+
+    observations = [_observation(100), _observation(290), _observation(470)]
+    _offline_archive(monkeypatch, settings, tmp_path, observations)
+    published = Event()
+    original_render = tasks._render_frames
+    previews = []
+
+    def render(*args, **kwargs):
+        result = original_render(*args, **kwargs)
+        if kwargs.get("preview"):
+            path = settings.cache_dir / "frames" / "job" / "preview.json"
+            preview = FrameManifest.model_validate_json(path.read_text())
+            assert preview.preview and not preview.complete and not preview.stacked
+            assert not preview.differences
+            assert not (path.parent / "manifest.json").exists()
+            assert all("preview_" in f.url for f in preview.frames)
+            assert any(c.code == "PREVIEW" for c in preview.checks)
+            previews.append(result)
+            published.set()
+        return result
+
+    def fetch(client, url, directory):
+        if "/100.fits" in url:
+            assert published.wait(3), "a slow first request blocked ready observations"
+        return tmp_path / url.split("?")[0].rsplit("/", 1)[1]
+
+    monkeypatch.setattr(tasks, "_render_frames", render)
+    monkeypatch.setattr(tasks, "fetch_cutout", fetch)
+    final = build_frames("job", RA, DEC, SIZE_DEG, 6, 12, stack=True)
+    assert previews
+    assert final["complete"] and not final["preview"] and final["stacked"]
+    assert [f["obs_id"] for f in final["frames"]] == [o.obs_id for o in observations]
+    assert all("preview_" not in f["url"] for f in final["frames"])
+    assert "PREVIEW" not in [c["code"] for c in final["checks"]]
+
+
+def test_missing_cutout_says_why_the_archive_did_not_deliver(monkeypatch, settings):
+    def fetch(client, url, directory):
+        raise httpx.ReadTimeout("slow")
+
+    monkeypatch.setattr(tasks, "fetch_cutout", fetch)
+    observation = _observation(61000)
+
+    downloaded, checks = tasks.download_cutouts([observation], [observation.access_url], settings)
+
+    assert downloaded == []
+    assert [c.code for c in checks] == ["CUTOUT_MISSING"]
+    assert f"no answer within {settings.http_timeout_s:g} s, after 5 attempts" in checks[0].detail
+    assert checks[0].detail.startswith(
+        f"{observation.obs_id}: archive did not deliver the cutout ("
+    )

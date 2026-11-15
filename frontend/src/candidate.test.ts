@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import {
-  CANDIDATE_STATES, OUTSIDE_FRAME, VERDICTS, addMark, candidateState, insideFrame, markText, sigmaFor, snapMark,
+  CANDIDATE_STATES, OUTSIDE_FRAME, VERDICTS, addMark, candidateState, insideFrame, markText, placeLinkMarks, sigmaFor, snapMark,
   type Mark,
 } from './candidate'
 import { NOT_LISTED, NOT_REACHABLE } from './knownObjects'
@@ -24,7 +24,7 @@ describe('snapMark', () => {
   it('takes the nearest detection within two pixels with its σ', () => {
     const m = snapMark(frame('f1', 61000, [far, near]), 10, dec, SCALE)
     expect(m.source).toBe(near)
-    expect([m.ra, m.dec, m.sigma_arcsec]).toEqual([near.ra, dec, 1])
+    expect([m.ra, m.dec, m.sigma_arcsec]).toEqual([near.ra, dec, 0.6])
   })
 
   it('keeps the click with σ 3″ when nothing lies within 12.3″', () => {
@@ -43,12 +43,18 @@ describe('snapMark', () => {
   it('writes the evidence of a snapped mark', () => {
     const m = snapMark(frame('f1', 61000, [source(308.52331, -22.89019, 122)]), 308.5233, -22.8902, SCALE)
     expect(markText(m, 'A')).toBe(
-      'A · 2026-04-25 21:55 UTC · RA 308.52331° Dec −22.89019° ± 1.0″ · × No catalogue match – needs verification (S/N 122)')
+      'A · 2026-04-25 21:55 UTC · RA 308.52331° Dec −22.89019° ± 0.6″ · × No catalogue match – needs verification (S/N 122)')
   })
 })
 
-it('σ per axis follows S/N', () => {
-  expect([null, 5, 19.9, 20, 299, 300].map(sigmaFor)).toEqual([3, 1.5, 1.5, 1, 1, 6])
+it('σ per axis follows S/N, and a saturated core placed by its rim scatters more', () => {
+  expect([null, 5, 9.9, 10, 300].map((snr) => sigmaFor(snr))).toEqual([3, 1.2, 1.2, 0.6, 0.6])
+  expect([sigmaFor(8, true), sigmaFor(300, true), sigmaFor(null, true)]).toEqual([2.5, 2.5, 3])
+})
+
+it('a mark on a saturated detection takes its larger σ', () => {
+  const star = { ...source(308.52331, -22.89019, 8), saturated: true }
+  expect(snapMark(frame('f1', 61000, [star]), 308.5233, -22.8902, SCALE).sigma_arcsec).toBe(2.5)
 })
 
 it('insideFrame accepts the corners and refuses just outside', () => {
@@ -100,4 +106,29 @@ it('candidate state precedence: known body > catalogue star (unless fast) > moti
 it('no state or verdict claims a result', () => {
   const words = [...Object.values(CANDIDATE_STATES).map((s) => s.word), ...VERDICTS, NOT_LISTED, NOT_REACHABLE]
   for (const word of words) expect(word).not.toMatch(/\b(confirmed|real|discovery|new object)\b/i)
+})
+
+describe('placeLinkMarks', () => {
+  const detection = source(10.002, 60, 122)
+  const manifest = { ra: 10, dec: 60, size_deg: 0.2, pixel_scale_arcsec: SCALE,
+    frames: [frame('a', 61000, [detection]), frame('b', 61001), frame('c', 61000.0001)] }
+
+  it('finds the detection again and keeps a clicked position, A the earlier', () => {
+    const { marks, missing } = placeLinkMarks(manifest, [{ obs_id: 'b', ra: 10.01, dec: 60 }, { obs_id: 'a', ra: 10.002, dec: 60 }])
+    expect(missing).toBe(0)
+    expect(marks.map((m) => m.obs_id)).toEqual(['a', 'b'])
+    expect(marks[0].source).toBe(detection)
+    expect(marks[1]).toMatchObject({ ra: 10.01, dec: 60, sigma_arcsec: 3 })
+    expect(marks[1].source).toBeUndefined()
+  })
+
+  it('counts marks whose frame is not in this comparison or that break the rules', () => {
+    expect(placeLinkMarks(manifest, [{ obs_id: 'x', ra: 10, dec: 60 }, { obs_id: 'a', ra: 10, dec: 60 }]))
+      .toMatchObject({ missing: 1, marks: [{ obs_id: 'a' }] })
+    // c is less than a minute after a: the second mark is refused, as a click would be.
+    expect(placeLinkMarks(manifest, [{ obs_id: 'a', ra: 10, dec: 60 }, { obs_id: 'c', ra: 10, dec: 60 }]).missing).toBe(1)
+    // An edited link: a position outside the frame never feeds the track.
+    expect(placeLinkMarks(manifest, [{ obs_id: 'a', ra: 10, dec: 60 }, { obs_id: 'b', ra: 11, dec: 60 }]))
+      .toMatchObject({ missing: 1, marks: [{ obs_id: 'a' }] })
+  })
 })

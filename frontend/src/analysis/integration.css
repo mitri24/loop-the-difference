@@ -1,0 +1,68 @@
+.reference-analysis { min-width:0; padding-top:var(--space-4); border-top:1px solid var(--border); color:var(--text-primary); }
+.reference-analysis .analysis-setup { display:grid; grid-template-columns:minmax(0,1fr); gap:var(--space-3); }
+.reference-analysis select,.reference-analysis input { max-width:100%; min-width:0; }
+.reference-analysis .blink__image-wrap,.reference-analysis .diff__main { min-width:0; }
+.reference-analysis .diff__row { display:grid; grid-template-columns:minmax(0,1fr); }
+.reference-analysis .diff__thumb { display:none; }
+.reference-analysis .diff__main { margin:0; }
+.reference-analysis .plot { max-width:100%; }
+.reference-analysis .plot svg { max-width:100%; }
+.reference-analysis .meta-grid { grid-template-columns:minmax(0,1fr); }
+.reference-analysis .meta-grid dd { margin:0 0 var(--space-2); overflow-wrap:anywhere; }
+.reference-analysis .diff__pickers { display:flex; flex-direction:column; }
+.reference-analysis .archive__thumbs { grid-template-columns:repeat(auto-fit,minmax(min(100%,100px),1fr)); }
+.reference-analysis button { flex-shrink:0; }
+.reference-analysis .residual { cursor:pointer; }
+
+.reference-analysis.standalone { border-top:0; padding-top:0; }
+.reference-analysis > .h3 { margin-top:0; }
+.reference-analysis .diff__pickers { align-items:stretch; }
+.reference-analysis .diff__pickers .field { width:100%; }
+.reference-analysis .diff__pickers > .btn { align-self:stretch; }
+
+
+/* Image / metadata / thumbnail rail share one selected frame. */
+.reference-analysis { container-type:inline-size; }
+.reference-analysis .blink { display:grid; grid-template-columns:minmax(0,1fr) 84px; grid-template-areas:'image thumbs' 'controls thumbs' 'metadata thumbs'; gap:12px; align-items:start; }
+.reference-analysis .blink__stage { grid-area:image; min-width:0; }
+.reference-analysis .blink__stage .blink__image-wrap { width:100%; max-width:none; }
+.reference-analysis .blink__controls { grid-area:controls; min-width:0; margin:0; justify-content:flex-start; }
+.reference-analysis .blink__metadata { grid-area:metadata; min-width:0; }
+.reference-analysis .blink__metadata h3 { margin:0 0 12px; font-size:14px; }
+.reference-analysis .blink .filmstrip { grid-area:thumbs; position:sticky; top:0; flex-direction:column; align-items:stretch; max-height:65dvh; overflow-x:hidden; overflow-y:auto; margin:0; padding:2px; scrollbar-width:thin; }
+.reference-analysis .filmstrip li { flex:none; }
+.reference-analysis .filmstrip__item { width:100%; min-width:0; padding:2px; }
+.reference-analysis .filmstrip__item img { width:100%; height:auto; aspect-ratio:1; object-fit:contain; }
+.reference-analysis .blink .meta-grid { grid-template-columns:minmax(0,1fr); }
+.reference-analysis .blink .meta-grid dd { margin:0 0 10px; }
+.reference-analysis .blink .src-link { display:block; }
+@container (min-width:760px) {
+  .reference-analysis .blink { grid-template-columns:minmax(0,1fr) 250px 92px; grid-template-areas:'image metadata thumbs' 'controls metadata thumbs'; gap:16px; }
+  .reference-analysis .blink__metadata { max-height:70dvh; overflow-y:auto; padding-right:8px; scrollbar-width:thin; }
+}
+.reference-analysis .blink__stage .blink__image-wrap { width:min(100%, max(180px, calc(100dvh - 380px))); }
+/* Compact rail starts exactly at the image top; only its own contents scroll. */
+.reference-analysis .blink { grid-template-columns:64px minmax(0,1fr); grid-template-areas:'thumbs image' '. controls' 'metadata metadata'; gap:10px; }
+.reference-analysis .blink__thumbnails { grid-area:thumbs; position:relative; min-height:0; overflow:hidden; align-self:stretch; }
+.reference-analysis .blink .filmstrip { position:absolute; inset:0; max-height:none; height:auto; padding:2px; }
+.reference-analysis .blink__metadata { max-height:240px; overflow:auto; padding-right:6px; scrollbar-width:thin; }
+.reference-analysis .blink .meta-grid { grid-template-columns:minmax(0,100px) minmax(0,1fr); gap:6px 10px; }
+.reference-analysis .blink .meta-grid dd { margin:0; }
+@container (min-width:760px) {
+  .reference-analysis .blink { --selected-image-size:min(100cqw - 354px, max(180px, 100dvh - 380px)); grid-template-columns:72px minmax(0,1fr) 250px; grid-template-areas:'thumbs image metadata' '. controls .'; gap:16px; }
+  .reference-analysis .blink__stage .blink__image-wrap { width:var(--selected-image-size); max-width:100%; }
+  .reference-analysis .blink__metadata { max-height:var(--selected-image-size); }
+}
+@container (min-width:760px) {
+  .reference-analysis .blink { grid-template-columns:72px minmax(0,var(--selected-image-size)) minmax(0,1fr); }
+}
+.reference-analysis .blink__controls input[type="checkbox"] { width:16px; height:16px; min-height:0; flex:none; }
+
+/* Same chart ink as the side menu's own charts (styles.css .viz): 11 px ticks, 12 px axis titles and legend. */
+.reference-analysis .plot__tick { font-size:11px; }
+.reference-analysis .plot__axis-label { font-size:var(--text-xs); }
+.reference-analysis .plot__legend { font-size:var(--text-xs); }
+.reference-analysis .plot__table-toggle { min-height:26px; border-color:var(--border); border-radius:var(--radius-sm); font-size:var(--text-xs); color:var(--text-secondary); }
+.reference-analysis .plot__table-toggle[aria-pressed='true'] { color:var(--accent); border-color:var(--accent); }
+/* Buttons keep the menu's corner radius, so analysis and original controls look like one set. */
+.reference-analysis .btn { border-radius:5px; }

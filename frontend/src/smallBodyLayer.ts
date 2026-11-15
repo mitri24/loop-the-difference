@@ -11,6 +11,12 @@ export const MAX_GAP_DAYS = 1
 
 export const markerLabel = (name: string) => `known asteroid/comet: ${name}`
 
+/** The SBIdent request names the observer: SPHEREx's position (xobs), else the Earth's centre. */
+export const observerText = (epoch: SmallBodyEpoch) =>
+  /[?&]xobs=/.test(epoch.source_url)
+    ? 'seen from SPHEREx'
+    : 'seen from the Earth’s centre – JPL Horizons gave no SPHEREx position'
+
 /** The answered epoch closest to the frame's time, if it lies within MAX_GAP_DAYS. */
 export function epochFor(epochs: SmallBodyEpoch[], mjd: number): SmallBodyEpoch | null {
   let best: SmallBodyEpoch | null = null
@@ -40,7 +46,7 @@ export function smallBodyMarkers(epoch: SmallBodyEpoch, mjd: number) {
       'RA rate (″/h)': body.ra_rate.toFixed(2),
       'Dec rate (″/h)': body.dec_rate.toFixed(2),
       'Looked up for (UTC)': epoch.date,
-      Source: 'NASA/JPL SBIdent, geocentric',
+      Source: `NASA/JPL SBIdent, ${observerText(epoch)}`,
     },
   }))
 }

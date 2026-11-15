@@ -32,3 +32,13 @@ export const CHALLENGE_TARGETS: ChallengeTarget[] = [
 export function presetView(target: ChallengeTarget, draft: TargetQuery): TargetQuery {
   return { ...draft, band: target.band ?? draft.band, fov: target.fov ?? draft.fov }
 }
+
+// The example a position belongs to, by its exact preset coordinates.
+export function exampleLabel(target: Pick<TargetQuery, 'ra' | 'dec'>): string | undefined {
+  return CHALLENGE_TARGETS.find((t) => 'ra' in t && t.ra === target.ra && t.dec === target.dec)?.label
+}
+
+// The one place that names a comparison is the search field: its name, the example's label or its coordinates.
+export function targetText(target: TargetQuery): string {
+  return target.name ?? exampleLabel(target) ?? `${target.ra}, ${target.dec}`
+}

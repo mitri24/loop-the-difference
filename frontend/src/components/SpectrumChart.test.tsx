@@ -54,10 +54,12 @@ describe('SpectrumChart', () => {
       <Plot points={[point(0, 2.0, 5, 1), { ...point(1, 2.1, 6, 1), detector: 3 }]} />,
     )
 
-    expect(html.match(/<circle/g)).toHaveLength(1)
-    expect(html).toContain('stroke="var(--band-d3)"')
-    expect(html).toContain('D3')
-    expect(html).toContain('■ Epoch 2')
+    // Marks only (legend swatches and hover targets have their own classes): epoch 1 a circle, epoch 2 a square.
+    expect(html.match(/<circle class="viz-mark"/g)).toHaveLength(1)
+    expect(html.match(/<rect class="viz-mark"/g)).toHaveLength(1)
+    expect(html).toContain('fill="var(--band-d3)"')
+    expect(html).toContain('D3</li>')
+    expect(html).toContain('Epoch 2 (')
   })
 
   it('draws a single point with one tick per axis and links it to its cutout', () => {
@@ -67,11 +69,23 @@ describe('SpectrumChart', () => {
     expect(html).toContain('href="https://irsa.example/cutout"')
   })
 
-  it('starts on request and says it is a quick-look spectrum', () => {
-    const html = renderToStaticMarkup(<SpectrumChart ra="76.956" dec="30.401" />)
+  it('measures on request, one measurement for brightness over time and the spectrum', () => {
+    const quick = { job: null, error: null, running: false, spectrum: null, start: () => undefined }
+    const html = renderToStaticMarkup(<SpectrumChart quick={quick} centerUm={1.65} detector={3} />)
+    expect(html).toContain('aria-label="Quick-look photometry"')
+    expect(html).toContain('Measure the target in all SPHEREx visits')
+  })
 
-    expect(html).toContain('Quick-look spectrum')
-    expect(html).toContain('Build quick-look spectrum')
+  it('shows brightness over time before the spectrum, with the quick-look caveat', () => {
+    const points = [point(0, 1.65, 10, 1), point(1, 1.66, 12, 1), point(2, 2.4, 9, 1)]
+    const spectrum = { collection: 'spherex_dr1', ra: 1, dec: 2, complete: true, points, checks: [] }
+    const quick = { job: { job_id: 's', status: 'finished' as const, progress: 3, total: 3, error: null, spectrum },
+      error: null, running: false, spectrum, start: () => undefined }
+    const html = renderToStaticMarkup(<SpectrumChart quick={quick} centerUm={1.65} detector={3} />)
+    expect(html.indexOf('Brightness at the target over time')).toBeGreaterThan(-1)
+    expect(html.indexOf('Brightness at the target over time')).toBeLessThan(html.indexOf('Flux at the target by wavelength'))
+    expect(html).toContain('Quick-look only')
+    expect(html).not.toContain('Measure the target in all SPHEREx visits')
   })
 
   it('counts missing cutouts for the retry and keeps the other notes', () => {
@@ -97,7 +111,7 @@ describe('SpectrumChart', () => {
   it('draws the same exposure on two detectors as two points', () => {
     const twice = [point(0, 2.0, 5, 1), { ...point(0, 2.0, 5, 1), detector: 6, wavelength_um: 4.4 }]
 
-    expect(renderToStaticMarkup(<Plot points={twice} />).match(/<circle/g)).toHaveLength(2)
+    expect(renderToStaticMarkup(<Plot points={twice} />).match(/<circle class="viz-mark"/g)).toHaveLength(2)
   })
 
   it('draws a point with flagged aperture pixels hollow and says so', () => {
@@ -105,20 +119,21 @@ describe('SpectrumChart', () => {
       <Plot points={[point(0, 2.0, 5, 1), { ...point(0, 3.0, 5, 1), flagged: true }]} />,
     )
 
-    expect(html.match(/fill="var\(--bg\)"/g)).toHaveLength(1)
+    // Hollow = the chart surface inside, the band colour as outline.
+    expect(html.match(/class="viz-mark"[^>]*fill="var\(--surface-1\)"/g)).toHaveLength(1)
     expect(html).toContain('flagged pixels in aperture, flux unreliable')
-    expect(html).toContain('○ flagged pixels in aperture')
+    expect(html).toContain('flagged pixels in aperture</li>')
   })
 
   it('draws a point beyond the flux axis as an arrow on the edge and explains it', () => {
     const saturated = { ...point(0, 3.0, 125000, 10), flagged: true }
     const html = renderToStaticMarkup(<Plot points={[point(0, 2.0, 5, 1), saturated]} />)
 
-    expect(html.match(/<circle/g)).toHaveLength(1)
-    expect(html.match(/<path d="M[^"]+" fill="var\(--bg\)"/g)).toHaveLength(1)
+    expect(html.match(/<circle class="viz-mark"/g)).toHaveLength(1)
+    expect(html.match(/<path class="viz-mark" d="M[^"]+"[^>]*fill="var\(--surface-1\)"/g)).toHaveLength(1)
     expect(html).toContain('125000.0 ± 10.0 µJy')
     expect(html).toContain('beyond the flux axis · open the cutout')
-    expect(html).toContain('▲▼ beyond the flux axis, value and epoch in the tooltip')
+    expect(html).toContain('beyond the flux axis (value in the tooltip)')
   })
 
   it('tells above from below the axes', () => {
@@ -132,6 +147,6 @@ describe('SpectrumChart', () => {
   })
 
   it('shows no arrow legend when every point fits', () => {
-    expect(renderToStaticMarkup(<Plot points={[point(0, 2.0, 5, 1)]} />)).not.toContain('▲▼')
+    expect(renderToStaticMarkup(<Plot points={[point(0, 2.0, 5, 1)]} />)).not.toContain('beyond the flux axis')
   })
 })

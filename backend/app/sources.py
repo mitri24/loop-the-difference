@@ -21,19 +21,31 @@ import httpx
 import numpy as np
 from astropy import units as u
 from astropy.coordinates import SkyCoord
-from astropy.stats import sigma_clipped_stats
+from astropy.stats import gaussian_fwhm_to_sigma, sigma_clipped_stats
 from astropy.table import Table
 from astropy.wcs import WCS
-from photutils.detection import DAOStarFinder
+from photutils.detection import find_peaks
+from photutils.psf import fit_2dgaussian
+from scipy import ndimage
 
 from app.catalogs import GAIA_TAP_URL, position_at
-from app.frames import ROTATION_MARGIN, SPHEREX_PIXEL_SCALE_ARCSEC
+from app.frames import ROTATION_MARGIN, SPHEREX_PIXEL_SCALE_ARCSEC, Aligned
 from app.models import Check, DetectedSource, ProperMotion
 
 # PSF width on the aligned grid, measured: the EPSF extension of a detector-6 cutout is 6.5-7.1
 # samples wide at 5x oversampling (1.3-1.4 detector pixels); resampling onto the grid widens it
 # to 1.62-1.66 px (Gaussian fits to 9 stars in two aligned WISE 0855 frames).
 FWHM_PX = 1.6
+# That PSF over 5×5 pixels (DAOFIND's kernel size at this FWHM), peak 1.
+_R2 = np.add.outer(np.arange(-2, 3) ** 2, np.arange(-2, 3) ** 2)
+PSF = np.exp(-_R2 / (2 * (FWHM_PX * gaussian_fwhm_to_sigma) ** 2))
+# Local sky for detection: the median of the usable pixels in a square this wide (about seven PSF
+# widths) around every pixel. Gradients, halos and nebulae change more slowly than a star.
+SKY_BOX_PX = 11
+# Grid rows whose sky is sorted at once: a whole 1° grid would take 0.6 GB.
+SKY_ROWS = 32
+# The grid edge cuts sources this close to it: no centre.
+EDGE_PX = 2
 THRESHOLD_SIGMA = 5.0
 # Highest peaks per frame; keeps the manifest small in crowded fields.
 MAX_SOURCES = 300
@@ -41,10 +53,10 @@ MAX_SOURCES = 300
 # 1 px keeps them while halving chance alignments against 1.5 px.
 MATCH_RADIUS_PX = 1.0
 MATCH_RADIUS_ARCSEC = MATCH_RADIUS_PX * SPHEREX_PIXEL_SCALE_ARCSEC
-# A saturated core is filled from its neighbours (frames.fill_with_local_median), which moves the
-# centroid of a very bright star by 1-2 px: Barnard's Star landed 7-14″ from its Gaia DR3 place.
-# So stars brighter than these magnitudes claim detections up to 3 px away. Brightness, not S/N:
-# an S/N rule would let faint neighbours absorb bright movers.
+# A very bright star saturates: a masked core too large for a PSF fit is placed by its rim (see
+# detect), which put Barnard's Star 2.6″ (median, at most 7.9″) from Gaia DR3 in 281 real D1-D3
+# exposures. So stars brighter than these magnitudes claim detections up to 3 px away.
+# Brightness, not S/N: an S/N rule would let faint neighbours absorb bright movers.
 BRIGHT_MAG = {"gaia": 10.0, "allwise": 8.0}
 BRIGHT_RADIUS_PX = 3.0
 BRIGHT_RADIUS_ARCSEC = BRIGHT_RADIUS_PX * SPHEREX_PIXEL_SCALE_ARCSEC
@@ -61,6 +73,7 @@ class Detection(NamedTuple):
     y: float  # numpy row (row 0 is south: the PNG is flipped)
     peak: float
     snr: float
+    saturated: bool = False  # placed by the rim of its masked core, see _saturated
 
 
 class CatalogStar(NamedTuple):
@@ -72,33 +85,109 @@ class CatalogStar(NamedTuple):
     motion: ProperMotion | None = None
 
 
-def detect(image: np.ndarray) -> tuple[list[Detection], bool]:
+def detect(frame: Aligned) -> tuple[list[Detection], bool]:
     """Point sources at least THRESHOLD_SIGMA above the noise, highest peak first; True if capped.
 
-    The frame is already background-subtracted (frames.align); NaN marks sky outside the cutout.
+    The local sky goes first. Then at every pixel the PSF is fitted to the usable pixels around
+    it, weighted by the inverse variance: peak is the fitted height, snr its significance. Masked
+    pixels never enter, so a masked core moves no centroid. The VARIANCE planes leave out
+    resampling and faint unresolved stars, so the S/N map is scaled to unit scatter (a median
+    absolute deviation, which sources barely move), as SExtractor scales weight maps.
     """
-    blank = ~np.isfinite(image)
-    _, median, std = sigma_clipped_stats(image, sigma=3.0, mask=blank)
-    if not std > 0:
+    usable = np.isfinite(frame.image)
+    if not usable.any():
         return [], False
-    # A source cut by the grid edge has no reliable centroid (two such in real WISE 0855 frames).
-    # min_separation=0: photutils 3 would drop a resolved fainter neighbour within 2.5 FWHM.
-    finder = DAOStarFinder(
-        threshold=THRESHOLD_SIGMA * std, fwhm=FWHM_PX, exclude_border=True, min_separation=0
-    )
+    local = frame._replace(image=frame.image - _local_sky(frame))
+    weight = np.where(usable, 1 / frame.variance, 0.0)
+    fitted = ndimage.correlate(np.where(usable, local.image, 0.0) * weight, PSF, mode="constant")
+    norm = ndimage.correlate(weight, PSF**2, mode="constant")
+    with np.errstate(divide="ignore", invalid="ignore"):
+        peak, snr = fitted / norm, fitted / np.sqrt(norm)
+    scale = sigma_clipped_stats(snr[norm > 0], sigma=3.0, stdfunc="mad_std")[2]
+    if not scale > 0:
+        return [], False
+    snr /= scale
+    # A gap the PSF cannot bridge (sky outside the exposure, a saturated core) and the grid edge
+    # leave the sources they cut without a centre, and a gap's rim would give spurious peaks.
+    gaps, _ = ndimage.label(~usable)
+    large = (gaps > 0) & (np.bincount(gaps.ravel())[gaps] >= PSF.size)
+    near_gap = ndimage.binary_dilation(large, structure=np.ones(PSF.shape, dtype=bool))
     with warnings.catch_warnings():
-        warnings.simplefilter("ignore")  # "no sources found" is an answer, not a problem
-        table = finder(np.where(blank, median, image) - median, mask=blank)
-    if table is None:
-        return [], False
-    table.sort("peak", reverse=True)
-    found = [
-        Detection(float(row["x_centroid"]), float(row["y_centroid"]), float(row["peak"]), 0.0)
-        for row in table
-    ]
-    # The finder's threshold applies to the smoothed frame; list only peaks 5σ above the noise.
-    found = [d._replace(snr=d.peak / std) for d in found if d.peak >= THRESHOLD_SIGMA * std]
-    return found[:MAX_SOURCES], len(found) > MAX_SOURCES
+        warnings.simplefilter("ignore")  # "no peaks found" is an answer, not a problem
+        table = find_peaks(snr, THRESHOLD_SIGMA, box_size=len(PSF), border_width=EDGE_PX)
+    peaks = [] if table is None else list(zip(table["x_peak"], table["y_peak"], strict=True))
+    peaks = sorted((p for p in peaks if not near_gap[p[1], p[0]]), key=lambda p: -peak[p[1], p[0]])
+    # A saturated core is placed by its rim's own light: the local sky would take the halo's share.
+    saturated = _saturated(frame, gaps, large, snr)
+    found = saturated + _centroids(local, peaks[:MAX_SOURCES], peak, snr)
+    found.sort(key=lambda d: d.peak, reverse=True)
+    return found[:MAX_SOURCES], len(saturated) + len(peaks) > MAX_SOURCES
+
+
+def _local_sky(frame: Aligned) -> np.ndarray:
+    """Median of the usable pixels in the SKY_BOX_PX square around every pixel, 0 where none."""
+    padded = np.pad(frame.image, SKY_BOX_PX // 2, constant_values=np.nan)
+    windows = np.lib.stride_tricks.sliding_window_view(padded, (SKY_BOX_PX, SKY_BOX_PX))
+    sky = np.zeros(frame.image.shape)
+    for start in range(0, len(sky), SKY_ROWS):
+        block = windows[start : start + SKY_ROWS]
+        ordered = np.sort(block.reshape(*block.shape[:2], -1), axis=-1)  # NaN sorts last
+        count = np.isfinite(ordered).sum(axis=-1, keepdims=True)
+        low = np.take_along_axis(ordered, np.maximum(count - 1, 0) // 2, axis=-1)
+        high = np.take_along_axis(ordered, count // 2, axis=-1)
+        sky[start : start + SKY_ROWS] = np.where(count > 0, (low + high) / 2, 0.0)[..., 0]
+    return sky
+
+
+def _centroids(
+    frame: Aligned, peaks: list[tuple[int, int]], peak: np.ndarray, snr: np.ndarray
+) -> list[Detection]:
+    """Sub-pixel positions from a PSF fit to the usable pixels around each S/N peak."""
+    if not peaks:
+        return []
+    usable = np.isfinite(frame.image)
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")  # a fit that does not converge keeps its peak pixel
+        fit = fit_2dgaussian(
+            frame.image,
+            xypos=peaks,
+            fwhm=FWHM_PX,
+            fit_shape=len(PSF),
+            error=np.sqrt(np.where(usable, frame.variance, 1.0)),
+        ).results
+    found = []
+    for (px, py), fx, fy in zip(peaks, fit["x_fit"], fit["y_fit"], strict=True):
+        x, y = (fx, fy) if max(abs(fx - px), abs(fy - py)) <= 1 else (px, py)
+        found.append(Detection(float(x), float(y), float(peak[py, px]), float(snr[py, px])))
+    return found
+
+
+def _saturated(
+    frame: Aligned, gaps: np.ndarray, large: np.ndarray, snr: np.ndarray
+) -> list[Detection]:
+    """A masked core too large for a PSF fit, inside the footprint, at least EDGE_PX from the grid
+    edge and ringed by significant pixels, is a saturated star: placed at the flux-weighted centre
+    of its 2-px rim. Nearer the edge only part of the rim is left, which would pull it 15-25″.
+
+    Its peak is the brightest usable rim pixel, a lower limit; its snr the rim's median.
+    """
+    inner = np.zeros(gaps.shape, dtype=bool)
+    inner[EDGE_PX:-EDGE_PX, EDGE_PX:-EDGE_PX] = True
+    found = []
+    for label in np.unique(gaps[large]):
+        core = gaps == label
+        rim = ndimage.binary_dilation(core, iterations=2) & np.isfinite(frame.image)
+        if not (inner[core].all() and frame.covered[core].all() and rim.any()):
+            continue
+        significance = float(np.median(snr[rim]))
+        if significance < THRESHOLD_SIGMA:
+            continue
+        flux = np.clip(frame.image[rim], 0.0, None)
+        rows, cols = np.nonzero(rim)
+        x, y = np.average(cols, weights=flux), np.average(rows, weights=flux)
+        peak = float(frame.image[rim].max())
+        found.append(Detection(float(x), float(y), peak, significance, saturated=True))
+    return found
 
 
 def gaia_stars(content: str) -> list[CatalogStar]:
@@ -291,6 +380,7 @@ def label(
                 y=round(shape[0] - 1 - d.y, 2),
                 peak_mjy_sr=round(d.peak, 4),
                 snr=round(d.snr, 1),
+                saturated=d.saturated,
                 match=match,
                 catalog_id=star.catalog_id if star else None,
                 separation_arcsec=round(separation, 2) if star else None,
@@ -302,7 +392,7 @@ def label(
 
 
 def find_sources(
-    images: list[np.ndarray],
+    frames: list[Aligned],
     mjds: list[float],
     grid: WCS,
     shape: tuple[int, int],
@@ -312,9 +402,9 @@ def find_sources(
     cache_dir: Path,
 ) -> tuple[list[list[DetectedSource]], list[Check]]:
     """Sources of every frame, matched against one catalogue query per field; plus their checks."""
-    found = [detect(image) for image in images]
+    found = [detect(frame) for frame in frames]
     if not any(detections for detections, _ in found):
-        return [[] for _ in images], []
+        return [[] for _ in frames], []
     # Half the diagonal of the grid: the cone covers every corner.
     radius_deg = round(size_deg * ROTATION_MARGIN / 2, 4)
     gaia, allwise = field_catalogs(ra, dec, radius_deg, cache_dir)
@@ -356,13 +446,18 @@ def source_checks(
             severity="info",
             message="Sources detected in every frame and compared with catalogues",
             detail=f"{len(labels)} detections in {len(sources)} frames at ≥{THRESHOLD_SIGMA:g}σ "
-            f"(PSF FWHM {FWHM_PX:g} px, at most {MAX_SOURCES} brightest per frame{cap}): "
+            f"in a PSF-matched S/N map (sky measured locally as the {SKY_BOX_PX} px median, so "
+            "extended sources such as comae lose part of their peak; noise from the VARIANCE "
+            "planes, scaled to the measured scatter; masked pixels left out, too large a masked "
+            "core placed by its rim unless the grid edge cuts it; "
+            f"PSF FWHM {FWHM_PX:g} px, at most {MAX_SOURCES} brightest per frame{cap}): "
             f"{counts['gaia']} Gaia DR3 match, {counts['allwise']} AllWISE match, "
             f"{counts['none']} no catalogue match - needs verification, "
             f"{counts['unknown']} unknown. Match radius {MATCH_RADIUS_ARCSEC:.1f}″ "
             f"({MATCH_RADIUS_PX:g} px), for stars brighter than G {BRIGHT_MAG['gaia']:g} / "
-            f"W1 {BRIGHT_MAG['allwise']:g} within {BRIGHT_RADIUS_PX:g} px: saturated cores "
-            "shift the centre. The brightest catalogue source within the radius wins; a match "
+            f"W1 {BRIGHT_MAG['allwise']:g} within {BRIGHT_RADIUS_PX:g} px: their saturated cores "
+            "are masked, only the wings place them. The brightest catalogue source within the "
+            "radius wins; a match "
             "can be a chance alignment. Gaia DR3 positions are moved to each frame's date; AllWISE "
             "positions are from about 2010, so a fast-moving source can miss its match. "
             "Catalogues (chance match = a random position has a source within 1 px): "

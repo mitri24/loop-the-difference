@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { POLARIS, readEmbed, readQuery, toSearch } from './url'
+import { POLARIS, readEmbed, readMarks, readPair, readQuery, toSearch } from './url'
 
 describe('target in the URL', () => {
   it('needs both coordinates', () => {
@@ -64,5 +64,42 @@ describe('target in the URL', () => {
     expect(readQuery(toSearch(barnard))).toEqual(barnard)
     expect(readQuery('?ra=1&dec=2&name=%20')).not.toHaveProperty('name')
     expect(toSearch(POLARIS)).not.toContain('name=')
+  })
+})
+
+describe('candidate marks in the URL', () => {
+  it('round-trip with the frame and the position, obs_ids with colons included', () => {
+    const marks = [
+      { obs_id: '2025W41_2B_0137_3', ra: 38.024731, dec: 89.269481 },
+      { obs_id: 'ivo://irsa/spherex:2025W42_1A_0001_1', ra: 359.5, dec: -12.5 },
+    ]
+    const search = toSearch(POLARIS, false, marks)
+    expect(readQuery(search)).toEqual(POLARIS)
+    expect(readMarks(search)).toEqual(marks)
+  })
+
+  it('drops malformed marks and keeps at most two', () => {
+    expect(readMarks('?mark=abc&mark=:1,2&mark=a:1&mark=a:1,95&mark=a:1,2,3&mark=a:x,2')).toEqual([])
+    expect(readMarks('?mark=a:1,2&mark=b:3,4&mark=c:5,6').map((m) => m.obs_id)).toEqual(['a', 'b'])
+    expect(readMarks('?mark=a:-10,2&mark=b:370,2')).toEqual([{ obs_id: 'a', ra: 350, dec: 2 }, { obs_id: 'b', ra: 10, dec: 2 }])
+  })
+
+  it('stay out of a link without marks', () => {
+    expect(toSearch(POLARIS)).not.toContain('mark')
+  })
+})
+
+describe('the blink pair in a link', () => {
+  it('reads A and B as obs_ids and writes them after the marks', () => {
+    expect(readPair('?ra=1&dec=2&a=obs-a&b=obs-b')).toEqual({ a: 'obs-a', b: 'obs-b' })
+    const search = toSearch({ ra: '1', dec: '2', fov: 0.2, band: 6, mode: 'exposures' }, false, [], { a: 'obs-a', b: 'obs-b' })
+    expect(search).toBe('?ra=1&dec=2&fov=0.2&band=6&a=obs-a&b=obs-b')
+    expect(readPair(search)).toEqual({ a: 'obs-a', b: 'obs-b' })
+  })
+
+  it('ignores a half pair or the same frame twice', () => {
+    expect(readPair('?ra=1&dec=2&a=obs-a')).toBeNull()
+    expect(readPair('?ra=1&dec=2&a=obs-a&b=obs-a')).toBeNull()
+    expect(readPair('?ra=1&dec=2&a=%20&b=obs-b')).toBeNull()
   })
 })

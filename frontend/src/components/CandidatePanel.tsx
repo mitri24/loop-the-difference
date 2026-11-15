@@ -1,25 +1,33 @@
 import type { ReactNode } from 'react'
 import { MARK_LETTERS, markText, type Candidate } from '../candidate'
+import type { DistantTrackState } from '../distantTrack'
 import { trackEvidence, type PossibleTrack } from '../track'
 import { followsTarget } from '../knownObjects'
 import type { Observation } from '../types'
 import { KnownObjectCheck, type KnownContext } from './KnownObjectCheck'
 import { Precovery } from './Precovery'
+import { DistantTrackCheck } from './TrackCheck'
 import { TrackSummary } from './TrackSummary'
 
 interface Props {
-  candidate: Pick<Candidate, 'marks' | 'notice' | 'armed' | 'setArmed' | 'clear'>
+  candidate: Pick<Candidate, 'marks' | 'notice' | 'armed' | 'setArmed' | 'clear'> & Partial<Pick<Candidate, 'verdict' | 'setVerdict'>>
   // Why marking on the sky is off right now; null when it is possible.
   blocked: string | null
   track: PossibleTrack | null
   known: KnownContext
   children?: ReactNode
+  // Detected sources with their "Mark" buttons are listed (not without the sky view).
+  sources?: boolean
   // Every SPHEREx visit of the field and the obs_ids in the blink (stack members included); null until the archive answered.
   visits?: { observations: Observation[]; inBlink: string[] } | null
+  // Positions for assumed distances in the images beyond the straight-line window (useDistantTrack).
+  distant?: DistantTrackState
+  // Saves the marks with their frames, detections, track and verdict, and the link that opens them again.
+  onDownload?: () => void
 }
 
-// Directly under the blink: what to do next, the marks so far and what they still need.
-export function CandidatePanel({ candidate: { marks, notice, armed, setArmed, clear }, blocked, track, known, visits, children }: Props) {
+// Beside the image: what to do next, the marks so far and what they still need.
+export function CandidatePanel({ candidate: { marks, notice, armed, setArmed, clear, verdict, setVerdict }, blocked, track, known, visits, distant, sources = true, onDownload, children }: Props) {
   return (
     <section className="candidate-check" aria-labelledby="candidate-heading">
       <h3 id="candidate-heading">Candidate check</h3>
@@ -33,8 +41,8 @@ export function CandidatePanel({ candidate: { marks, notice, armed, setArmed, cl
       </button>
       <p className="candidate-hint">
         {blocked ?? (armed
-          ? 'Click the object inside the SPHEREx frame on the sky. "Mark" in Detected sources works too.'
-          : 'Or use "Mark" next to a detected source.')}
+          ? `Click the object in the image.${sources ? ' "Mark" in Detected sources works too.' : ''}`
+          : sources && 'Or use "Mark" next to a detected source.')}
       </p>
       <p className="candidate-notice" role="status" aria-live="polite">{notice}</p>
       {marks.length > 0 && (
@@ -47,13 +55,19 @@ export function CandidatePanel({ candidate: { marks, notice, armed, setArmed, cl
             ))}
           </ol>
           <KnownObjectCheck key={marks.map((m) => `${m.obs_id}:${m.ra}:${m.dec}`).join()} marks={marks} {...known}
-            evidence={trackEvidence(track)}>
+            evidence={trackEvidence(track)} verdict={verdict} onVerdict={setVerdict}>
             {track && <TrackSummary track={track} />}
             {children}
+            {distant && <DistantTrackCheck state={distant} />}
           </KnownObjectCheck>
           {visits && <Precovery track={track} marks={marks} {...visits} detector={known.detector}
             followsTarget={followsTarget(known.motion, marks) ? known.target : null} />}
-          <button type="button" onClick={clear}>Clear marks</button>
+          <div className="candidate-actions">
+            {onDownload && <button type="button" onClick={onDownload} title="A JSON file with the marks, their frames and detections, the possible track, your verdict and a link that opens them here again">
+              <span aria-hidden="true">↓</span> Download marks
+            </button>}
+            <button type="button" onClick={clear}>Clear marks</button>
+          </div>
         </>
       )}
     </section>

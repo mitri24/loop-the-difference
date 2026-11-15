@@ -5,6 +5,7 @@ import { useEffect, useState } from 'react'
 import { skyToFrame } from './motion'
 import { MATCH_STYLE, degText } from './sourceLayer'
 import type { DetectedSource, Frame, FrameManifest } from './types'
+import type { LinkMark } from './url'
 
 export interface Mark {
   obs_id: string
@@ -23,17 +24,22 @@ const SNAP_PIXELS = 2
 const MIN_GAP_S = 60
 export const OUTSIDE_FRAME = 'Click inside the SPHEREx frame (blue outline)'
 
-/** Position error per axis from the Gaia-matched offsets; saturated cores scatter far more. */
-export function sigmaFor(snr: number | null): number {
+/**
+ * Position error per axis (1σ) as the rms offset to Gaia DR3 in real SPHEREx frames (pipeline 12):
+ * 1.2″ below S/N 10 (22 matches), 0.6″ at S/N 10–20 (39), kept for the 2 brighter ones (WISE 0855,
+ * D6); a saturated core placed by its rim 2.5″ and 1.9″, at most 7.9″ apart (Barnard's Star,
+ * D1–D3, 281 exposures); cores cut by the grid edge are skipped. A click without a detection: 3″.
+ */
+export function sigmaFor(snr: number | null, saturated = false): number {
   if (snr == null) return 3
-  if (snr < 20) return 1.5
-  if (snr < 300) return 1
-  return 6
+  if (saturated) return 2.5
+  return snr < 10 ? 1.2 : 0.6
 }
 
 export function markFromSource(frame: Frame, source: DetectedSource): Mark {
   const { obs_id, mjd, date } = frame
-  return { obs_id, mjd, date, ra: source.ra, dec: source.dec, sigma_arcsec: sigmaFor(source.snr), source }
+  const sigma_arcsec = sigmaFor(source.snr, source.saturated)
+  return { obs_id, mjd, date, ra: source.ra, dec: source.dec, sigma_arcsec, source }
 }
 
 /** Small-angle separation in arcsec, RA wrapped at 0/360. */
@@ -110,22 +116,54 @@ export function candidateState(e: Evidence): CandidateState {
   return 'unverified'
 }
 
-export type Candidate = ReturnType<typeof useCandidate>
+/** Marks from a shared link in this comparison's frames, by the same rules as clicks (inside the frame, one per
+ * frame, a minute apart); those that cannot be placed are counted. */
+export function placeLinkMarks(manifest: Pick<FrameManifest, 'frames' | 'pixel_scale_arcsec' | 'ra' | 'dec' | 'size_deg'>, linked: LinkMark[]) {
+  let marks: Mark[] = []
+  let missing = 0
+  for (const link of linked) {
+    const frame = insideFrame(link.ra, link.dec, manifest) ? manifest.frames.find((f) => f.obs_id === link.obs_id) : undefined
+    const next = frame && addMark(marks, snapMark(frame, link.ra, link.dec, manifest.pixel_scale_arcsec))
+    if (next && 'marks' in next) marks = next.marks
+    else missing += 1
+  }
+  return { marks, missing }
+}
 
-/** Marks of one comparison: a new job id clears them; `allowed` false disarms sky clicks. */
-export function useCandidate(jobId: string | null, allowed: boolean) {
-  const [state, setState] = useState({ jobId, marks: [] as Mark[], notice: '' })
+export type Candidate = ReturnType<typeof useCandidate>
+// The verdict starts at the first choice; `verdictChosen` says whether the user picked it.
+const START = { marks: [] as Mark[], notice: '', verdict: VERDICTS[0] as Verdict, verdictChosen: false }
+
+/** Marks of one comparison: a new job id clears them; `allowed` false disarms clicks. Marks from a shared link
+ * belong to the first comparison: they are placed once its final frames are there (`final`), and dropped when
+ * another comparison starts first. New marks start without a verdict. */
+export function useCandidate(jobId: string | null, allowed: boolean, final: FrameManifest | null = null, linked: LinkMark[] = []) {
+  const [state, setState] = useState({ jobId, ...START })
   const [armed, setArmed] = useState(false)
-  if (state.jobId !== jobId) setState({ jobId, marks: [], notice: '' })
+  const [pending, setPending] = useState<{ marks: LinkMark[]; jobId: string | null }>({ marks: linked, jobId: null })
+  if (state.jobId !== jobId) setState({ jobId, ...START })
   if (armed && !allowed) setArmed(false)
+  if (pending.marks.length > 0 && jobId && pending.jobId !== jobId) {
+    setPending(pending.jobId === null ? { ...pending, jobId } : { marks: [], jobId: null })
+  } else if (pending.marks.length > 0 && jobId && pending.jobId === jobId && state.jobId === jobId && final?.frames.length) {
+    const placed = placeLinkMarks(final, pending.marks)
+    setPending({ marks: [], jobId: null })
+    setState({ jobId, ...START, marks: placed.marks,
+      notice: placed.missing ? `${placed.missing} ${placed.missing === 1 ? 'mark' : 'marks'} from the link could not be placed in this comparison.` : '' })
+  }
   const add = (mark: Mark) =>
     setState((old) => {
       const next = addMark(old.marks, mark)
-      return 'error' in next ? { ...old, notice: next.error } : { ...old, marks: next.marks, notice: '' }
+      return 'error' in next ? { ...old, notice: next.error } : { ...old, marks: next.marks, notice: '', verdict: START.verdict, verdictChosen: false }
     })
   return {
     marks: state.marks,
     notice: state.notice,
+    verdict: state.verdict,
+    verdictChosen: state.verdictChosen,
+    setVerdict: (verdict: Verdict) => setState((old) => ({ ...old, verdict, verdictChosen: true })),
+    // The link's marks while they wait for their frames (the address bar keeps them meanwhile).
+    linked: pending.marks,
     armed,
     setArmed,
     markSource: (frame: Frame, source: DetectedSource) => add(markFromSource(frame, source)),
@@ -134,7 +172,7 @@ export function useCandidate(jobId: string | null, allowed: boolean) {
       if (!insideFrame(ra, dec, manifest)) return setState((old) => ({ ...old, notice: OUTSIDE_FRAME }))
       add(snapMark(frame, ra, dec, manifest.pixel_scale_arcsec))
     },
-    clear: () => setState((old) => ({ ...old, marks: [], notice: '' })),
+    clear: () => setState((old) => ({ ...old, ...START })),
   }
 }
 

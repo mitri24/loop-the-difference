@@ -1,13 +1,13 @@
 import { isoDate } from '../catalogLayers'
 import { dateDomain, groupEpochs, isoToMjd, timeTicks, type EpochSpan } from '../timeAxis'
 import type { Frame, Observation } from '../types'
-import { scale } from './SpectrumChart'
+import { ChartFrame, HIT_RADIUS, LegendItem, NearestLayer, tipHandlers } from './Chart'
+import { bandColour, scale } from './SpectrumChart'
 
 const DETECTORS = [1, 2, 3, 4, 5, 6]
-// Drawn at the sidebar's width, so 11px text stays 11px.
-const W = 320
+// Drawn at the measured panel width (ChartFrame); one row per detector.
 const ROW = 18
-const M = { left: 28, right: 10, top: 24, bottom: 26 }
+const M = { left: 40, right: 12, top: 24, bottom: 26 }
 const H = M.top + ROW * DETECTORS.length + M.bottom
 
 type FrameMark = Pick<Frame, 'obs_id' | 'mjd' | 'date' | 'date_end' | 'detector' | 'n_combined'>
@@ -72,102 +72,26 @@ export function ObservationTimeline({
   const current = currentIndex == null ? undefined : frames[currentIndex]
   const selected = detector ?? current?.detector ?? frames[0]?.detector
   const domain = dateDomain([...observations.map((o) => o.mjd), ...frames.flatMap(frameSpan)])
-  const x = scale(domain, [M.left, W - M.right])
   const rowY = (d: number) => M.top + ROW * (d - 1) + ROW / 2
   const bottom = M.top + ROW * DETECTORS.length
 
-  return (
-    <figure className="viz observation-timeline">
-      <figcaption className="viz-title">When SPHEREx looked here (UTC)</figcaption>
-      <svg
-        viewBox={`0 0 ${W} ${H}`}
-        width="100%"
-        role="img"
-        aria-label={timelineSummary(observations, epochs, frames, current)}
-      >
-        {epochs.map((e, i) => (
-          <g key={e.start} className="viz-epoch">
-            <rect
-              x={x(e.start) - 3}
-              y={M.top}
-              width={Math.max(6, x(e.end) - x(e.start) + 6)}
-              height={bottom - M.top}
-            />
-            <text x={x(e.start) - 3} y={M.top - 8}>
-              Epoch {i + 1}
-            </text>
-          </g>
-        ))}
-        {DETECTORS.map((d) => (
-          <g key={d} className={d === selected ? 'viz-row selected' : 'viz-row'}>
-            {d === selected && (
-              <rect x={2} y={rowY(d) - ROW / 2} width={W - M.right - 2} height={ROW} />
-            )}
-            <line x1={M.left} x2={W - M.right} y1={rowY(d)} y2={rowY(d)} />
-            <text x={M.left - 6} y={rowY(d) + 4} textAnchor="end">
-              D{d}
-            </text>
-          </g>
-        ))}
-        <g className="viz-axis">
-          {timeTicks(domain, 4).map((t) => (
-            <g key={t.mjd}>
-              <line x1={x(t.mjd)} x2={x(t.mjd)} y1={bottom} y2={bottom + 4} />
-              <text x={x(t.mjd)} y={bottom + 17} textAnchor="middle">
-                {t.label}
-              </text>
-            </g>
-          ))}
-        </g>
-        <g className="viz-dots">
-          {observations.map((o) => (
-            <circle key={`${o.obs_id}-${o.detector}`} cx={x(o.mjd)} cy={rowY(o.detector)} r={2.5}>
-              <title>{`${o.date.slice(0, 10)} · D${o.detector} · ${o.obs_id}`}</title>
-            </circle>
-          ))}
-        </g>
-        {current && (
-          <g className="viz-current">
-            <line x1={x(current.mjd)} x2={x(current.mjd)} y1={M.top - 4} y2={bottom} />
-          </g>
-        )}
-        {frames.map((f, i) => {
-          const [a, b] = frameSpan(f)
-          const shown = f === current
-          return (
-            <g key={`${f.obs_id}-${i}`} className={shown ? 'viz-frame shown' : 'viz-frame'}>
-              {b > a && <line x1={x(a)} x2={x(b)} y1={rowY(f.detector)} y2={rowY(f.detector)} />}
-              <circle cx={x(a)} cy={rowY(f.detector)} r={shown ? 6 : 5}>
-                <title>
-                  {`Frame ${i + 1}${shown ? ' (shown)' : ''} · ${f.date.slice(0, 10)}` +
-                    (f.date_end ? ` → ${f.date_end.slice(0, 10)}` : '') +
-                    ` · D${f.detector} · ${f.n_combined > 1 ? `${f.n_combined} exposures stacked` : f.obs_id}`}
-                </title>
-              </circle>
-            </g>
-          )
-        })}
-      </svg>
-      <ul className="viz-legend">
-        <li>
-          <span aria-hidden="true">•</span> SPHEREx observation
-        </li>
-        {frames.length > 0 && (
-          <li>
-            <span aria-hidden="true">○</span> frame in this comparison
-          </li>
-        )}
-        {current && (
-          <li>
-            <span aria-hidden="true">◉</span> shown frame ({isoDate(current.mjd)})
-          </li>
-        )}
-        <li>
-          <span aria-hidden="true">▯</span> epoch: no gap over 30 days
-        </li>
-        {selected && <li>outlined row: selected detector D{selected}</li>}
-      </ul>
-      <div className="viz-table">
+  const legend = (
+    <>
+      <LegendItem mark={<circle r={3} className="viz-dot" />}>SPHEREx observation</LegendItem>
+      {frames.length > 0 && (
+        <LegendItem mark={<circle r={4.5} className="viz-frame-mark" />}>frame in this comparison</LegendItem>
+      )}
+      {current && (
+        <LegendItem mark={<circle r={5} className="viz-frame-mark shown" />}>shown frame ({isoDate(current.mjd)})</LegendItem>
+      )}
+      <LegendItem mark={<rect x={-4} y={-6} width={8} height={12} className="viz-epoch-mark" />}>epoch: no gap over 30 days</LegendItem>
+      {selected && (
+        <LegendItem mark={<rect x={-6} y={-4} width={12} height={8} className="viz-row-mark" />}>selected detector D{selected}</LegendItem>
+      )}
+    </>
+  )
+  const table = (
+    <>
       <table>
         <caption>SPHEREx observations per epoch and detector</caption>
         <thead>
@@ -195,9 +119,8 @@ export function ObservationTimeline({
           ))}
         </tbody>
       </table>
-      </div>
       {frames.length > 0 && (
-        <ol className="viz-table" aria-label="Frames in this comparison">
+        <ol aria-label="Frames in this comparison">
           {frames.map((f, i) => (
             <li key={`${f.obs_id}-${i}`}>
               {f === current ? 'Shown: ' : ''}
@@ -207,6 +130,83 @@ export function ObservationTimeline({
           ))}
         </ol>
       )}
-    </figure>
+    </>
+  )
+
+  return (
+    <ChartFrame className="observation-timeline" title="When SPHEREx looked here (UTC)" legend={legend} table={table}>
+      {(W, tip) => {
+        const x = scale(domain, [M.left, W - M.right])
+        return (
+          <svg width={W} height={H} viewBox={`0 0 ${W} ${H}`} role="img"
+            aria-label={timelineSummary(observations, epochs, frames, current)}>
+            {epochs.map((e, i) => (
+              <g key={e.start} className="viz-epoch">
+                <rect
+                  x={x(e.start) - 3}
+                  y={M.top}
+                  width={Math.max(6, x(e.end) - x(e.start) + 6)}
+                  height={bottom - M.top}
+                />
+                <text className="viz-tick" x={x(e.start) - 3} y={M.top - 8}>
+                  Epoch {i + 1}
+                </text>
+              </g>
+            ))}
+            {DETECTORS.map((d) => (
+              <g key={d} className={d === selected ? 'viz-row selected' : 'viz-row'}>
+                {d === selected && (
+                  <rect x={2} y={rowY(d) - ROW / 2} width={W - M.right - 2} height={ROW} />
+                )}
+                <line x1={M.left} x2={W - M.right} y1={rowY(d)} y2={rowY(d)} />
+                {/* The detector's band colour beside its name, as in the spectrum legend. */}
+                <circle className="viz-row-swatch" cx={M.left - 31} cy={rowY(d)} r={3.5} fill={bandColour(d)} />
+                <text className="viz-tick" x={M.left - 6} y={rowY(d) + 4} textAnchor="end">
+                  D{d}
+                </text>
+              </g>
+            ))}
+            <g className="viz-axis">
+              {timeTicks(domain, Math.max(2, Math.floor((W - M.left - M.right) / 80))).map((t) => (
+                <g key={t.mjd}>
+                  <line x1={x(t.mjd)} x2={x(t.mjd)} y1={bottom} y2={bottom + 4} />
+                  <text className="viz-tick" x={x(t.mjd)} y={bottom + 17} textAnchor="middle">
+                    {t.label}
+                  </text>
+                </g>
+              ))}
+            </g>
+            <g className="viz-dots">
+              {observations.map((o) => (
+                <circle key={`${o.obs_id}-${o.detector}`} cx={x(o.mjd)} cy={rowY(o.detector)} r={3} />
+              ))}
+            </g>
+            {/* The nearest observation within 24 px answers the pointer; the table carries the same data for keyboards. */}
+            <NearestLayer tip={tip} x={M.left - HIT_RADIUS} y={M.top} width={W - M.left - M.right + 2 * HIT_RADIUS} height={bottom - M.top}
+              points={observations.map((o) => ({ x: x(o.mjd), y: rowY(o.detector), lines: [`${o.date.slice(0, 10)} · D${o.detector}`, o.obs_id] }))} />
+            {current && (
+              <g className="viz-current">
+                <line x1={x(current.mjd)} x2={x(current.mjd)} y1={M.top - 4} y2={bottom} />
+              </g>
+            )}
+            {frames.map((f, i) => {
+              const [a, b] = frameSpan(f)
+              const shown = f === current
+              const lines = [
+                `Frame ${i + 1}${shown ? ' (shown)' : ''} · ${f.date.slice(0, 10)}` + (f.date_end ? ` → ${f.date_end.slice(0, 10)}` : ''),
+                `D${f.detector} · ${f.n_combined > 1 ? `${f.n_combined} exposures stacked` : f.obs_id}`,
+              ]
+              return (
+                <g key={`${f.obs_id}-${i}`} className={shown ? 'viz-frame shown' : 'viz-frame'} {...tipHandlers(tip, x(a), rowY(f.detector), lines)}>
+                  {b > a && <line x1={x(a)} x2={x(b)} y1={rowY(f.detector)} y2={rowY(f.detector)} />}
+                  <circle cx={x(a)} cy={rowY(f.detector)} r={shown ? 6 : 5} />
+                  <circle className="viz-hit" cx={x(a)} cy={rowY(f.detector)} r={10} />
+                </g>
+              )
+            })}
+          </svg>
+        )
+      }}
+    </ChartFrame>
   )
 }

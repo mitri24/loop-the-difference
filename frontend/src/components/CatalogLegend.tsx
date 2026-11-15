@@ -1,6 +1,6 @@
 import type { AladinInstance } from 'aladin-lite'
-import { type ReactNode, useState } from 'react'
-import { type LayerKey, MAX_SOURCES, NEAR_DEG, useCatalogLayers } from '../catalogLayers'
+import { type ReactNode, useEffect, useState } from 'react'
+import { type LayerKey, MAX_SOURCES, NEAR_DEG, type SkyMark, useCatalogLayers } from '../catalogLayers'
 
 interface Props {
   aladin: AladinInstance | null
@@ -8,20 +8,23 @@ interface Props {
   frameMjd: number | null
   // More layers of known sources, listed after SkyBoT.
   children?: ReactNode
+  // The markers of the layers that are on, so the SPHEREx images show them too.
+  onMarks?: (marks: Record<LayerKey, SkyMark[]>) => void
 }
 
 const LABELS: Record<LayerKey, { name: string; shape: string; what: string }> = {
   gaia: { name: 'Gaia DR3', shape: '○', what: 'stars' },
   wise: { name: 'AllWISE', shape: '□', what: 'red sources' },
   simbad: { name: 'SIMBAD', shape: '△', what: 'objects' },
-  skybot: { name: 'SkyBoT', shape: '◇', what: 'asteroids' },
+  skybot: { name: 'SkyBoT', shape: '◇', what: 'asteroids, seen from the Earth’s centre' },
 }
 const KEYS = Object.keys(LABELS) as LayerKey[]
 
 // Catalogue overlays, all off by default: every marker is a known source, nothing more.
-export function CatalogLegend({ aladin, sizeDeg, frameMjd, children }: Props) {
+export function CatalogLegend({ aladin, sizeDeg, frameMjd, children, onMarks }: Props) {
   const [enabled, setEnabled] = useState({ gaia: false, wise: false, simbad: false, skybot: false })
-  const { status, skybotDate } = useCatalogLayers(aladin, enabled, sizeDeg, frameMjd)
+  const { status, skybotDate, marks } = useCatalogLayers(aladin, enabled, sizeDeg, frameMjd)
+  useEffect(() => onMarks?.(marks), [marks, onMarks])
   return (
     <div className="catalog-legend">
       {KEYS.map((key) => {

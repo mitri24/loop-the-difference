@@ -1,6 +1,6 @@
 from typing import Annotated, Literal
 
-from pydantic import BaseModel, ConfigDict, Field, model_validator
+from pydantic import AwareDatetime, BaseModel, ConfigDict, Field, model_validator
 
 
 class Observation(BaseModel):
@@ -15,6 +15,24 @@ class Observation(BaseModel):
     cloud_url: str | None = None
     # The IRSA collection the observation was found in, e.g. spherex_qr3.
     collection: str | None = None
+    # The image's footprint as IRSA gives it (s_region, e.g. "POLYGON ICRS ..."); server only.
+    s_region: str | None = Field(default=None, exclude=True)
+    # IRSA's ObsCore metadata, None where it lists none: exposure time (t_exptime), start and end
+    # of the exposure (t_min, t_max), angular resolution (s_resolution), λ/Δλ (em_res_power),
+    # calibration level (2: calibrated, science-ready), IVOA publisher ID (obs_publisher_did),
+    # the date IRSA made the image public (obs_release_date, ISO UTC) and the detector's pixel
+    # scale (s_pixel_scale).
+    exposure_s: float | None = None
+    start_mjd: float | None = None
+    end_mjd: float | None = None
+    spatial_resolution_arcsec: float | None = None
+    resolving_power: float | None = None
+    calib_level: int | None = None
+    publisher_did: str | None = None
+    instrument_name: str | None = None
+    facility_name: str | None = None
+    release_date: str | None = None
+    pixel_scale_arcsec: float | None = None
 
 
 class Epoch(BaseModel):
@@ -76,12 +94,28 @@ class Frame(BaseModel):
     epoch: int = 0
     n_combined: int = 1
     date_end: str | None = None
+    # Share of the covered field without usable data (flagged pixels after resampling and stacking).
     masked_fraction: float | None = None
     wavelength_um: float | None = None
     bandwidth_um: float | None = None
     sources: list["DetectedSource"] = []
     # SPHEREx release of the frame's exposures: "DR1", "QR3", "DR1 deep", or "DR1 + QR3".
     release: str | None = None
+    # The exposures' ObsCore metadata (Observation). A stack adds up their exposure times, spans
+    # the first start to the last end, names its first exposure by publisher_did (like obs_id),
+    # takes the last release_date and keeps every other field only where all exposures agree.
+    # pixel_scale_arcsec is the detector's; the frame PNG has FrameManifest.pixel_scale_arcsec.
+    exposure_s: float | None = None
+    start_mjd: float | None = None
+    end_mjd: float | None = None
+    spatial_resolution_arcsec: float | None = None
+    resolving_power: float | None = None
+    calib_level: int | None = None
+    publisher_did: str | None = None
+    instrument_name: str | None = None
+    facility_name: str | None = None
+    release_date: str | None = None
+    pixel_scale_arcsec: float | None = None
 
 
 class Check(BaseModel):
@@ -116,6 +150,7 @@ class FrameManifest(BaseModel):
     # False when the archive did not deliver every frame: the next request retries.
     complete: bool = True
     stacked: bool = False
+    preview: bool = False
     # Manifests written before this field existed come from pipeline version 1.
     pipeline_version: int = 1
     frames: list[Frame]
@@ -147,7 +182,8 @@ class SpectrumPoint(BaseModel):
     epoch: int
     wavelength_um: float
     bandwidth_um: float
-    # Background-subtracted aperture flux at the target, no aperture correction (quick-look).
+    # Background-subtracted aperture flux at the target (quick-look), corrected to total flux with
+    # the ePSF when every cutout carries one (the QUICK_LOOK_SPECTRUM check says which).
     flux_ujy: float
     flux_err_ujy: float
     # Pixels the archive marks unusable lie in the aperture: the flux is unreliable.
@@ -187,9 +223,12 @@ class DetectedSource(BaseModel):
     # row (north is up). ra/dec are the reliable fields.
     x: float
     y: float
-    # Background-subtracted peak pixel, and that peak over the frame's noise.
+    # Height of the PSF fitted at the source above the sky (for a saturated core its brightest
+    # usable rim pixel, a lower limit), and its significance in the frame's S/N map.
     peak_mjy_sr: float
     snr: float
+    # Placed by the rim of a masked core too large for a PSF fit: good to about 2.5″ per axis.
+    saturated: bool = False
     match: Literal["gaia", "allwise", "none", "unknown"]
     catalog_id: str | None = None
     separation_arcsec: float | None = None
@@ -215,7 +254,7 @@ class SmallBodiesRequest(BaseModel):
 
 
 class SmallBody(BaseModel):
-    """Known asteroid or comet from NASA/JPL SBIdent, seen from the geocentre."""
+    """Known asteroid or comet from NASA/JPL SBIdent, seen from SPHEREx or else the geocentre."""
 
     name: str
     ra: float
@@ -233,7 +272,8 @@ class SmallBodyEpoch(BaseModel):
     date: str
     bodies: list[SmallBody] = []
     error: str | None = None
-    # The SBIdent request itself, so every listed body can be checked at the source.
+    # The SBIdent request itself, so every listed body can be checked at the source. Its observer
+    # is SPHEREx's position at `mjd` (xobs) or, without one, the geocentre (mpc-code=500).
     source_url: str
 
 
@@ -270,24 +310,42 @@ class TrackMark(BaseModel):
     sigma_arcsec: float = Field(default=1.5, ge=0.1, le=30)
 
 
-class DistantTrackRequest(BaseModel):
+# The distance model is used at most this long before and after the marks.
+TRACK_WINDOW_DAYS = 400
+
+
+class DistanceGrid(BaseModel):
+    """Two marks of one moving object and the distances to assume for it, uniform in 1/d."""
+
     model_config = ConfigDict(allow_inf_nan=False)
 
     marks: list[TrackMark] = Field(min_length=2, max_length=2)
-    target_mjds: list[float] = Field(min_length=1, max_length=24)
     d_min_au: float = Field(default=20, ge=5)
     d_max_au: float = Field(default=2000, le=100000)
     steps: int = Field(default=64, ge=2, le=96)
 
     @model_validator(mode="after")
-    def _check_times(self) -> "DistantTrackRequest":
+    def _check_grid(self) -> "DistanceGrid":
         t1, t2 = (mark.mjd for mark in self.marks)
-        if not 0.001 <= abs(t2 - t1) <= 30:
-            raise ValueError("The two marks must be between 1.5 minutes and 30 days apart")
-        if any(max(abs(t - t1), abs(t - t2)) > 400 for t in self.target_mjds):
-            raise ValueError("Every target time must be within 400 days of the marks")
+        if not 0.001 <= abs(t2 - t1) <= TRACK_WINDOW_DAYS:
+            raise ValueError(
+                f"The two marks must be between 1.5 minutes and {TRACK_WINDOW_DAYS} days apart"
+            )
         if self.d_max_au <= self.d_min_au:
             raise ValueError("d_max_au must be larger than d_min_au")
+        return self
+
+
+class DistantTrackRequest(DistanceGrid):
+    target_mjds: list[float] = Field(min_length=1, max_length=24)
+
+    @model_validator(mode="after")
+    def _check_times(self) -> "DistantTrackRequest":
+        t1, t2 = (mark.mjd for mark in self.marks)
+        if any(max(abs(t - t1), abs(t - t2)) > TRACK_WINDOW_DAYS for t in self.target_mjds):
+            raise ValueError(
+                f"Every target time must be within {TRACK_WINDOW_DAYS} days of the marks"
+            )
         return self
 
 
@@ -297,6 +355,8 @@ class TrackPoint(BaseModel):
     dec: float
     # 2σ search radius from the mark uncertainties alone.
     radius_arcsec: float
+    # How far a bound object can stray from the distance model here (tracks.model_error).
+    model_error_arcsec: float | None = None
 
 
 class DistanceHypothesis(BaseModel):
@@ -310,3 +370,120 @@ class DistantTrack(BaseModel):
     model: str
     assumptions: list[str]
     hypotheses: list[DistanceHypothesis]
+
+
+class FollowupPoint(TrackPoint):
+    """A straight-line prediction at one visit time, computed by the client (track.ts)."""
+
+    model_config = ConfigDict(allow_inf_nan=False)
+
+    mjd: float = Field(ge=50000, le=80000)
+    ra: float = Field(ge=0, lt=360)
+    dec: float = Field(ge=-90, le=90)
+    radius_arcsec: float = Field(ge=0)
+
+
+class MarkedFrame(BaseModel):
+    """A frame a mark was set on: its visits would confirm the mark itself, so none is measured."""
+
+    obs_id: str = Field(min_length=1, max_length=80)
+    # A stacked frame: every visit from its first exposure's date to its last one's.
+    date: AwareDatetime | None = None
+    date_end: AwareDatetime | None = None
+
+
+class FollowupRequest(BaseModel):
+    """A possible track to measure at the other SPHEREx visits of one detector (app/followup.py)."""
+
+    model_config = ConfigDict(allow_inf_nan=False)
+
+    # The field whose visits are searched, e.g. the blink's centre.
+    ra: str = Field(min_length=1, max_length=40)
+    dec: str = Field(min_length=1, max_length=40)
+    detector: int = Field(ge=1, le=6)
+    marked: list[MarkedFrame] = Field(min_length=1, max_length=2)
+    # Either the distance hypotheses of two marks (tracks.py) ...
+    grid: DistanceGrid | None = None
+    # ... or one straight line (stellar or fast regime): its position at each visit time.
+    points: list[FollowupPoint] | None = Field(default=None, min_length=1, max_length=1000)
+
+    @model_validator(mode="after")
+    def _one_track(self) -> "FollowupRequest":
+        if (self.grid is None) == (self.points is None):
+            raise ValueError("Give either a distance grid or straight-line points")
+        return self
+
+
+class FollowupMeasurement(BaseModel):
+    """Forced aperture and PSF photometry at the predicted position in one visit (quick-look)."""
+
+    obs_id: str
+    date: str
+    mjd: float
+    # Predicted position and its 2σ search radius from the mark uncertainties alone.
+    ra: float
+    dec: float
+    radius_arcsec: float
+    # Bound on the distance model's own error (orbits up to e = 0.5); 0 for a straight line.
+    model_error_arcsec: float = 0.0
+    # Search radius plus model error exceed the aperture radius: the flux still counts.
+    position_uncertain: bool = False
+    # Background-subtracted aperture flux without aperture correction; None when skipped.
+    flux_ujy: float | None = None
+    flux_err_ujy: float | None = None
+    snr: float | None = None
+    # Total flux from the SPHEREx ePSF fitted at the same position (photometry.psf_photometry);
+    # None without an ePSF or when skipped.
+    psf_flux_ujy: float | None = None
+    psf_flux_err_ujy: float | None = None
+    psf_snr: float | None = None
+    # Pixels the archive marks unusable lie in the aperture: left out of the combination.
+    flagged: bool = False
+    # Why there is no flux, e.g. "target at the cutout edge".
+    skipped: str | None = None
+    wavelength_um: float | None = None
+    bandwidth_um: float | None = None
+    source_url: str
+
+
+class FollowupHypothesis(BaseModel):
+    # Assumed distance from Earth at the first mark; None for a straight line.
+    distance_au: float | None = None
+    # Inverse-variance weighted mean of the usable (unflagged) fluxes and its 1σ error: PSF fluxes
+    # when Followup.psf_photometry, else aperture fluxes.
+    flux_ujy: float | None = None
+    flux_err_ujy: float | None = None
+    snr: float | None = None
+    visits: int = 0
+    measurements: list[FollowupMeasurement] = []
+
+
+class Followup(BaseModel):
+    """Flux where a possible track puts the object at other visits, combined per hypothesis
+    (shift-and-stack): it tests a candidate, it never confirms one."""
+
+    collection: str
+    ra: float
+    dec: float
+    detector: int
+    model: str
+    complete: bool = True
+    # Index into hypotheses of the highest S/N over at least two visits.
+    best: int | None = None
+    # The best S/N reaches 5: a candidate worth checking, not a detection.
+    significant: bool = False
+    # Some measured visit sees the tested distances an aperture or more apart.
+    distance_determined: bool = False
+    # Every measured flux has a PSF flux too, so the hypotheses combine those (totals, higher S/N).
+    psf_photometry: bool = False
+    hypotheses: list[FollowupHypothesis] = []
+    checks: list[Check] = []
+
+
+class FollowupJob(BaseModel):
+    job_id: str
+    status: Literal["queued", "started", "finished", "failed", "not_found"]
+    progress: int = 0
+    total: int = 0
+    followup: Followup | None = None
+    error: str | None = None

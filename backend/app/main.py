@@ -1,7 +1,9 @@
 import re
+from datetime import datetime
 from typing import Annotated
 
 from astropy.coordinates.name_resolve import NameResolveError
+from astropy.time import Time
 from fastapi import Depends, FastAPI, HTTPException, Query, Request
 from fastapi.encoders import jsonable_encoder
 from fastapi.exceptions import RequestValidationError
@@ -22,6 +24,8 @@ from app.catalogs import find_proper_motion
 from app.config import Settings, get_settings
 from app.coords import CoordinateError, parse_dec, parse_ra
 from app.models import (
+    FollowupJob,
+    FollowupRequest,
     FrameJob,
     FrameRequest,
     ObservationSummary,
@@ -32,7 +36,7 @@ from app.models import (
 from app.smallbodies import router as smallbodies_router
 
 _JOB_ID = re.compile(r"^[0-9a-f]{16}$")
-_FRAME_FILE = re.compile(r"^(frame_\d{2}|diff_\d{2}_\d{2})\.png$")
+_FRAME_FILE = re.compile(r"^((?:preview_\d{3}_)?frame_\d{2}|diff_\d{2}_\d{2})\.png$")
 
 SettingsDep = Annotated[Settings, Depends(get_settings)]
 
@@ -168,6 +172,33 @@ def spectrum_job(job_id: str, settings: SettingsDep) -> SpectrumJob:
     if not _JOB_ID.match(job_id):
         raise HTTPException(status_code=404, detail="Unknown job")
     return jobs.spectrum_status(jobs.connect(settings.redis_url), job_id)
+
+
+@app.post("/api/followup")
+def create_followup(request: FollowupRequest, settings: SettingsDep) -> FollowupJob:
+    params = {
+        "ra": parse_ra(request.ra),
+        "dec": parse_dec(request.dec),
+        "detector": request.detector,
+        "marked": [[f.obs_id, _mjd(f.date), _mjd(f.date_end)] for f in request.marked],
+    }
+    if request.grid is not None:
+        marks, distances = tracks.grid(request.grid)
+        params |= {"marks": marks.tolist(), "distances": distances.tolist()}
+    else:
+        params["points"] = [[p.mjd, p.ra, p.dec, p.radius_arcsec] for p in request.points]
+    return jobs.submit_followup(jobs.connect(settings.redis_url), settings, params)
+
+
+def _mjd(moment: datetime | None) -> float | None:
+    return None if moment is None else float(Time(moment).mjd)
+
+
+@app.get("/api/followup/{job_id}")
+def followup_job(job_id: str, settings: SettingsDep) -> FollowupJob:
+    if not _JOB_ID.match(job_id):
+        raise HTTPException(status_code=404, detail="Unknown job")
+    return jobs.followup_status(jobs.connect(settings.redis_url), job_id)
 
 
 app.include_router(smallbodies_router)

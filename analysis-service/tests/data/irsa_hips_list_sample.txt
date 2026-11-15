@@ -1,0 +1,28 @@
+creator_did          = ivo://IPAC/P/SPHEREx/DR1/cube
+hips_release_date    = 2026-10-11T18:34Z
+hips_service_url     = https://irsa.ipac.caltech.edu/data/hips/SPHEREx/spherex_allsky_cube
+hips_status          = public master clonableOnce
+obs_title            = SPHEREx DR1 all-sky data cube
+dataproduct_type     = cube
+hips_version         = 1.4
+hips_tile_format     = png
+hips_order           = 5
+hips_frame           = equatorial
+moc_sky_fraction     = 1.000000
+obs_regime           = Infrared
+hips_pixel_scale     = 0.0035786
+
+
+creator_did          = ivo://CDS/P/2MASS/color
+hips_release_date    = 2024-10-09T07:12Z
+hips_service_url     = https://irsa.ipac.caltech.edu/data/hips/CDS/2MASS/Color
+hips_status          = public mirror unclonable
+obs_title            = 2MASS color J (1.23um), H (1.66um), K (2.16um)
+dataproduct_type     = image
+hips_version         = 1.4
+hips_tile_format     = jpeg
+hips_order           = 9
+hips_frame           = equatorial
+moc_sky_fraction     = 1
+obs_regime           = Infrared
+hips_pixel_scale     = 2.236E-4

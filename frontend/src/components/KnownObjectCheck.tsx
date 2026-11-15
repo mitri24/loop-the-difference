@@ -18,16 +18,24 @@ export interface KnownContext {
 }
 
 // Mounted per set of marks (keyed by the caller): new marks start without answers or verdict.
-export function KnownObjectCheck({ marks, epochs, motion, detector, target, evidence, children, initial = [] }: KnownContext & {
+export function KnownObjectCheck({ marks, epochs, motion, detector, target, evidence, children, initial = [], verdict: chosen, onVerdict }: KnownContext & {
   marks: Mark[]
   // Motion evidence from the possible track; shown right under the state chip.
   evidence?: Evidence
   children?: ReactNode
   initial?: SkybotAnswer[]
+  // The user's verdict, when the caller keeps it (it goes into the marks file); otherwise kept here.
+  verdict?: Verdict
+  onVerdict?: (verdict: Verdict) => void
 }) {
   const [answers, setAnswers] = useState<SkybotAnswer[]>(initial)
   const [running, setRunning] = useState(false)
-  const [verdict, setVerdict] = useState<Verdict>(VERDICTS[0])
+  const [ownVerdict, setOwnVerdict] = useState<Verdict>(VERDICTS[0])
+  const verdict = chosen ?? ownVerdict
+  const setVerdict = (v: Verdict) => {
+    setOwnVerdict(v)
+    onVerdict?.(v)
+  }
   const controller = useRef<AbortController | null>(null)
   useEffect(() => () => controller.current?.abort(), [])
 

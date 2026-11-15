@@ -3,7 +3,7 @@ import { useEffect, useRef, useState, type KeyboardEvent, type PointerEvent } fr
 export type ViewportClass = 'phone' | 'tablet' | 'desktop'
 export interface Viewport { width: number; height: number }
 
-// Same breakpoints as styles/shell.css: ≤ 700 px the dock is a bottom row, < 1024 px the panel overlays the sky.
+// Same breakpoints as styles/shell.css: ≤ 700 px the sheet is a bottom sheet, < 1024 px it overlays the sky.
 export const viewportClass = (width: number): ViewportClass => width <= 700 ? 'phone' : width < 1024 ? 'tablet' : 'desktop'
 
 export const STEP_PX = 16

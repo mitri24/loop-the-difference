@@ -1,11 +1,13 @@
 import hashlib
 import io
 import json
+import math
 import os
 import re
 import time
 from collections import Counter
 from concurrent.futures import ThreadPoolExecutor
+from datetime import UTC, datetime
 from pathlib import Path
 from xml.etree import ElementTree
 
@@ -26,6 +28,10 @@ _SPHEREX_COLLECTION = re.compile(r"^spherex_(dr|qr)\d+(_deep)?$")
 COLLECTIONS_MAX_AGE_S = 86400
 COLLECTIONS_RETRY_S = 3600
 COLLECTIONS_TIMEOUT_S = 15.0
+# IRSA's search answers 502/503 under load or in an outage: ask twice more, then say so.
+SEARCH_ATTEMPTS = 3
+SEARCH_RETRY_S = 1.5
+_SEARCH_RETRY_STATUS = {429, 500, 502, 503, 504}
 _REQUIRED = ("obs_id", "energy_bandpassname", "em_min", "em_max", "t_min", "t_max", "access_url")
 
 
@@ -74,16 +80,48 @@ def _search_collection(
     if cached.is_file():
         return parse_sia_votable(cached.read_bytes(), collection), None
     params = {"COLLECTION": collection, "POS": f"CIRCLE {ra} {dec} 0.0005", "MAXREC": "5000"}
-    try:
-        response = httpx.get(settings.irsa_sia_url, params=params, timeout=settings.http_timeout_s)
-        response.raise_for_status()
-    except httpx.HTTPError as exc:
-        raise ArchiveError("SPHEREx archive (IRSA) is not reachable") from exc
+    response = _search(settings, params)
     observations = parse_sia_votable(response.content, collection)
     if not observations:
         return [], response.content
     _write_cached(cached, response.content)
     return observations, None
+
+
+def _search(settings: Settings, params: dict[str, str]) -> httpx.Response:
+    """One SIA2 query, asked again on a busy or failing gateway; the error names IRSA's answer."""
+    for attempt in range(1, SEARCH_ATTEMPTS + 1):
+        try:
+            response = httpx.get(
+                settings.irsa_sia_url, params=params, timeout=settings.http_timeout_s
+            )
+            response.raise_for_status()
+            return response
+        except httpx.HTTPError as exc:
+            retry = (
+                exc.response.status_code in _SEARCH_RETRY_STATUS
+                if isinstance(exc, httpx.HTTPStatusError)
+                else isinstance(exc, httpx.TransportError)
+            )
+            if attempt < SEARCH_ATTEMPTS and retry:
+                time.sleep(SEARCH_RETRY_S * attempt)
+                continue
+            raise ArchiveError(unreachable_text(exc)) from exc
+    raise AssertionError("unreachable")
+
+
+def unreachable_text(exc: httpx.HTTPError) -> str:
+    """What the user reads when IRSA's search fails: its own answer, and what still works."""
+    if isinstance(exc, httpx.HTTPStatusError):
+        answer = f"its search answered HTTP {exc.response.status_code} {exc.response.reason_phrase}"
+    elif isinstance(exc, httpx.TimeoutException):
+        answer = "its search did not answer in time"
+    else:
+        answer = "the connection failed"
+    return (
+        f"SPHEREx archive (IRSA) is not reachable: {answer}. "
+        "Targets loaded before (the examples) still work; try a new position again later."
+    )
 
 
 def spherex_collections(settings: Settings) -> list[str]:
@@ -191,7 +229,8 @@ def parse_sia_votable(content: bytes, collection: str | None = None) -> list[Obs
         match = _DETECTOR.search(str(row["energy_bandpassname"]))
         if match is None:
             continue
-        mjd = (float(row["t_min"]) + float(row["t_max"])) / 2
+        start, end = float(row["t_min"]), float(row["t_max"])
+        mjd = (start + end) / 2
         observations.append(
             Observation(
                 obs_id=str(row["obs_id"]),
@@ -203,9 +242,46 @@ def parse_sia_votable(content: bytes, collection: str | None = None) -> list[Obs
                 access_url=str(row["access_url"]),
                 cloud_url=parse_cloud_access(row.get("cloud_access")),
                 collection=collection,
+                s_region=_cell(row, "s_region", str),
+                # In ObsCore units, as IRSA's FIELDs state them: t_exptime in s, t_min and t_max
+                # in MJD, s_resolution and s_pixel_scale in arcsec; em_res_power is λ/Δλ.
+                exposure_s=_cell(row, "t_exptime", float),
+                start_mjd=start,
+                end_mjd=end,
+                spatial_resolution_arcsec=_cell(row, "s_resolution", float),
+                resolving_power=_cell(row, "em_res_power", float),
+                calib_level=_cell(row, "calib_level", int),
+                publisher_did=_cell(row, "obs_publisher_did", str),
+                instrument_name=_cell(row, "instrument_name", str),
+                facility_name=_cell(row, "facility_name", str),
+                release_date=_timestamp(_cell(row, "obs_release_date", str)),
+                pixel_scale_arcsec=_cell(row, "s_pixel_scale", float),
             )
         )
     return sorted(observations, key=lambda o: o.mjd)
+
+
+def _cell(row, name: str, kind: type) -> float | int | str | None:
+    """One cell as `kind`; None when the answer lacks the column or leaves the cell empty."""
+    value = row.get(name)
+    if value is None or np.ma.is_masked(value) or not str(value).strip():
+        return None
+    try:
+        value = kind(value)
+    except (TypeError, ValueError):
+        return None
+    return None if isinstance(value, float) and not math.isfinite(value) else value
+
+
+def _timestamp(value: str | None) -> str | None:
+    """A DALI timestamp (UTC; IRSA writes "2026-09-27 23:59:28") in the form of Observation.date."""
+    try:
+        moment = datetime.fromisoformat(value)
+    except (TypeError, ValueError):
+        return None
+    if moment.tzinfo is not None:
+        moment = moment.astimezone(UTC)
+    return f"{moment:%Y-%m-%dT%H:%M:%S}Z"
 
 
 def parse_cloud_access(value: object) -> str | None:
