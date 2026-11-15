@@ -150,16 +150,33 @@ test('fixture: empty data and incompatible epochs are honest', async ({ page }) 
   await expect(page.getByRole('heading', { name: 'No images to compare' })).toBeVisible()
 })
 
-test('fixture: cancellation stops polling and a new request recovers', async ({ page }) => {
+test('fixture: the loading bar on the viewer head line counts the fetched images and disappears when loaded', async ({ page }) => {
   await fixtures(page)
-  await page.route('**/api/frames', route => route.fulfill({ json: { ...job(), status: 'queued', manifest: null } }))
+  let state: 'queued' | 'started' | 'finished' = 'queued'
+  await page.route('**/api/frames**', route => {
+    if (new URL(route.request().url()).pathname.endsWith('.png')) return route.fallback()
+    return route.fulfill({ json: state === 'finished' ? job()
+      : { ...job(), status: state, progress: state === 'started' ? 5 : 0, total: state === 'started' ? 12 : 0, manifest: null } })
+  })
+  await page.setViewportSize({ width: 1440, height: 900 })
   await page.goto('/?ra=37.954542&dec=89.264111')
-  await expect(page.getByRole('button', { name: 'Stop waiting' })).toBeVisible()
-  await page.getByRole('button', { name: 'Stop waiting' }).click()
-  await expect(page.locator('.comparison-status')).toContainText('Stopped waiting')
-  await expect(page.getByRole('button', { name: 'Stop waiting' })).toBeHidden()
-  await page.getByRole('button', { name: 'Retry', exact: true }).click()
-  await expect(page.getByRole('button', { name: 'Stop waiting' })).toBeVisible()
+  const head = page.locator('.viewer-head')
+  const bar = head.getByRole('progressbar', { name: 'SPHEREx images' })
+  await expect(bar).toBeVisible()
+  await expect(bar).not.toHaveAttribute('aria-valuenow')
+  const line = (await head.boundingBox())!
+  const box = (await bar.boundingBox())!
+  expect(Math.abs(box.y + box.height - (line.y + line.height))).toBeLessThanOrEqual(1)
+  expect(Math.abs(box.width - line.width)).toBeLessThanOrEqual(1)
+  await expect(page.locator('.loading-state')).toHaveCount(0)
+  await expect(page.getByRole('button', { name: 'Stop waiting' })).toHaveCount(0)
+  await expect(page.locator('.comparison-status')).toHaveClass(/sr-only/)
+  state = 'started'
+  await expect(bar).toHaveAttribute('aria-valuenow', '5')
+  await expect(bar).toHaveAttribute('aria-valuetext', '5 of 12 images loaded')
+  state = 'finished'
+  await expect(bar).toHaveCount(0)
+  await expect(page.locator('.comparison-status')).toContainText('2 images ready')
 })
 
 test('keyboard: panel focus, Escape, About panel and reduced motion', async ({ page }) => {
