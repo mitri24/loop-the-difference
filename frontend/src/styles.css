@@ -102,15 +102,16 @@ summary { cursor:pointer; min-height:32px; padding:5px 0; font-size:13px; }
 .image-mark.source-match { stroke:var(--src-gaia); }
 .image-mark.source-none { stroke:var(--src-none); }
 .image-mark.source-unknown { stroke:var(--src-unknown); }
+.image-mark.residual { stroke:var(--mark-residual); }
+.image-mark.residual > * { stroke-width:2px; }
 .reticle { position:absolute; top:50%; left:50%; width:9%; aspect-ratio:1; transform:translate(-50%,-50%); border:1px solid var(--overlay-target); border-radius:50%; pointer-events:none; }
 .stamp { position:absolute; left:6px; bottom:6px; max-width:calc(100% - 12px); padding:2px 5px; background:var(--img-label-bg); font-size:11px; font-variant-numeric:tabular-nums; }
 .controls { display:flex; flex-wrap:wrap; align-items:center; gap:6px; }
 .controls button { min-width:40px; }
 .controls > input[type='range'] { flex:1; min-width:60px; width:auto; padding:0; }
 .controls .speed { width:100%; }
-.speed,.epoch-pick { display:flex; align-items:center; gap:8px; font-size:12px; color:var(--muted); }
+.speed { display:flex; align-items:center; gap:8px; font-size:12px; color:var(--muted); }
 .speed input { min-width:60px; padding:0; }
-.epoch-pick { width:100%; flex-direction:column; align-items:flex-start; }
 .meta { display:grid; grid-template-columns:max-content minmax(0,1fr); gap:6px 12px; margin:0; font-size:12px; }
 .meta dt { color:var(--muted); }
 .meta dd { margin:0; overflow-wrap:anywhere; }
@@ -622,8 +623,11 @@ summary { cursor:pointer; min-height:32px; padding:5px 0; font-size:13px; }
 .view-back { display:flex; flex-wrap:wrap; align-items:center; gap:var(--space-2); font-size:var(--text-xs); }
 .player-side .meta { grid-template-columns:max-content minmax(0,1fr); gap:var(--space-1) var(--space-3); font-size:var(--text-xs); font-variant-numeric:tabular-nums; }
 .player-side .meta dd { margin:0; }
-.diff-pickers { display:grid; gap:var(--space-2); }
-.diff-pickers select { min-height:32px; padding:var(--space-1) var(--space-2); }
+/* The changes of A and B (components/DifferenceView.tsx): the result first, the list folded. */
+.change-summary { margin:0; font-weight:var(--weight-semibold); }
+.diff-empty { position:absolute; inset:0; display:grid; place-items:center; margin:0; padding:var(--space-4); color:var(--text-secondary); font-size:var(--text-sm); text-align:center; }
+.residual-list { display:flex; flex-direction:column; gap:var(--space-2); margin:var(--space-2) 0 0; padding-left:18px; font-size:var(--text-xs); }
+.residual-list p { margin:2px 0 0; color:var(--text-secondary); }
 /* Marking in the image: a crosshair and the candidate colour round the image; marks A and B where they were set
    (the frame's own mark full, the other one faint). */
 .viewport.marking { cursor:crosshair; outline:2px solid var(--candidate); outline-offset:-2px; }

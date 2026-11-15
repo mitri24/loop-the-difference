@@ -156,6 +156,52 @@ export interface FrameRequest {
   stack?: boolean
 }
 
+// The changes between the blink's A and B (backend/app/difference.py).
+export interface PairDifferenceRequest {
+  job_id: string
+  a: number
+  b: number
+  small_bodies_job?: string | null // a finished JPL SBIdent lookup of the same comparison
+}
+
+export type ResidualKind = 'asteroid' | 'bright_star' | 'known_star' | 'unknown'
+
+// A peak of |S| ≥ 5 between A and B: a candidate, never a discovery.
+export interface Residual {
+  // 0-based pixel centre in the frame PNGs, as DetectedSource.
+  x: number
+  y: number
+  ra: number
+  dec: number
+  significance: number // S in σ: positive where B is brighter, negative where A is
+  kind: ResidualKind
+  known: string | null // the asteroid's name or the catalogue id
+  explanation: string
+}
+
+export interface PairDifference {
+  job_id: string
+  a: number
+  b: number
+  comparable: boolean
+  reason: string | null // why A and B do not compare; the images are then for inspection only
+  method: 'zogy' | 'direct'
+  significance_url: string // S at ±7σ
+  difference_url: string // B − s·A at ±5 of its scatter
+  delta_days: number
+  delta_lambda_pct: number | null
+  small_bodies_checked: boolean
+  residuals: Residual[]
+  checks: Check[]
+}
+
+export interface PairDifferenceJob {
+  job_id: string
+  status: FrameJob['status']
+  difference: PairDifference | null
+  error: string | null
+}
+
 export interface SpectrumRequest {
   ra: string
   dec: string

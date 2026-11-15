@@ -9,6 +9,8 @@ import type {
   FrameRequest,
   NeossatCoverage,
   ObservationSummary,
+  PairDifferenceJob,
+  PairDifferenceRequest,
   ResolvedTarget,
   SmallBodiesJob,
   SmallBodiesRequest,
@@ -62,6 +64,18 @@ export const createFrames = (body: FrameRequest, signal?: AbortSignal) =>
 
 export const getFrameJob = (jobId: string, signal?: AbortSignal) =>
   request<FrameJob>(`/api/frames/${jobId}`, { signal })
+
+// The changes between A and B, found by the worker: S (ZOGY), the difference and its residuals.
+export const createPairDifference = (body: PairDifferenceRequest, signal?: AbortSignal) =>
+  request<PairDifferenceJob>('/api/difference', {
+    signal,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  })
+
+export const getPairDifference = (jobId: string, signal?: AbortSignal) =>
+  request<PairDifferenceJob>(`/api/difference/${jobId}`, { signal })
 
 export const createSpectrum = (body: SpectrumRequest) =>
   request<SpectrumJob>('/api/spectrum', {

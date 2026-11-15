@@ -1,8 +1,8 @@
 """SPHEREx effective PSF (ePSF): pick it for a detector position, place it on pixels, measure
 with it.
 
-EPSF, epsf_at and pixel_psf are mirrored in analysis-service/app/psf.py (the services share no
-code): change both together; tests/test_psf.py compares them.
+EPSF, epsf_at, pixel_psf and zogy are mirrored in analysis-service/app/psf.py (the services share
+no code): change both together; tests/test_psf.py compares them.
 
 Format, checked on two real DR1 D6 cutouts (calibration file epsf_6_20260507.fits): the cutout
 service sends the ePSF table of the whole detector as the binary table EPSF, one row per zone of
@@ -77,6 +77,58 @@ def pixel_psf(psf: EPSF, x0: float, y0: float, shape: tuple[int, int]) -> np.nda
     return out
 
 
+def zogy(
+    new: np.ndarray,
+    ref: np.ndarray,
+    var_new: np.ndarray,
+    var_ref: np.ndarray,
+    psf_new: np.ndarray,
+    psf_ref: np.ndarray,
+    flux_ratio: float = 1.0,
+    sigma_ast: float = 0.0,
+    floor: float = 0.0,
+) -> np.ndarray:
+    """Corrected ZOGY score S_corr of `new` against `ref`, positive where `new` is brighter
+    (Zackay, Ofek & Gal-Yam 2016, ApJ 830, 27): S = S_new − S_ref from the matching kernels,
+    divided by its standard deviation.
+
+    Inputs are background-subtracted images and their variance maps on one grid, finite
+    everywhere, and odd PSF stamps centred on the middle pixel with sum 1; `new` ≈
+    flux_ratio × `ref` for a constant source. The variance of S holds the pixel variance of
+    both frames filtered by the ZOGY kernels (source noise included), the registration noise
+    `sigma_ast` (px), and `floor` × the PSF-matched flux of each frame in quadrature, for the
+    ePSF model and calibration errors that the kernels cannot remove."""
+    pad = max(*psf_new.shape, *psf_ref.shape)
+    shape = (new.shape[0] + 2 * pad, new.shape[1] + 2 * pad)
+
+    def spectrum(image: np.ndarray, fill: float = 0.0) -> np.ndarray:
+        return np.fft.fft2(np.pad(image, pad, constant_values=fill))
+
+    def otf(stamp: np.ndarray) -> np.ndarray:
+        big = np.zeros(shape)
+        big[: stamp.shape[0], : stamp.shape[1]] = stamp
+        return np.fft.fft2(np.roll(big, (-(stamp.shape[0] // 2), -(stamp.shape[1] // 2)), (0, 1)))
+
+    p_n, p_r = otf(psf_new), otf(psf_ref)
+    f_n, f_r = flux_ratio, 1.0
+    s2_n, s2_r = float(np.median(var_new)), float(np.median(var_ref))
+    den = s2_n * f_r**2 * np.abs(p_r) ** 2 + s2_r * f_n**2 * np.abs(p_n) ** 2
+    den = np.maximum(den, 1e-12 * den.max())
+    k_n = f_r**2 * f_n * np.abs(p_r) ** 2 * np.conj(p_n) / den
+    k_r = f_n**2 * f_r * np.abs(p_n) ** 2 * np.conj(p_r) / den
+    s_new = np.fft.ifft2(k_n * spectrum(new)).real
+    s_ref = np.fft.ifft2(k_r * spectrum(ref)).real
+    variance = np.zeros(shape)
+    for kernel, var, s2 in ((k_n, var_new, s2_n), (k_r, var_ref, s2_r)):
+        k2 = np.fft.fft2(np.fft.ifft2(kernel).real ** 2)
+        variance += np.fft.ifft2(k2 * spectrum(var, s2)).real
+    for score in (s_new, s_ref):
+        gy, gx = np.gradient(score)
+        variance += sigma_ast**2 * (gx**2 + gy**2) + (floor * score) ** 2
+    score = (s_new - s_ref) / np.sqrt(np.maximum(variance, 1e-300))
+    return score[pad:-pad, pad:-pad]
+
+
 def psf_flux(
     image: np.ndarray,
     variance: np.ndarray,
@@ -101,16 +153,27 @@ def psf_flux(
 def psf_at(path: Path, ra: float, dec: float) -> np.ndarray | None:
     """Unit-flux image of a point source at (ra, dec) on the pixels of a cached cutout, from the
     ePSF of the detector zone there; None when the cutout carries no EPSF table."""
+    found = cutout_epsf(path, ra, dec)
+    if found is None:
+        return None
+    model, wcs, shape = found
+    x, y = (float(v) for v in wcs.world_to_pixel_values(ra, dec))
+    return pixel_psf(model, x, y, shape)
+
+
+def cutout_epsf(path: Path, ra: float, dec: float) -> tuple[EPSF, WCS, tuple[int, int]] | None:
+    """The ePSF of the detector zone at (ra, dec) in a cached cutout, with the cutout's WCS and
+    shape; None when the cutout carries no EPSF table."""
     with warnings.catch_warnings():
         warnings.simplefilter("ignore", FITSFixedWarning)
         with fits.open(path) as hdul:
             if "EPSF" not in hdul:
                 return None
             header = hdul["IMAGE"].header
-            x, y = (float(v) for v in WCS(header).world_to_pixel_values(ra, dec))
+            wcs = WCS(header)
+            x, y = (float(v) for v in wcs.world_to_pixel_values(ra, dec))
             # The cutout's LINEAR 'A' WCS gives its position on the detector.
             dx = float(header.get("CRVAL1A", 0.0)) + 1.0 - float(header.get("CRPIX1A", 1.0))
             dy = float(header.get("CRVAL2A", 0.0)) + 1.0 - float(header.get("CRPIX2A", 1.0))
             model = epsf_at(hdul["EPSF"], x + dx, y + dy)
-            shape = header["NAXIS2"], header["NAXIS1"]
-    return pixel_psf(model, x, y, shape)
+            return model, wcs, (header["NAXIS2"], header["NAXIS1"])

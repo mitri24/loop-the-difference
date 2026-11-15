@@ -5,7 +5,7 @@ from PIL import Image
 
 from app import sources, tasks
 from app.catalogs import gaia_cache_path, position_at
-from app.frames import Aligned, target_grid
+from app.frames import Aligned, aligned_path, load_aligned, target_grid
 from app.models import Observation, ProperMotion
 from app.photometry import SKIP_EDGE, SKIP_NAN
 from app.tasks import build_frames, build_spectrum, epoch_checks, stack_images, wavelength_checks
@@ -174,6 +174,12 @@ def test_stacked_job_yields_one_frame_per_epoch(monkeypatch, settings, tmp_path)
     assert first["obs_ids_a"] == ["obs-100", "obs-101", "obs-102"]
     assert first["obs_ids_b"] == ["obs-290", "obs-291", "obs-292"]
     assert (settings.cache_dir / "frames" / "job" / "diff_01_02.png").exists()
+    # Every frame keeps its unfilled stack and its cutouts with their weights, for its changes.
+    stacked, cutouts, weights = load_aligned(aligned_path(settings.cache_dir / "frames" / "job", 0))
+    assert cutouts == ["100.fits", "101.fits", "102.fits"]
+    assert weights == pytest.approx([1.0, 1.0, 1.0])
+    middle = stacked.image.shape[0] // 2
+    assert np.isnan(stacked.image[:3]).all() and stacked.image[middle, middle] == pytest.approx(0.0)
     # Median wavelength of the three stacked exposures; epochs 190 days apart saw another λ.
     assert (frames[0]["wavelength_um"], frames[0]["bandwidth_um"]) == (4.601, 0.035)
     assert first["comparable"] is False

@@ -1,6 +1,6 @@
 import { readFile } from 'node:fs/promises'
 import { test, expect, type Page, type Locator } from '@playwright/test'
-import type { FrameJob, FrameManifest, ObservationSummary } from '../src/types'
+import type { FrameJob, FrameManifest, ObservationSummary, PairDifferenceJob } from '../src/types'
 
 // Synthetic contract fixtures test UI states only. They are never shipped as observations.
 const frame = (index: number) => ({
@@ -26,6 +26,13 @@ const summary: ObservationSummary = {
 }
 const job = (data = manifest): FrameJob => ({ job_id: 'fixture', status: 'finished',
   progress: 2, total: 2, manifest: data, error: null })
+// The changes the worker finds between frames 0 and 1 (backend/app/difference.py).
+const pairJob: PairDifferenceJob = { job_id: 'fixturepair', status: 'finished', error: null, difference: {
+  job_id: 'fixture', a: 0, b: 1, comparable: true, reason: null, method: 'zogy',
+  significance_url: '/api/frames/fixture/pairsig_00_01_v1.png', difference_url: '/api/frames/fixture/pairdiff_00_01_v1.png',
+  delta_days: 180, delta_lambda_pct: 0.3, small_bodies_checked: false, checks: [],
+  residuals: [{ x: 60, y: 50, ra: manifest.ra, dec: manifest.dec, significance: 7.5, kind: 'unknown', known: null,
+    explanation: 'Brighter in B. No known asteroid, bright star or catalogue source here – needs verification.' }] } }
 const transparentPng = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+aD1sAAAAASUVORK5CYII=', 'base64')
 async function fixtures(page: Page, data = manifest) {
   await page.route(url => url.pathname.startsWith('/api/') || url.pathname.startsWith('/analysis/api/'), async (route) => {
@@ -34,6 +41,7 @@ async function fixtures(page: Page, data = manifest) {
     if (url.pathname.endsWith('.png')) return route.fulfill({ contentType: 'image/png', body: transparentPng })
     if (url.pathname === '/api/resolve') return route.fulfill({ json: { name: 'Polaris', ra: manifest.ra, dec: manifest.dec } })
     if (url.pathname === '/api/observations') return route.fulfill({ json: summary })
+    if (url.pathname.startsWith('/api/difference')) return route.fulfill({ json: pairJob })
     return route.fulfill({ json: job(data) })
   })
 }
@@ -132,9 +140,11 @@ test('fixture: name search, compare, playback, quality and source metadata stay 
   await expect(page.locator('.stamp')).toContainText('2026-09-10')
   await expect(await openTab(page, 'data')).toContainText('TEST_FIXTURE')
   await expect(page.locator('.stamp')).toContainText('2026-09-10')
-  await page.getByRole('button', { name: 'Show the later minus the earlier epoch' }).click()
-  await expect(page.getByLabel('Epoch A (earlier)')).toBeVisible()
-  await expect(page.getByLabel('Epoch B (later)')).toBeVisible()
+  // The changes of A and B come by themselves; the difference is a view of the same pair.
+  await expect(page.locator('.changes')).toContainText('1 change ≥ 5σ')
+  await page.getByRole('button', { name: 'Show the difference' }).click()
+  await expect(page.locator('.change-summary')).toHaveText('1 change ≥ 5σ between A and B: 1 needs verification')
+  await expect(page.getByRole('radio', { name: 'Significance (ZOGY)' })).toHaveAttribute('aria-checked', 'true')
   await expect(page.locator('.diff-legend')).toContainText('no change')
   await expect(page.locator('.viewer .meta a').first()).toHaveAttribute('href', 'https://example.test/fixture-0')
 })

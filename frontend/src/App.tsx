@@ -45,6 +45,7 @@ import { useTrackLayer } from './trackLayer'
 import { sliceForDetector } from './sky'
 import { sliceText, useCubeWavelengths, useSkySlice } from './skyCube'
 import { epochFor, smallBodyMarkers, useSmallBodyLayer } from './smallBodyLayer'
+import { changeLine, residualMarks, usePairDifference } from './pairDifference'
 import { countSources, useSourceLayer } from './sourceLayer'
 import { targetText } from './targets'
 import type { DetectedSource, FrameJob, ObservationSummary, ProperMotion } from './types'
@@ -102,6 +103,8 @@ export default function App() {
   const [pairRequest, setPairRequest] = useState<{ pair: Partial<BlinkPair> } | null>(null)
   // The source map runs UMAP in the browser: only while its section is open.
   const [sourceMapOpen, setSourceMapOpen] = useState(false)
+  // The difference of A and B instead of the blink, for this job; back in the blink, the player starts on that pair.
+  const [pairView, setPairView] = useState<{ job: string; open: boolean; pair: BlinkPair | null } | null>(null)
   const [analysisSkyCaption, setAnalysisSkyCaption] = useState<string | null>(null)
   const [framesOnSky, setFramesOnSky] = useState(true)
   const [sourcesOnSky, setSourcesOnSky] = useState(true)
@@ -380,7 +383,8 @@ export default function App() {
   const differenceReason = manifest ? blockedReason(checks, 'difference')
     ?? (manifest.epochs < 2 ? { text: 'Difference needs observations from at least two epochs.' } : null) : null
   const differenceBlocked = differenceReason?.text
-  const showDifference = query.mode === 'difference' && !differenceBlocked && (manifest?.differences.length ?? 0) > 0
+  const showDifference = (query.mode === 'difference' || (!!pairView?.open && pairView.job === job?.job_id))
+    && !!manifest && !manifest.preview && manifest.frames.length > 1
   const hasFrames = (manifest?.frames.length ?? 0) > 0
   // The player's frame blinks on the sky; the difference image stays in the panel.
   const frameLayers = useFrameLayers(sky, manifest, frameIndex, framesOnSky && !showDifference && !analysisSkyCaption)
@@ -451,6 +455,9 @@ export default function App() {
     mjds: manifest.frames.filter((f, i, all) => all.findIndex((g) => g.epoch === f.epoch) === i).map((f) => f.mjd).slice(0, 6),
   } : null)
   useSmallBodyLayer(sky, smallBodies.epochs, frame?.mjd ?? null, smallBodiesOnSky)
+  // The worker finds the changes of every A/B pair the blink shows (final images only); a finished small-body lookup
+  // explains them again.
+  const pairChanges = usePairDifference(job, pair ?? linkedPair, smallBodies.job)
   // Everything the layers show on the sky for the shown frame, on its SPHEREx image too.
   const imageMarks = useMemo<ImageMark[]>(() => {
     if (!frame || showDifference) return []
@@ -464,8 +471,9 @@ export default function App() {
         name: `Detected · S/N ${source.snr.toFixed(0)} · ${source.match === 'none' ? 'no catalogue match, needs verification'
           : source.match === 'unknown' ? 'catalogue unavailable' : `${source.catalog_id ?? source.match}`}` })))
     }
+    marks.push(...residualMarks(pairChanges.result, job?.job_id, pair, frameIndex))
     return marks
-  }, [frame, showDifference, catalogMarks, smallBodiesOnSky, smallBodies.epochs, sourcesOnSky])
+  }, [frame, showDifference, catalogMarks, smallBodiesOnSky, smallBodies.epochs, sourcesOnSky, pairChanges.result, job?.job_id, pair, frameIndex])
 
   // The actions the checks offer (EvidencePanel, the Difference reason): each does what its label says.
   const onCheckAction = (action: CheckActionId) => {
@@ -553,12 +561,13 @@ export default function App() {
     && !(EMBED && differenceReason.action.id === 'choose-region') ? differenceReason.action : undefined
   // Which images A and B are; the difference image is a view of the comparison, offered only when it can be made.
   const imagesToggle = <ImagesToggle value={query.mode === 'exposures' ? 'exposures' : 'stacks'} onChange={selectMode} disabled={busy && !job} />
+  const changeText = changeLine(pairChanges)
   const changes = manifest && hasFrames && (
-    <section className="changes" aria-label="Difference image">
-      <h3 className="side-label">Difference image</h3>
-      {differenceBlocked
-        ? <p className="muted">{differenceBlocked}{liftAction && <> <button type="button" className="text-button" onClick={() => onCheckAction(liftAction.id)}>{liftAction.label}</button></>}</p>
-        : <button type="button" className="text-button" onClick={() => selectMode('difference')}>Show the later minus the earlier epoch</button>}
+    <section className="changes" aria-label="Changes between A and B">
+      <h3 className="side-label">Changes between A and B</h3>
+      {changeText
+        ? <p>{changeText}{pairChanges.result?.comparable && job && <> · <button type="button" className="text-button" onClick={() => setPairView({ job: job.job_id, open: true, pair })}>Show the difference</button></>}</p>
+        : differenceBlocked && <p className="muted">{differenceBlocked}{liftAction && <> <button type="button" className="text-button" onClick={() => onCheckAction(liftAction.id)}>{liftAction.label}</button></>}</p>}
     </section>
   )
   // Beside the image, under the A/B table (under the difference image, which has its own side column): the user
@@ -591,14 +600,15 @@ export default function App() {
   const viewer = manifest && hasFrames && (showDifference
     ? <>
       <div className="view-back">
-        <button type="button" className="text-button" onClick={() => selectMode('stacks')}><span aria-hidden="true">←</span> Back to the blink</button>
-        <span className="muted">Difference image: the later minus the earlier epoch stack</span>
+        <button type="button" className="text-button" onClick={() => (query.mode === 'difference' ? selectMode('stacks')
+          : setPairView({ job: job.job_id, open: false, pair }))}><span aria-hidden="true">←</span> Back to the blink</button>
+        <span className="muted">The blink&apos;s A and B</span>
       </div>
-      <DifferenceView key={job.job_id} manifest={manifest} />
+      <DifferenceView key={job.job_id} manifest={manifest} changes={pairChanges} />
       {!EMBED && candidateSide}
     </>
     : <BlinkPlayer key={`${job.job_id}-${manifest.preview ? manifest.frames[0]?.url : 'final'}`} frames={manifest.frames} checks={checks} grid={manifest} motion={motion} predictions={predictions}
-      onIndexChange={showFrame} onPairChange={setPair} seek={seek} pairRequest={pairRequest} initialPair={linkedPair} active={EMBED || stage === 'investigate'} showShare={EMBED}
+      onIndexChange={showFrame} onPairChange={setPair} seek={seek} pairRequest={pairRequest} initialPair={pairView?.job === job.job_id ? pairView.pair : linkedPair} active={EMBED || stage === 'investigate'} showShare={EMBED}
       controls={imagesToggle} changes={changes} marks={imageMarks} candidate={!EMBED && candidateSide}
       marking={candidate.armed} candidateMarks={candidate.marks} onMark={(shown, ra, dec) => candidate.markAt(shown, manifest, ra, dec)} />)
   const evidence = manifest && <EvidencePanel checks={checks} manifest={manifest} frameLabel={`this comparison · ${manifest.frames.length} ${manifest.frames.length === 1 ? 'image' : 'images'}`}

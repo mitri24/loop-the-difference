@@ -20,7 +20,7 @@ from app.photometry import SKIP_EDGE, _aperture_weights, aperture_correction, fo
 
 RA, DEC = 133.795, -7.245
 ANALYSIS_PSF = Path(__file__).resolve().parents[2] / "analysis-service" / "app" / "psf.py"
-SHARED = ("EPSF", "epsf_at", "_bracket", "pixel_psf")
+SHARED = ("EPSF", "epsf_at", "_bracket", "pixel_psf", "zogy")
 SIZE = 41
 SCALE_DEG = 6.15 / 3600
 UJY_PER_MJY_SR = 1e12 * np.radians(SCALE_DEG) ** 2

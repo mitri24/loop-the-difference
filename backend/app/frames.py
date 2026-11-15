@@ -4,6 +4,7 @@ import random
 import re
 import threading
 import time
+import uuid
 import warnings
 from pathlib import Path
 from typing import NamedTuple
@@ -80,9 +81,14 @@ def cutout_url(access_url: str, ra: float, dec: float, size_deg: float) -> str:
     return f"{access_url}?center={ra:.6f},{dec:.6f}&size={size_deg * ROTATION_MARGIN:.4f}"
 
 
+def cutout_path(directory: Path, url: str) -> Path:
+    """Where a cutout is cached: one file per cutout URL."""
+    return directory / f"{hashlib.sha256(url.encode()).hexdigest()[:24]}.fits"
+
+
 def fetch_cutout(client: httpx.Client, url: str, directory: Path) -> Path:
     directory.mkdir(parents=True, exist_ok=True)
-    path = directory / f"{hashlib.sha256(url.encode()).hexdigest()[:24]}.fits"
+    path = cutout_path(directory, url)
     if path.exists():
         return path
     partial = path.with_name(f"{path.name}.{os.getpid()}-{threading.get_ident()}.part")
@@ -276,8 +282,46 @@ def render_diff(earlier: np.ndarray, later: np.ndarray, directory: Path, name: s
     diff = later - earlier
     covered = ~np.isnan(diff)
     limit = float(np.percentile(np.abs(diff[covered]), 99)) if covered.any() else 0.0
-    v = np.clip(np.nan_to_num(diff) / (limit or 1.0), -1, 1)[..., None]
+    render_signed(diff, limit, directory, name)
+
+
+def render_signed(values: np.ndarray, limit: float, directory: Path, name: str) -> None:
+    """Grey at zero, red below and blue above, full colour at ±limit; NaN is no data."""
+    covered = ~np.isnan(values)
+    v = np.clip(np.nan_to_num(values) / (limit or 1.0), -1, 1)[..., None]
     rgb = DIFF_GREY + np.abs(v) * (np.where(v < 0, DIFF_EARLIER, DIFF_LATER) - DIFF_GREY)
     pixels = np.rint(rgb).astype(np.uint8)
     pixels[~covered] = DIFF_NO_DATA
-    Image.fromarray(np.flipud(pixels)).save(directory / name)
+    partial = directory / f"{name}.{uuid.uuid4().hex}.part"
+    Image.fromarray(np.flipud(pixels)).save(partial, format="PNG")
+    partial.replace(directory / name)
+
+
+def aligned_path(directory: Path, index: int) -> Path:
+    return directory / f"aligned_{index:02d}.npz"
+
+
+def save_aligned(path: Path, frame: Aligned, cutouts: list[str], weights: list[float]) -> None:
+    """A blink frame before filling, for its changes against another frame: image and variance as
+    float32, the footprint, and the cached cutouts it was made of with their stack weights."""
+    partial = path.with_name(f"{path.name}.{uuid.uuid4().hex}.part")
+    with partial.open("wb") as file:
+        np.savez(
+            file,
+            image=frame.image.astype(np.float32),
+            variance=frame.variance.astype(np.float32),
+            covered=frame.covered,
+            cutouts=np.array(cutouts, dtype=str),
+            weights=np.asarray(weights, dtype=np.float64),
+        )
+    partial.replace(path)
+
+
+def load_aligned(path: Path) -> tuple[Aligned, list[str], np.ndarray]:
+    with np.load(path) as data:
+        frame = Aligned(
+            data["image"].astype(np.float64),
+            data["variance"].astype(np.float64),
+            data["covered"],
+        )
+        return frame, [str(name) for name in data["cutouts"]], data["weights"]

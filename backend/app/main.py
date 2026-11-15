@@ -11,7 +11,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, JSONResponse
 from redis.exceptions import RedisError
 
-from app import jobs, names, partners, surprise, tracks
+from app import jobs, names, partners, smallbodies, surprise, tracks
 from app.archive import (
     ArchiveError,
     collection_key,
@@ -29,17 +29,23 @@ from app.models import (
     FollowupJob,
     FollowupRequest,
     FrameJob,
+    FrameManifest,
     FrameRequest,
     ObservationSummary,
+    PairDifferenceJob,
+    PairDifferenceRequest,
     ResolvedTarget,
     SpectrumJob,
     SpectrumRequest,
     SurpriseTarget,
 )
 from app.smallbodies import router as smallbodies_router
+from app.tasks import manifest_path
 
 _JOB_ID = re.compile(r"^[0-9a-f]{16}$")
-_FRAME_FILE = re.compile(r"^((?:preview_\d{3}_)?frame_\d{2}|diff_\d{2}_\d{2})\.png$")
+_FRAME_FILE = re.compile(
+    r"^((?:preview_\d{3}_)?frame_\d{2}|diff_\d{2}_\d{2}|pair(?:sig|diff)_\d{2}_\d{2}_v\d+(?:_[0-9a-f]{16})?)\.png$"
+)
 
 SettingsDep = Annotated[Settings, Depends(get_settings)]
 
@@ -167,6 +173,30 @@ def frame_file(job_id: str, filename: str, settings: SettingsDep) -> FileRespons
     return FileResponse(
         path, media_type="image/png", headers={"Cache-Control": "public, max-age=86400, immutable"}
     )
+
+
+@app.post("/api/difference")
+def create_difference(request: PairDifferenceRequest, settings: SettingsDep) -> PairDifferenceJob:
+    folder = manifest_path(settings.cache_dir, request.job_id).parent
+    if not (folder / "manifest.json").is_file():
+        raise HTTPException(
+            status_code=404, detail="The comparison's final images are not there: load it again"
+        )
+    count = len(FrameManifest.model_validate_json((folder / "manifest.json").read_text()).frames)
+    if max(request.a, request.b) >= count:
+        raise HTTPException(status_code=422, detail=f"A and B must be frames 0 to {count - 1}")
+    redis = jobs.connect(settings.redis_url)
+    lookup = request.small_bodies_job and smallbodies.status(redis, request.small_bodies_job)
+    return jobs.submit_difference(
+        redis, settings, request.job_id, request.a, request.b, lookup or None
+    )
+
+
+@app.get("/api/difference/{job_id}")
+def difference_job(job_id: str, settings: SettingsDep) -> PairDifferenceJob:
+    if not _JOB_ID.match(job_id):
+        raise HTTPException(status_code=404, detail="Unknown job")
+    return jobs.difference_status(jobs.connect(settings.redis_url), settings, job_id)
 
 
 @app.post("/api/spectrum")

@@ -29,6 +29,7 @@ from app.frames import (
     WAVELENGTH_MATCH_FRACTION,
     Aligned,
     align,
+    aligned_path,
     comparable_wavelengths,
     cutout_url,
     delta_lambda_pct,
@@ -38,6 +39,7 @@ from app.frames import (
     read_image,
     render_diff,
     render_png,
+    save_aligned,
     target_grid,
     target_is_flagged,
     wavelength_at,
@@ -210,7 +212,7 @@ def _render_frames(
     preview=False,
 ) -> dict:
     target, shape = target_grid(ra, dec, size_deg)
-    kept, exposures = [], []
+    kept, exposures, cutouts = [], [], []
     for obs, url, path in downloaded:
         data, variance, wcs, unusable = read_image(path)
         exposure = align(data, variance, wcs, target, shape)
@@ -240,6 +242,7 @@ def _render_frames(
         wavelength, bandwidth = wavelength_at(path, ra, dec)
         kept.append((obs, url, coverage, wavelength, bandwidth))
         exposures.append(exposure)
+        cutouts.append(path.name)
 
     checks += release_checks([obs for obs, *_ in kept], failed)
     epochs = _epoch_groups(kept)
@@ -253,6 +256,16 @@ def _render_frames(
 
     out_dir = manifest_path(settings.cache_dir, key).parent
     out_dir.mkdir(parents=True, exist_ok=True)
+    if not preview:
+        # For the changes between any A and B (app/difference.py), before the manifest; a job from
+        # before them gets them from its cached cutouts there.
+        for index, (_, group) in enumerate(members):
+            save_aligned(
+                aligned_path(out_dir, index),
+                stacks[index],
+                [cutouts[i] for i in group],
+                stack_weights([exposures[i] for i in group]),
+            )
     names = (
         render_png(
             [for_display(s) for s in stacks],
@@ -563,10 +576,9 @@ def stack_images(exposures: list[Aligned]) -> Aligned:
     with warnings.catch_warnings():
         warnings.simplefilter("ignore", RuntimeWarning)  # all-NaN pixels and exposures
         median = np.nanmedian(image, axis=0)
-        sky = [sigma_clipped_stats(e.variance[np.isfinite(e.image)])[1] for e in exposures]
     limit = CLIP_SIGMA * np.sqrt(variance + (CLIP_AMPFRAC * median) ** 2)
     keep = usable & ((usable.sum(axis=0) < 3) | (np.abs(image - median) <= limit))
-    weight = np.where(keep, 1 / np.array(sky)[:, None, None], 0.0)
+    weight = np.where(keep, stack_weights(exposures)[:, None, None], 0.0)
     total = weight.sum(axis=0)
     with np.errstate(divide="ignore", invalid="ignore"):
         mean = (weight * np.where(keep, image, 0.0)).sum(axis=0) / total
@@ -577,6 +589,16 @@ def stack_images(exposures: list[Aligned]) -> Aligned:
         np.where(has_data, combined, np.nan),
         np.any([e.covered for e in exposures], axis=0),
     )
+
+
+def stack_weights(exposures: list[Aligned]) -> np.ndarray:
+    """Each exposure's weight in its stack: the inverse of its sky variance (1 for a single one)."""
+    if len(exposures) == 1:
+        return np.ones(1)
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore", RuntimeWarning)  # an exposure without usable pixels
+        sky = [sigma_clipped_stats(e.variance[np.isfinite(e.image)])[1] for e in exposures]
+    return 1 / np.array(sky)
 
 
 # One usable exposure: observation, cutout URL, coverage, wavelength and bandwidth at the target.
