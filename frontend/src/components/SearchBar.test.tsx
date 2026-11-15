@@ -20,12 +20,13 @@ describe('splitCoordinates', () => {
 })
 
 describe('SearchBar', () => {
-  it('shows the example targets and Share next to the search', () => {
+  it('opens the example targets from beside the search field', () => {
     const html = renderToStaticMarkup(<SearchBar value="" onChange={() => undefined} draft={POLARIS} busy={false}
-      onShow={() => undefined} onFind={() => undefined} onShare={() => undefined} />)
+      onShow={() => undefined} onFind={() => undefined} />)
+    const searchGroup = html.slice(html.indexOf('class="search-group"'), html.indexOf('class="header-actions"'))
     for (const label of ["Barnard's Star", 'WISE 0855', 'Epsilon Indi B', 'RW Aurigae', 'R Draconis', 'Pluto', 'Polaris']) {
-      expect(html).toContain(`>${label.replace("'", '&#x27;')}</button>`)
+      expect(searchGroup).toContain(`>${label.replace("'", '&#x27;')}</button>`)
     }
-    expect(html).toContain('>Share</button>')
+    expect(searchGroup).toContain('class="examples-toggle"')
   })
 })

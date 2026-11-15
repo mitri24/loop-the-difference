@@ -12,7 +12,8 @@ interface Props {
 export function SkyFrame({ overview, children }: Props) {
   const [collapsed, setCollapsed] = useState(() => viewportClass(window.innerWidth) === 'phone')
   const width = useResizable({ id: 'overview-width', axis: 'x', grow: -1, min: 200,
-    initial: (v) => Math.min(360, v.width * 0.22), max: (v) => Math.min(v.width * 0.6, 720) })
+    // At most 40 % of the window: the map shares the width with the search bar, the page and a sheet.
+    initial: (v) => Math.min(360, v.width * 0.22), max: (v) => Math.min(v.width * 0.4, 720) })
   const className = `sky-area${overview ? ' overview' : ''}${overview && collapsed ? ' collapsed' : ''}`
   return (
     <div className={className} style={{ '--map-w': `${width.size}px` } as CSSProperties}>
