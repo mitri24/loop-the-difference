@@ -8,5 +8,6 @@
 @media (prefers-reduced-motion:reduce) { .skeleton { animation:none; } }
 .lazy-thumbnail > .skeleton { min-height:64px; border-radius:0; }
 .lazy-thumbnail > img[hidden] { display:none; }
-.viewport > .skeleton { position:absolute; inset:0; border-radius:0; }
+.viewport > .skeleton,.viewport-sky > .skeleton { position:absolute; inset:0; border-radius:0; }
+.viewport-sky > .skeleton { transform-origin:0 0; transform:var(--unzoom, none); }
 .analysis-loading { display:flex; flex-direction:column; gap:var(--space-3); margin-bottom:var(--space-3); }

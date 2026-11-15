@@ -195,7 +195,8 @@ test('fixture: the loading bar on the viewer head line counts the fetched images
   expect(Math.abs(box.y + box.height - (line.y + line.height))).toBeLessThanOrEqual(1)
   expect(Math.abs(box.width - line.width)).toBeLessThanOrEqual(1)
   await expect(page.locator('.loading-state')).toHaveCount(0)
-  await expect(page.getByRole('button', { name: 'Stop waiting' })).toHaveCount(0)
+  // No status box: the one action while it loads stands where Play will be, inside the grey frames.
+  await expect(page.locator('.player-skeleton .transport').getByRole('button', { name: 'Stop waiting' })).toBeVisible()
   await expect(page.locator('.comparison-status')).toHaveClass(/sr-only/)
   state = 'started'
   await expect(bar).toHaveAttribute('aria-valuenow', '5')
@@ -203,6 +204,33 @@ test('fixture: the loading bar on the viewer head line counts the fetched images
   state = 'finished'
   await expect(bar).toHaveCount(0)
   await expect(page.locator('.comparison-status')).toContainText('2 images ready')
+})
+
+test('fixture: Stop waiting ends a slow wait; Retry picks up the images the server kept preparing', async ({ page }) => {
+  await fixtures(page)
+  let finished = false
+  let polls = 0
+  await page.route('**/api/frames**', route => {
+    if (new URL(route.request().url()).pathname.endsWith('.png')) return route.fallback()
+    polls += 1
+    return route.fulfill({ json: finished ? job() : { ...job(), status: 'started', progress: 2, total: 12, manifest: null } })
+  })
+  await page.setViewportSize({ width: 1440, height: 900 })
+  await page.goto('/?ra=37.954542&dec=89.264111')
+  await expect(page.locator('.viewer-head').getByRole('progressbar', { name: 'SPHEREx images' })).toBeVisible()
+  await page.getByRole('button', { name: 'Stop waiting' }).click()
+  // The wait ends here: no bar, no grey frames, no empty-state invitation, one line and the way back.
+  await expect(page.locator('.viewer-head').getByRole('progressbar')).toHaveCount(0)
+  await expect(page.locator('.player-skeleton')).toHaveCount(0)
+  await expect(page.locator('.empty-state')).toHaveCount(0)
+  await expect(page.locator('.viewer-body .notice')).toHaveText('Stopped waiting. The server keeps preparing these images: Retry picks them up.')
+  const stoppedAt = polls
+  await page.waitForTimeout(2000)
+  expect(polls).toBe(stoppedAt)
+  finished = true
+  await page.getByRole('button', { name: 'Retry' }).click()
+  await expect(page.locator('.viewer .viewport img').first()).toBeVisible()
+  await expect(page.locator('.viewer-body .notice', { hasText: 'Stopped waiting' })).toHaveCount(0)
 })
 
 test('keyboard: panel focus, Escape, About panel and reduced motion', async ({ page }) => {
@@ -575,6 +603,28 @@ test('fixture: the marks file keeps marks, frames and verdict; its link opens th
   await page.reload()
   await expect(panel.locator('.candidate-marks li')).toHaveText(marks)
   await expect(page.locator('.viewer .viewport .candidate-mark')).toHaveCount(2)
+})
+
+test('fixture: the intro runs the logo while the app loads, blinks its planets, opens onto the app, then stays away', async ({ page }, info) => {
+  await fixtures(page)
+  await page.setViewportSize({ width: 1440, height: 900 })
+  // Automated browsers get no intro unless ?intro=1 asks for it.
+  await page.goto('/?intro=1')
+  const intro = page.locator('#intro')
+  await expect(intro).toBeVisible()
+  await expect(intro).toHaveClass(/intro--play/)
+  await page.waitForTimeout(1400)
+  await page.screenshot({ path: info.outputPath('intro-logo.png') })
+  await expect(intro).toHaveClass(/intro--open/)
+  await expect(intro).toHaveCount(0)
+  await expect(page.getByTestId('sky-search')).toBeVisible()
+  // A key opens it at once.
+  await page.goto('/?intro=1')
+  await expect(page.locator('#intro')).toHaveClass(/intro--play/)
+  await page.keyboard.press('Escape')
+  await expect(page.locator('#intro')).toHaveCount(0, { timeout: 2000 })
+  await page.goto('/')
+  await expect(page.locator('#intro')).toHaveCount(0)
 })
 
 test('fixture: Explore picks a region on the sky, Investigate shows its images, Full map and back keep everything', async ({ page }) => {

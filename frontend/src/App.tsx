@@ -38,7 +38,7 @@ import { usePickLayer } from './pickLayer'
 import { usePlateLayer } from './historicalPlate'
 import { useMotionTrack } from './motionTrack'
 import { useDistantTrack } from './distantTrack'
-import { checkFrames, possibleTrack } from './track'
+import { checkFrames, possibleTrack, searchCircles } from './track'
 import { useTrackLayer } from './trackLayer'
 import { sliceForDetector } from './sky'
 import { sliceText, useCubeWavelengths, useSkySlice } from './skyCube'
@@ -82,6 +82,8 @@ export default function App() {
   const [error, setError] = useState<string | null>(null)
   const [motion, setMotion] = useState<ProperMotion | null>(null)
   const [busy, setBusy] = useState(false)
+  // The user stopped waiting for the first images (the worker may still finish them; Retry picks them up).
+  const [stopped, setStopped] = useState(false)
   const [status, setStatus] = useState('Choose a target or explore the map.')
   const [skyLayer, setSkyLayer] = useState('Loading sky survey…')
   const [skyUnavailable, setSkyUnavailable] = useState(false)
@@ -204,6 +206,7 @@ export default function App() {
     const signal = current.signal
     const stale = () => signal.aborted || controller.current !== current
     lastRequest.current = { query: requested, name: targetName }
+    setStopped(false)
     searchShows.current = null
     setBusy(true)
     setError(null)
@@ -320,6 +323,7 @@ export default function App() {
     const picking = new AbortController()
     controller.current = picking
     setBusy(true)
+    setStopped(false)
     setError(null)
     setJob(null)
     setStage('investigate')
@@ -429,7 +433,9 @@ export default function App() {
     }
   }
   const possible = useMemo(() => manifest ? possibleTrack(candidate.marks, manifest, manifest.frames.map((f) => f.mjd)) : null, [candidate.marks, manifest])
-  const predictions = useMemo(() => (showDifference ? [] : possible?.predictions ?? []), [possible, showDifference])
+  // Drawn and checked with the same search radius: 2σ, at least 1.5 pixels.
+  const predictions = useMemo(() => (showDifference || !manifest ? [] : searchCircles(possible?.predictions ?? [], manifest.pixel_scale_arcsec)),
+    [possible, showDifference, manifest])
   useTrackLayer(sky, predictions)
   const distant = useDistantTrack(showDifference ? null : sky, possible, candidate.marks, manifest)
   usePickLayer(sky, stage === 'explore' ? pick : null, draft.fov)
@@ -474,6 +480,13 @@ export default function App() {
   const quick = useQuickSpectrum(manifest ? `${manifest.ra}` : null, manifest ? `${manifest.dec}` : null)
   const tabsSeen = new Set<InspectId>([...opened, ...(stage === 'investigate' && (!phone || inspectOpen) ? [inspect] : [])])
 
+  // Stop waiting for a slow archive: the requests stop here; the server's job is not cancelled, so Retry may find it done.
+  const stopWaiting = () => {
+    controller.current?.abort()
+    setBusy(false)
+    setStopped(true)
+    setStatus(job ? 'Stopped waiting. The server keeps preparing these images: Retry picks them up.' : 'Stopped waiting.')
+  }
   const statusBlock = (
     <>
       {/* Shown as the loading bar on the viewer head; the words are for screen readers. */}
@@ -481,7 +494,9 @@ export default function App() {
       {error && <div className="notice error" role="alert"><strong>Comparison unavailable</strong><p>{error}</p>
         {/IRSA/.test(error) && !EMBED && <p>This is the archive, not Loop the Difference. The examples beside the search are stored and work now.</p>}
         {!EMBED && (centred.ra !== query.ra || centred.dec !== query.dec) && <p>The map still shows the previous position.</p>}</div>}
-      {(!busy && (error || (!hasFrames && job))) && (
+      {stopped && !busy && !hasFrames && !error && <p className="notice">{job
+        ? 'Stopped waiting. The server keeps preparing these images: Retry picks them up.' : 'Stopped waiting.'}</p>}
+      {(!busy && (error || stopped || (!hasFrames && job))) && (
         <div className="recovery-actions">
           <button type="button" onClick={() => void run(lastRequest.current.query, lastRequest.current.name)}>Retry</button>
           {!EMBED && <button type="button" onClick={() => { setStage('explore'); setPanel('target') }}>Choose another region</button>}
@@ -491,16 +506,17 @@ export default function App() {
   )
   // While the first images are prepared: grey frames where the thumbnails, image, bar and A/B table will be (same grid).
   const loadingViewer = busy && !hasFrames && !error && (
-    <div className="player player-skeleton" aria-hidden="true">
-      <div className="observation-gallery"><div className="observation-strip">
+    <div className="player player-skeleton">
+      <div className="observation-gallery" aria-hidden="true"><div className="observation-strip">
         {[0, 1, 2, 3].map((i) => <div key={i} className="observation-card"><Skeleton variant="thumb" /></div>)}
       </div></div>
-      <div className="viewport"><Skeleton variant="image" /></div>
-      <div className="controls transport"><Skeleton variant="line" /></div>
-      <div className="player-side"><Skeleton variant="line" lines={4} /><Skeleton variant="line" lines={8} /></div>
+      <div className="viewport" aria-hidden="true"><Skeleton variant="image" /></div>
+      {/* Where Play will stand: the one action while the archive is slow. The bar above shows the progress. */}
+      <div className="controls transport"><button type="button" onClick={stopWaiting}>Stop waiting</button></div>
+      <div className="player-side" aria-hidden="true"><Skeleton variant="line" lines={4} /><Skeleton variant="line" lines={8} /></div>
     </div>
   )
-  const emptyState = !busy && !hasFrames && !error && (EMBED && !job
+  const emptyState = !busy && !hasFrames && !error && !stopped && (EMBED && !job
     ? <p className="muted">Add ra and dec to the URL, e.g. ?ra=02:31:49.09&amp;dec=+89:15:50.8&amp;embed=1</p>
     : <div className="empty-state">
       <span className="empty-reticle" aria-hidden="true" />

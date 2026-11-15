@@ -54,7 +54,7 @@ describe('CandidatePanel', () => {
     expect(html).toContain('Faster than any star')
     expect(html).toMatch(/0\.798 ± 0\.03″\/h/)
     expect(html).toContain('PA 116°')
-    expect(html).toContain('2σ, from mark precision only')
+    expect(html).toContain('2σ from mark precision only, at least 1.5 pixels')
     expect(html).not.toMatch(/orbit|trajectory found|confirmed/i)
     expect(html).not.toContain('Distant-object track')
   })

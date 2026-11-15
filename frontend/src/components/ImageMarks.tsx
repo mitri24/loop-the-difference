@@ -34,7 +34,8 @@ function Shape({ kind }: { kind: MarkKind }) {
 
 // What the layers show on the sky, on the SPHEREx image too: every marker projected onto the frame's grid (north up,
 // as the Gaia marker), only those inside the image. The hover title names each one.
-export function ImageMarks({ marks, grid }: { marks: ImageMark[]; grid: Pick<FrameManifest, 'ra' | 'dec' | 'size_deg'> }) {
+// zoom: the player's image zoom; the symbols keep their size on screen while their positions zoom with the image.
+export function ImageMarks({ marks, grid, zoom = 1 }: { marks: ImageMark[]; grid: Pick<FrameManifest, 'ra' | 'dec' | 'size_deg'>; zoom?: number }) {
   const placed = marks.flatMap((mark) => {
     const at = skyToFrame(mark.ra, mark.dec, grid.ra, grid.dec, grid.size_deg)
     return at ? [{ ...mark, ...at }] : []
@@ -43,7 +44,7 @@ export function ImageMarks({ marks, grid }: { marks: ImageMark[]; grid: Pick<Fra
   return (
     <svg className="image-marks" viewBox="0 0 100 100" preserveAspectRatio="none" aria-hidden="true">
       {placed.map((mark, i) => (
-        <g key={`${mark.kind}-${i}`} className={`image-mark ${mark.kind}`} transform={`translate(${(mark.x * 100).toFixed(2)} ${(mark.y * 100).toFixed(2)})`}>
+        <g key={`${mark.kind}-${i}`} className={`image-mark ${mark.kind}`} transform={`translate(${(mark.x * 100).toFixed(2)} ${(mark.y * 100).toFixed(2)})${zoom > 1 ? ` scale(${Number((1 / zoom).toFixed(4))})` : ''}`}>
           <title>{mark.name}</title>
           <Shape kind={mark.kind} />
         </g>
