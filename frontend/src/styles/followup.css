@@ -1,6 +1,10 @@
 /* Follow-up of a possible track (components/FollowupCheck.tsx): the result line first, every detail folded.
    As wide as the candidate check, never wider: long lines and obs_ids wrap. */
 .followup { display:grid; gap:6px; justify-self:stretch; min-width:0; }
+/* Beside the image the check and its charts take the column's width, never their own: a chart measures its
+   container, which must not be sized by the chart (300 px column, 220 px beside the difference image). */
+.candidate-side .candidate-check > .known-check { justify-self:stretch; min-width:0; }
+.candidate-side .followup .viz svg { max-width:100%; height:auto; }
 .followup p { margin:0; }
 .followup .notice button { min-height:28px; padding:1px 8px; font-size:12px; }
 .followup-details { display:grid; gap:10px; min-width:0; padding-top:4px; }

@@ -4,7 +4,8 @@ import { checkLines, type FollowupState } from '../followup'
 import { followupOf, hypothesis, measurement } from '../followupFixtures'
 import type { Check, Followup } from '../types'
 import { FollowupCheck } from './FollowupCheck'
-import { curveRuns, distanceTicks, snrPoints } from './FollowupChart'
+import followupPy from '../../../backend/app/followup.py?raw'
+import { curveRuns, distanceTicks, MIN_VISITS, SIGNIFICANT_SNR, snrPoints } from './FollowupChart'
 
 const state = (change: Partial<FollowupState>): FollowupState => ({
   kind: 'distances', phase: 'idle', job: null, followup: null, error: null, ready: () => true, start: () => undefined,
@@ -37,6 +38,8 @@ describe('FollowupCheck', () => {
     const idle = render({})
     expect(idle).toContain('<button type="button">Check all SPHEREx visits</button>')
     expect(idle).toContain('within 400 days of the marks and stacks it. Loads up to 48 IRSA cutouts; takes minutes.')
+    expect(render({ kind: 'line' })).toContain('along the straight line in this detector’s other visits and stacks it.')
+    expect(render({ kind: 'line' })).not.toContain('400 days')
     const waiting = render({ kind: 'line', ready: () => false })
     expect(waiting).toContain('<button type="button" disabled="">Check all SPHEREx visits</button>')
     expect(waiting).toContain('Needs the archive’s list of this field’s visits.')
@@ -119,6 +122,11 @@ describe('follow-up details', () => {
     const runs = curveRuns(gappy, snrPoints(gappy)).map((run) => run.map((p) => p.distance_au))
     expect(runs).toEqual([[20, 40], [160, 320]])
     expect(curveRuns(FOUND, snrPoints(FOUND))).toHaveLength(1)
+  })
+
+  it('draws the threshold and the stack rule the backend decides with', () => {
+    const assigned = (name: string) => Number(followupPy.match(new RegExp(`^${name}\\s*=\\s*([\\d.]+)`, 'm'))?.[1])
+    expect([SIGNIFICANT_SNR, MIN_VISITS]).toEqual([assigned('SIGNIFICANT_SNR'), assigned('MIN_VISITS')])
   })
 
   it('labels both ends of the distance axis and round distances between that keep their distance', () => {

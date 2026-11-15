@@ -7,9 +7,9 @@ import { bandColour, scale } from './SpectrumChart'
 // Drawn at the measured panel width (ChartFrame); the height stays fixed and small.
 const H = 150
 const M = { left: 40, right: 14, top: 10, bottom: 36 }
-// backend/app/followup.py: SIGNIFICANT_SNR, and MIN_VISITS for a stack.
-const SIGNIFICANT_SNR = 5
-const MIN_VISITS = 2
+// backend/app/followup.py: SIGNIFICANT_SNR, and MIN_VISITS for a stack (FollowupCheck.test.tsx fails when they drift).
+export const SIGNIFICANT_SNR = 5
+export const MIN_VISITS = 2
 // Round distances for the axis; the tested ones are uniform in 1/d, and so is the axis.
 const ROUND_AU = [30, 50, 100, 200, 500, 1000, 5000, 10000, 50000]
 const LABEL_GAP_PX = 34

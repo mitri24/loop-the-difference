@@ -9,7 +9,10 @@ import { FingerprintCheck } from './FingerprintCheck'
 import { FollowupChart, snrPoints } from './FollowupChart'
 
 export const START = 'Check all SPHEREx visits'
-const HINT = 'Measures the flux where the track puts the object in this detector’s other visits within 400 days of the marks and stacks it. Loads up to 48 IRSA cutouts; takes minutes.'
+const HINT = {
+  distances: 'Measures the flux where the track puts the object in this detector’s other visits within 400 days of the marks and stacks it. Loads up to 48 IRSA cutouts; takes minutes.',
+  line: 'Measures the flux along the straight line in this detector’s other visits and stacks it. Loads up to 48 IRSA cutouts; takes minutes.',
+}
 const NEEDS_VISITS = 'Needs the archive’s list of this field’s visits.'
 
 function Details({ followup }: { followup: Followup }) {
@@ -54,7 +57,7 @@ export function FollowupCheck({ state, observations }: { state: FollowupState; o
     return (
       <div className="followup">
         <button type="button" onClick={start} disabled={!ready}>{START}</button>
-        <p className="candidate-hint">{ready ? HINT : NEEDS_VISITS}</p>
+        <p className="candidate-hint">{ready ? HINT[kind] : NEEDS_VISITS}</p>
       </div>
     )
   }

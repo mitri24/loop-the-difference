@@ -9,7 +9,7 @@ import {
 } from './followup'
 import { followupOf as result, hypothesis, measurement } from './followupFixtures'
 import { possibleTrack, predict, type PossibleTrack } from './track'
-import type { FollowupJob, Frame, Observation } from './types'
+import type { FollowupJob, Frame, NotCoveredReason, Observation } from './types'
 
 const CENTRE = { ra: 150, dec: 20 }
 const mark = (obs_id: string, mjd: number, dec: number, sigma = 1): Mark => ({
@@ -203,6 +203,7 @@ describe('follow-up result line', () => {
     expect(globalSignificance(result({ global_sigma: 7.2, independent_trials: 1 }))).toBeNull()
     expect(globalSignificance(result({ global_sigma: null, independent_trials: 0 }))).toBeNull()
     expect(shortfalls(['thinned', 'release_unavailable', 'thinned'])).toEqual(['visits left out for the 48-cutout budget', 'a SPHEREx release not searchable'])
+    expect(shortfalls(['newer_code' as NotCoveredReason, 'cutout_missing'])).toEqual(['cutouts not delivered'])
   })
 
   it('lists the visits of the best hypothesis, else of the one with the most usable visits', () => {

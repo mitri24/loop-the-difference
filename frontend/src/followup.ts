@@ -243,7 +243,8 @@ const SHORTFALLS: Record<NotCoveredReason, string> = {
   unmatched_prediction: 'positions matching no visit',
 }
 
-export const shortfalls = (reasons: NotCoveredReason[]) => [...new Set(reasons.map((reason) => SHORTFALLS[reason]))]
+// A code from a newer backend has no phrase yet and is left out rather than shown empty.
+export const shortfalls = (reasons: NotCoveredReason[]) => [...new Set(reasons.flatMap((reason) => SHORTFALLS[reason] ?? []))]
 
 export type FollowupResult =
   // Best S/N ≥ 5: at a distance the visits tell apart, or along the straight line (distance null).
