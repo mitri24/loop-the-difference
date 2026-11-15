@@ -14,7 +14,7 @@ from rq.exceptions import NoSuchJobError
 
 from app import fingerprint, followup, jobs, tasks
 from app.frames import SPHEREX_PIXEL_SCALE_ARCSEC, wavelength_at
-from app.models import Observation
+from app.models import FingerprintPoint, MethaneIndex, Observation
 from app.tracks import predict, unit
 
 T1 = 61000.0
@@ -162,6 +162,9 @@ def _methane(wavelength: float) -> float:
     return CONTINUUM * (0.3 if any(band.holds(wavelength) for band in CH4) else 1.0)
 
 
+FIELD_ARGS = {"collection": "spherex_dr1", "ra": FIELD[0], "dec": FIELD[1], "detector": DETECTOR}
+
+
 def _run(**changes) -> dict:
     params = {"ra": FIELD[0], "dec": FIELD[1], "detector": DETECTOR, "marked": []}
     params |= {"marks": MARKS, "distances": [DISTANCE]}
@@ -184,8 +187,8 @@ def test_methane_bands_along_the_track_give_an_absorption_index(monkeypatch, set
     assert methane["verdict"] == "absorption"
     assert methane["sigma"] >= 3
     assert methane["summary"] == (
-        f"CH₄ absorption {methane['sigma']:.1f}σ – as in T/Y brown dwarfs or a cold giant planet; "
-        "check with more visits"
+        f"CH₄ absorption {methane['sigma']:.1f}σ in 3 bands – as in T/Y brown dwarfs or a cold "
+        "giant planet; a candidate to check with more visits, not an identification"
     )
     for band in methane["bands"]:
         assert band["status"] == "measured"
@@ -247,10 +250,107 @@ def test_smooth_spectra_give_no_depth():
 
     assert all(abs(band["depth"]) < 0.005 for band in star["bands"])
     assert star["verdict"] == "none"
+    assert star["summary"] == f"No CH₄ absorption ({star['sigma']:.1f}σ) – smooth within the errors"
     for kelvin in (600, 3000, 5800):
         body = index(planck(kelvin))
         assert all(band["depth"] < 0 for band in body["bands"])
-        assert body["sigma"] < 0
+        assert (body["verdict"], body["sigma"] <= -2) == ("none", True)
+        assert body["summary"] == (
+            f"No CH₄ absorption – the bands lie above the continuum ({body['sigma']:.1f}σ), "
+            "as in a star"
+        )
+
+
+def _bands(*sigmas: float) -> MethaneIndex:
+    """Two points per window on a flat continuum known almost exactly; each band lies its σ below
+    it, so the bands do not correlate and their σ add as Stouffer's."""
+    points = []
+    for w in fingerprint.WINDOWS:
+        z = sigmas[[band.code for band in CH4].index(w.code)] if w.kind == "band" else None
+        for edge in (w.lo_um, w.hi_um):
+            flux, error = (10.0, 1e-6) if z is None else (10.0 - z / math.sqrt(2), 1.0)
+            points.append((edge, flux, error, f"{w.code}{edge}"))
+    return fingerprint.methane_index(points)
+
+
+def test_the_verdict_needs_three_sigma_in_two_bands():
+    found = _bands(2.0, 2.0, 2.0)
+    weak = _bands(1.5, 1.5, 1.5)
+    one = _bands(0.0, 0.0, 6.0)
+    flat = _bands(0.5, 0.5, 0.5)
+
+    assert (found.verdict, found.sigma) == ("absorption", pytest.approx(6 / math.sqrt(3), abs=0.01))
+    assert found.summary == (
+        "CH₄ absorption 3.5σ in 3 bands – as in T/Y brown dwarfs or a cold giant planet; a "
+        "candidate to check with more visits, not an identification"
+    )
+    assert (weak.verdict, weak.summary) == (
+        "hint",
+        "CH₄ absorption only 2.6σ – not significant; check with more visits",
+    )
+    # Water ice or an asteroid's heat deepens the 3.3 µm window alone.
+    assert (one.verdict, one.sigma) == ("hint", pytest.approx(6 / math.sqrt(3), abs=0.01))
+    assert one.summary == (
+        "Absorption in one band only (CH₄ 3.3 µm) – not enough for CH₄; check with more visits"
+    )
+    assert (flat.verdict, flat.summary) == (
+        "none",
+        "No CH₄ absorption (0.9σ) – smooth within the errors",
+    )
+    assert "water ice" in fingerprint._methane_detail(one)
+
+
+def test_without_any_flux_there_are_not_enough_channels(tmp_path):
+    # Every cutout lost: the archive sent an error page for the first, nothing for the rest.
+    visits = [obs for obs, _ in _visits(_windows())]
+    plan = fingerprint.plan(visits, [], DETECTOR, MARKS, [DISTANCE])
+    first = plan.cutouts[0]
+    page = tmp_path / "busy.fits"
+    page.write_bytes(b"<html>Server busy</html>")
+    nothing = fingerprint.plan([], [], DETECTOR, MARKS, [DISTANCE])
+
+    lost = fingerprint.evaluate(
+        plan, [(first.visit, first.url, page)], [], **FIELD_ARGS, complete=True
+    )
+    empty = fingerprint.evaluate(nothing, [], [], **FIELD_ARGS, complete=True)
+
+    for result in (lost, empty):
+        assert (result.methane.verdict, result.methane.summary) == (
+            "not_enough_channels",
+            "CH₄ index: not enough channels",
+        )
+        codes = {check.code for check in result.checks}
+        assert "FINGERPRINT_NO_FLUX" in codes and "FINGERPRINT_QUICK_LOOK" not in codes
+        assert (result.psf_photometry, result.visits_measured) == (False, 0)
+    (unreadable,) = [check for check in lost.checks if check.code == "CUTOUT_MISSING"]
+    obs = first.visit
+    assert unreadable.detail.startswith(f"{obs.obs_id} D{obs.detector}: archive sent no readable")
+    assert unreadable.affects == [f"obs:{obs.obs_id}", f"detector:{obs.detector}"]
+    assert (lost.complete, page.exists()) == (False, False)
+
+
+def test_a_flagged_point_without_a_wavelength_is_counted_once():
+    point = FingerprintPoint(
+        obs_id="v1",
+        date="day+1",
+        mjd=T1 + 1,
+        ra=61.2,
+        dec=19.8,
+        radius_arcsec=1.0,
+        flux_ujy=5.0,
+        flux_err_ujy=1.0,
+        flagged=True,
+        source_url="https://irsa.invalid/v1D3.fits",
+        detector=3,
+    )
+
+    checks = fingerprint._checks([point], [], fingerprint.methane_index([]), True)
+
+    (skipped,) = [check for check in checks if check.code == "FINGERPRINT_SKIPPED"]
+    assert (
+        skipped.detail
+        == "1 visits without a usable point: 1 flagged pixels in the aperture (left out)"
+    )
 
 
 def test_too_few_channels_or_a_faint_continuum_give_no_index():
@@ -287,19 +387,24 @@ def test_bands_sharing_a_continuum_are_not_counted_twice():
 
 
 def test_an_absorption_resting_on_one_visit_is_named(monkeypatch, settings, tmp_path):
-    # Three visits per window; one in the 3.3 µm band lies far below the rest (an artefact, say).
+    # A flat spectrum, three visits per window; a star in one image of the K peak lifts the
+    # continuum every band is measured against, so all three seem to absorb.
     visits = _visits(_windows(per_window=3))
-    odd, low = next((obs, w) for obs, w in visits if fingerprint.CH4_3_3.holds(w))
+    odd, bright = next((obs, w) for obs, w in visits if fingerprint.K_PEAK.holds(w))
     _sky(
-        monkeypatch, settings, tmp_path, visits, lambda w: -4 * CONTINUUM if w == low else CONTINUUM
+        monkeypatch,
+        settings,
+        tmp_path,
+        visits,
+        lambda w: 8 * CONTINUUM if w == bright else CONTINUUM,
     )
 
     result = _run()
 
     assert result["methane"]["verdict"] == "absorption"
     warning = _checks(result)["FINGERPRINT_ONE_VISIT"]
-    assert warning["affects"] == [f"obs:{odd.obs_id}"]
-    assert warning["detail"].startswith(f"Without {odd.obs_id} it drops from ")
+    assert warning["affects"] == [f"obs:{odd.obs_id}", f"detector:{odd.detector}"]
+    assert warning["detail"].startswith(f"Without {odd.obs_id} D{odd.detector}: No CH₄ absorption")
 
 
 def test_the_budget_is_shared_between_windows_and_detectors():

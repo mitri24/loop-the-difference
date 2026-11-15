@@ -252,7 +252,8 @@ def test_flagged_and_clipped_visits_are_left_out_and_said(monkeypatch, settings,
     assert all(m["flagged"] or m["skipped"] == SKIP_EDGE for m in measurements)
     assert result["not_covered_reasons"] == ["image_edge", "flagged_pixels"]
     assert (result["global_sigma"], result["independent_trials"]) == (None, 0)
-    assert (result["visits_total"], result["visits_measured"]) == (len(visits), len(visits) - 1)
+    # Flagged fluxes are measured but never combined: no visit has a usable flux.
+    assert (result["visits_total"], result["visits_measured"]) == (len(visits), 0)
 
 
 def test_a_marked_stack_measures_none_of_its_exposures(monkeypatch, settings, tmp_path):
@@ -385,7 +386,7 @@ def test_a_silent_extra_search_is_said_and_retried(monkeypatch, settings, tmp_pa
     field = _square(*FIELD, 0.3)
     visits = [_visit(day, s_region=field) for day in (*FAR, *NEAR)]
     events, _ = _sky(monkeypatch, settings, tmp_path, visits, silent=True)
-    monkeypatch.setattr(tasks, "_report", lambda done, total: events.append(("report", total)))
+    monkeypatch.setattr(tasks, "report", lambda done, total: events.append(("report", total)))
 
     result = _run()
 
@@ -419,13 +420,15 @@ def test_cutouts_stay_within_the_budget():
     sixty = followup.plan([_visit(day) for day in range(130, 190)], [], MARKS, distances)
 
     assert (len(twenty.cutouts), twenty.kept) == (40, [0, len(distances) - 1])
+    # Distances left out to fit the budget are a reason too, though every visit is measured.
+    assert (twenty.reasons, twenty.visits_total) == ({"thinned": 3}, 20)
     assert (len(sixty.cutouts), sixty.kept) == (followup.MAX_CUTOUTS, [0, len(distances) - 1])
     (thinned,) = [c for c in sixty.checks if c.code == "FOLLOWUP_THINNED"]
     assert thinned.detail == (
         "At most 48 cutouts per job: 2 of 5 distances, evenly spread in 1/d (narrow "
         "d_min_au–d_max_au for a finer grid); 24 of 60 visits, spread over all epochs"
     )
-    assert (sixty.reasons, sixty.visits_total) == ({"thinned": 36}, 60)
+    assert (sixty.reasons, sixty.visits_total) == ({"thinned": 36 + 3}, 60)
 
 
 def test_imprecise_marks_leave_distant_visits_to_the_eye():

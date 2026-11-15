@@ -44,6 +44,9 @@ MIN_POINTS = 2
 MIN_CONTINUUM_SNR = 3.0
 ABSORPTION_SIGMA = 3.0
 HINT_SIGMA = 2.0
+# CH₄ absorbs in every band: one band below its continuum (water ice, an asteroid's heat) is no
+# CH₄. A band counts at this σ.
+DIP_SIGMA = 1.0
 
 
 @dataclass(frozen=True)
@@ -83,7 +86,7 @@ SUMMARY = {
     "no_total_flux": "CH₄ index: needs PSF fluxes, and some cutouts carry no ePSF",
 }
 
-# One point of the index: wavelength (µm), total flux and its 1σ error (µJy), obs_id.
+# One point of the index: wavelength (µm), total flux and its 1σ error (µJy), its visit (_visit).
 IndexPoint = tuple[float, float, float, str]
 
 
@@ -108,8 +111,8 @@ def build_fingerprint(
     def planner(found: list[Observation]) -> followup.Plan:
         return plan(found, marked, detector, marks, distances, points)
 
-    planned, failed = followup.searched(search, ra, dec, planner, tasks._report, "visits")
-    tasks._report(0, len(planned.cutouts))
+    planned, failed = followup.searched(search, ra, dec, planner, tasks.report, "visits")
+    tasks.report(0, len(planned.cutouts))
     downloaded, checks = tasks.download_cutouts(
         [cutout.visit for cutout in planned.cutouts],
         [cutout.url for cutout in planned.cutouts],
@@ -153,7 +156,7 @@ def plan(
         choose(found.visits, usable, expected),
         key=lambda v: (found.visits[v].mjd, found.visits[v].detector),
     )
-    cutouts = [followup._cutout(found.visits[v], v, [0], found.units[:, v]) for v in chosen]
+    cutouts = [followup.cutout_around(found.visits[v], v, [0], found.units[:, v]) for v in chosen]
     reasons = Counter(found.reasons)
     if thinned := len(usable) - len(chosen):
         reasons["thinned"] += thinned
@@ -241,27 +244,14 @@ def planned_wavelength(obs: Observation, point: np.ndarray) -> float | None:
     against cutouts in tests/test_network.py). Evenly in log λ this stays within about 0.04 µm of
     the archive's WCS-WAVE tables, a resolution element at most: enough to choose visits.
     """
-    corners = _corners(obs.s_region)
-    if corners is None:
+    corners = followup.polygon(obs.s_region)
+    if corners is None or len(corners) != 4:
         return None
     _, v = _unit_square(corners, point)
     if not math.isfinite(v):
         return None
     v = min(max(v, 0.0), 1.0)
     return obs.wavelength_max_um * (obs.wavelength_min_um / obs.wavelength_max_um) ** v
-
-
-def _corners(region: str | None) -> np.ndarray | None:
-    """The four corners of an s_region polygon as unit vectors, in IRSA's order."""
-    parts = (region or "").split()
-    values = [float(part) for part in parts if followup._NUMBER.match(part)]
-    if not parts or parts[0].upper() != "POLYGON" or len(values) % 2:
-        return None
-    pairs = np.array(values).reshape(-1, 2)
-    # IRSA closes the polygon with its first corner again.
-    if len(pairs) == 5 and np.allclose(pairs[0], pairs[-1]):
-        pairs = pairs[:4]
-    return unit(*pairs.T) if len(pairs) == 4 else None
 
 
 def _unit_square(corners: np.ndarray, point: np.ndarray) -> tuple[float, float]:
@@ -307,17 +297,10 @@ def evaluate(
     complete: bool,
 ) -> Fingerprint:
     """Measure every planned visit and read the methane index off the spectrum."""
-    paths = {url: path for _, url, path in downloaded}
+    files, unreadable = followup.open_cutouts(plan.cutouts, downloaded, "fingerprint", True)
     rows = []
-    unreadable = []
-    for cutout in plan.cutouts:
-        path, missing = paths.get(cutout.url), followup.MISSING
-        if path and not followup._readable(path):
-            # E.g. an error page sent with HTTP 200: never keep it in the cache.
-            path.unlink(missing_ok=True)
-            unreadable.append(cutout)
-            path, missing = None, followup.UNREADABLE
-        measurement, aperture, fitted = followup._measure(plan, cutout, 0, path, missing)
+    for cutout, path, missing in files:
+        measurement, aperture, fitted = followup.measure(plan, cutout, 0, path, missing)
         v = cutout.column
         expected = planned_wavelength(cutout.visit, unit(plan.ra[0, v], plan.dec[0, v]))
         point = FingerprintPoint(
@@ -328,31 +311,22 @@ def evaluate(
         point.window = next((w.code for w in WINDOWS if w.holds(point.wavelength_um)), None)
         rows.append((point, aperture, fitted))
     # PSF fluxes are totals, whatever the detector's PSF; aperture fluxes are not: only PSF
-    # fluxes join the detectors into one spectrum.
-    combinable = [row for row in rows if row[1] is not None]
-    psf = bool(combinable) and all(row[2] is not None for row in combinable)
+    # fluxes join the detectors into one spectrum. Without any flux there is nothing to join.
+    measured = [point for point, *_ in rows if point.skipped is None]
+    psf = bool(measured) and all(point.psf_flux_ujy is not None for point in measured)
     usable = [
-        (point.wavelength_um, fitted[1], fitted[2], point.obs_id)
-        for point, aperture, fitted in rows
-        if psf and aperture is not None and point.wavelength_um is not None
+        (point.wavelength_um, fitted[1], fitted[2], _visit(point))
+        for point, _, fitted in rows
+        if psf and fitted is not None and point.wavelength_um is not None
     ]
-    methane = methane_index(usable, psf)
+    methane = methane_index(usable, total=psf or not measured)
     points = sorted(
         (point for point, *_ in rows),
         key=lambda p: (p.wavelength_um is None, p.wavelength_um or 0.0, p.mjd),
     )
-    checks = checks + [
-        Check(
-            code="CUTOUT_MISSING",
-            severity="warning",
-            message="Archive did not deliver a cutout",
-            detail=f"{cutout.visit.obs_id} D{cutout.visit.detector}: {followup.UNREADABLE}, "
-            "cutout skipped (requesting the same fingerprint again retries it)",
-            affects=[f"obs:{cutout.visit.obs_id}"],
-        )
-        for cutout in unreadable
-    ]
-    measured = {(p.obs_id, p.detector) for p in points if p.skipped is None}
+    checks = checks + unreadable
+    # A flux with flagged pixels is drawn, but it is no usable point.
+    flux = {_visit(p) for p in measured if not p.flagged}
     return Fingerprint(
         collection=collection,
         ra=ra,
@@ -363,7 +337,7 @@ def evaluate(
         complete=complete and plan.complete and not unreadable,
         psf_photometry=psf,
         visits_total=plan.visits_total,
-        visits_measured=len(measured),
+        visits_measured=len(flux),
         windows=[
             SpectralWindow(code=w.code, name=w.name, lo_um=w.lo_um, hi_um=w.hi_um, kind=w.kind)
             for w in WINDOWS
@@ -391,19 +365,36 @@ def methane_index(points: list[IndexPoint], total: bool = True) -> MethaneIndex:
         verdict = "not_enough_channels" if lacking else "continuum_too_faint"
         return MethaneIndex(verdict=verdict, summary=SUMMARY[verdict], bands=bands)
     sigma = round(_combined(terms), 2)
-    if sigma >= ABSORPTION_SIGMA:
+    dips = [band for band in bands if band.sigma is not None and band.sigma >= DIP_SIGMA]
+    if sigma >= ABSORPTION_SIGMA and len(dips) >= 2:
         verdict = "absorption"
         summary = (
-            f"CH₄ absorption {sigma:.1f}σ – as in T/Y brown dwarfs or a cold giant planet; "
-            "check with more visits"
+            f"CH₄ absorption {sigma:.1f}σ in {len(dips)} bands – as in T/Y brown dwarfs or a cold "
+            "giant planet; a candidate to check with more visits, not an identification"
+        )
+    elif sigma >= ABSORPTION_SIGMA:
+        verdict = "hint"
+        name = next(w.name for w in WINDOWS if w.code == dips[0].band) if dips else "one band"
+        summary = (
+            f"Absorption in one band only ({name}) – not enough for CH₄; check with more visits"
         )
     elif sigma >= HINT_SIGMA:
         verdict = "hint"
         summary = f"CH₄ absorption only {sigma:.1f}σ – not significant; check with more visits"
+    elif sigma > -HINT_SIGMA:
+        verdict = "none"
+        summary = f"No CH₄ absorption ({sigma:.1f}σ) – smooth within the errors"
     else:
         verdict = "none"
-        summary = f"No CH₄ absorption ({sigma:.1f}σ) – smooth within the errors, as a star is"
+        summary = (
+            f"No CH₄ absorption – the bands lie above the continuum ({sigma:.1f}σ), as in a star"
+        )
     return MethaneIndex(verdict=verdict, sigma=sigma, summary=summary, bands=bands)
+
+
+def _visit(point: FingerprintPoint) -> str:
+    """One image: an exposure's obs_id names the images of both detectors that took it."""
+    return f"{point.obs_id} D{point.detector}"
 
 
 @dataclass
@@ -514,13 +505,12 @@ def _checks(
     lost = Counter(
         p.skipped for p in points if p.skipped not in (None, followup.MISSING, followup.UNREADABLE)
     )
-    lost.update(
-        {
-            "flagged pixels in the aperture (left out)": sum(p.flagged for p in with_flux),
-            "no WCS-WAVE table": sum(p.wavelength_um is None for p in with_flux),
-        }
-    )
-    if lost := +lost:
+    for p in with_flux:
+        if p.flagged:
+            lost["flagged pixels in the aperture (left out)"] += 1
+        elif p.wavelength_um is None:
+            lost["no WCS-WAVE table"] += 1
+    if lost:
         checks.append(
             Check(
                 code="FINGERPRINT_SKIPPED",
@@ -530,24 +520,25 @@ def _checks(
                 + ", ".join(f"{n} {reason}" for reason, n in lost.most_common()),
             )
         )
-    checks.append(
-        Check(
-            code="FINGERPRINT_QUICK_LOOK",
-            severity="info",
-            message="Quick-look spectrum along the track, not calibrated",
-            detail=(
-                "PSF flux (the SPHEREx ePSF of each visit's detector zone fitted at the predicted "
-                "position, total flux)"
-                if psf
-                else f"Aperture flux ({APERTURE_RADIUS_PX:g} px radius) without aperture "
-                "correction: not every cutout carries an ePSF, so the PSF's change between "
-                "detectors bends the spectrum and no CH₄ index is given"
+    if with_flux:
+        checks.append(
+            Check(
+                code="FINGERPRINT_QUICK_LOOK",
+                severity="info",
+                message="Quick-look spectrum along the track, not calibrated",
+                detail=(
+                    "PSF flux (the SPHEREx ePSF of each visit's detector zone fitted at the "
+                    "predicted position, total flux)"
+                    if psf
+                    else f"Aperture flux ({APERTURE_RADIUS_PX:g} px radius) without aperture "
+                    "correction: not every cutout carries an ePSF, so the PSF's change between "
+                    "detectors bends the spectrum and no CH₄ index is given"
+                )
+                + " at the wavelength each cutout's WCS-WAVE table gives there. Every point is "
+                "another visit, days to months apart: variability, rotation and the changing "
+                "phase angle shape the spectrum too",
             )
-            + " at the wavelength each cutout's WCS-WAVE table gives there. Every point is "
-            "another visit, days to months apart: variability, rotation and the changing phase "
-            "angle shape the spectrum too",
         )
-    )
     off = [
         abs(p.wavelength_um - p.planned_wavelength_um) * R_BY_DETECTOR[p.detector] / p.wavelength_um
         for p in points
@@ -577,21 +568,21 @@ def _checks(
         # band drops out, which says nothing about which visit carries the absorption.
         bands = _measured(methane)
         without = []
-        for obs_id in sorted({u[3] for u in usable if any(w.holds(u[0]) for w in WINDOWS)}):
-            index = methane_index([u for u in usable if u[3] != obs_id])
-            if _measured(index) == bands:
-                without.append((index.sigma, obs_id))
-        rest, obs_id = min(without, default=(math.inf, None))
-        if rest < ABSORPTION_SIGMA:
+        for label in sorted({u[3] for u in usable if any(w.holds(u[0]) for w in WINDOWS)}):
+            index = methane_index([u for u in usable if u[3] != label])
+            if _measured(index) == bands and index.verdict != "absorption":
+                without.append((index.sigma, label, index.summary))
+        if without:
+            _, label, summary = min(without)
+            point = next(p for p in points if _visit(p) == label)
             checks.append(
                 Check(
                     code="FINGERPRINT_ONE_VISIT",
                     severity="warning",
                     message="The CH₄ absorption rests on one visit",
-                    detail=f"Without {obs_id} it drops from {methane.sigma:.1f}σ to {rest:.1f}σ: "
-                    "a star, an asteroid or an artefact there can mimic it; look at that visit's "
-                    "cutout",
-                    affects=[f"obs:{obs_id}"],
+                    detail=f"Without {label}: {summary}. A star, an asteroid or an artefact in "
+                    "that image can mimic the absorption; look at its cutout",
+                    affects=[f"obs:{point.obs_id}", f"detector:{point.detector}"],
                 )
             )
     return checks
@@ -627,8 +618,10 @@ def _methane_detail(methane: MethaneIndex) -> str:
         "Depth = 1 − band flux / continuum, the continuum a power law through the windows on "
         "either side, so a smooth spectrum such as a star's gives none; the σ test the band "
         "against that continuum and combine with their shared windows taken into account. "
-        "Methane ice on a dwarf planet (Pluto, Eris) absorbs in the same bands, an asteroid's "
-        "own heat beyond 3.5 µm can deepen the 3.3 µm band, and a very cold planet can lose its "
-        "methane to clouds (Fortney et al. 2016, ApJL 824, L25): no dip rules nothing out"
+        "Methane ice on a dwarf planet (Pluto, Eris) absorbs in the same bands; water ice (its "
+        "3 µm band, common on Kuiper-belt objects) and an asteroid's own heat beyond 3.5 µm "
+        "deepen the 3.3 µm window, so CH₄ needs two bands below their continuum. A very cold "
+        "planet can lose its methane to clouds (Fortney et al. 2016, ApJL 824, L25): no dip "
+        "rules nothing out"
     )
     return "; ".join(parts) + (". " if parts else "") + method

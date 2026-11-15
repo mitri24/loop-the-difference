@@ -375,7 +375,7 @@ export interface Followup {
   global_sigma: number | null
   independent_trials: number // 0 without a hypothesis of two or more visits
   visits_total: number // visits of the detector in the track's window that could be measured (not the marks' own)
-  visits_measured: number // of those, the ones that gave a flux
+  visits_measured: number // of those, the ones with a usable flux (no flagged pixels in the aperture)
   not_covered_reasons: NotCoveredReason[] // why visits or predictions gave no usable flux, most actionable first
 }
 
@@ -401,7 +401,7 @@ export type NotCoveredReason =
   | 'no_flux' // NaN pixels, too few sky pixels or invalid VARIANCE
   | 'thinned' // left out to stay within the cutout budget
   | 'not_searched' // more positions outside the field's images than searches per job
-  | 'beyond_window' // visits more than 400 days from the marks
+  | 'beyond_window' // visits outside the distance model's time window around the marks
   | 'no_prediction' // straight line: no position sent for the visit
   | 'unmatched_prediction' // straight line: a position matches no visit
 
@@ -446,7 +446,7 @@ export interface MethaneBand {
 export interface MethaneIndex {
   verdict: 'absorption' | 'hint' | 'none' | 'not_enough_channels' | 'continuum_too_faint' | 'no_total_flux'
   sigma: number | null // the bands combined, shared continuum windows taken into account
-  summary: string // one line, e.g. "CH₄ absorption 3.8σ – as in T/Y brown dwarfs or a cold giant planet; …"
+  summary: string // one line, e.g. "CH₄ absorption 3.8σ in 3 bands – as in T/Y brown dwarfs or a cold giant planet; …"
   bands: MethaneBand[]
 }
 
@@ -460,8 +460,8 @@ export interface Fingerprint {
   distance_au: number | null // null for a straight line
   complete: boolean
   psf_photometry: boolean // the spectrum uses psf_flux_ujy; false: aperture flux_ujy, no total, no index
-  visits_total: number
-  visits_measured: number
+  visits_total: number // images of every detector in the track's window that could be measured
+  visits_measured: number // of those, the ones with a usable flux (no flagged pixels in the aperture)
   windows: SpectralWindow[]
   points: FingerprintPoint[] // by wavelength, visits without one last
   methane: MethaneIndex

@@ -233,6 +233,7 @@ def plan(
             f"{len(kept)} of {len(hypotheses)} distances, evenly spread in 1/d "
             "(narrow d_min_au–d_max_au for a finer grid)"
         )
+        reasons["thinned"] += len(hypotheses) - len(kept)
     if len(columns) < len(usable):
         thinned.append(f"{len(columns)} of {len(usable)} visits, spread over all epochs")
         reasons["thinned"] += len(usable) - len(columns)
@@ -458,16 +459,28 @@ def _marked(obs: Observation, marked: list[list], times: list[float]) -> bool:
     return any(abs(obs.mjd - t) <= SAME_VISIT_DAYS for t in times)
 
 
-def _inside(region: str | None, units: np.ndarray) -> np.ndarray:
-    """Which unit vectors lie at least an aperture radius inside a visit's s_region polygon
-    (convex, great-circle edges); without a polygon IRSA's cutout answer decides."""
+def polygon(region: str | None) -> np.ndarray | None:
+    """The corners of an s_region POLYGON as unit vectors, in IRSA's order and without the first
+    corner repeated at the end; None for anything else."""
     parts = (region or "").split()
     values = [float(part) for part in parts if _NUMBER.match(part)]
     if not parts or parts[0].upper() != "POLYGON" or len(values) < 6 or len(values) % 2:
+        return None
+    pairs = np.array(values).reshape(-1, 2)
+    # IRSA closes the polygon with its first corner again.
+    if len(pairs) > 3 and np.array_equal(pairs[0], pairs[-1]):
+        pairs = pairs[:-1]
+    return unit(*pairs.T)
+
+
+def _inside(region: str | None, units: np.ndarray) -> np.ndarray:
+    """Which unit vectors lie at least an aperture radius inside a visit's s_region polygon
+    (convex, great-circle edges); without a polygon IRSA's cutout answer decides."""
+    corners = polygon(region)
+    if corners is None:
         return np.ones(len(units), dtype=bool)
-    corners = unit(*np.array(values).reshape(-1, 2).T)
     edges = np.cross(corners, np.roll(corners, -1, axis=0))
-    # IRSA closes the polygon with its first corner again: that edge has no length.
+    # Repeated corners make edges without length.
     lengths = np.linalg.norm(edges, axis=1)
     edges = edges[lengths > 1e-12] / lengths[lengths > 1e-12, None]
     edges *= np.sign(edges @ corners.mean(axis=0))[:, None]
@@ -509,7 +522,7 @@ def _fit(
         ]
         if len(groups) <= MAX_CUTOUTS:
             break
-    return kept, columns, [_cutout(visits[v], v, g, units[:, v]) for v, g in groups]
+    return kept, columns, [cutout_around(visits[v], v, g, units[:, v]) for v, g in groups]
 
 
 def _groups(members: list[int], units: np.ndarray) -> list[list[int]]:
@@ -523,7 +536,7 @@ def _groups(members: list[int], units: np.ndarray) -> list[list[int]]:
     return groups
 
 
-def _cutout(visit: Observation, column: int, group: list[int], units: np.ndarray) -> Cutout:
+def cutout_around(visit: Observation, column: int, group: list[int], units: np.ndarray) -> Cutout:
     """One cutout centred on its group, each prediction at least CUTOUT_DEG / 2 from the edge."""
     centre = units[group].sum(axis=0)
     reach = _degrees(np.min(units[group] @ (centre / np.linalg.norm(centre))))
@@ -558,18 +571,11 @@ def evaluate(
     complete: bool,
 ) -> Followup:
     """Measure every planned prediction and combine each hypothesis over its usable visits."""
-    paths = {url: path for _, url, path in downloaded}
+    files, unreadable = open_cutouts(plan.cutouts, downloaded, "follow-up")
     rows: dict[int, list[Row]] = {h: [] for h in plan.kept}
-    unreadable = []
-    for cutout in plan.cutouts:
-        path, missing = paths.get(cutout.url), MISSING
-        if path and not _readable(path):
-            # E.g. an error page sent with HTTP 200: never keep it in the cache.
-            path.unlink(missing_ok=True)
-            unreadable.append(cutout)
-            path, missing = None, UNREADABLE
+    for cutout, path, missing in files:
         for h in cutout.members:
-            rows[h].append(_measure(plan, cutout, h, path, missing))
+            rows[h].append(measure(plan, cutout, h, path, missing))
     # PSF fluxes are totals, aperture fluxes the core (~5 % less): one kind for every hypothesis,
     # so that their S/N compare.
     combinable = [row for h in plan.kept for row in rows[h] if row[1] is not None]
@@ -592,21 +598,12 @@ def evaluate(
     trials = _independent([usable[i] for i in candidates])
     determined = plan.model == MODEL and trials > 1
     measurements = [m for hypothesis in hypotheses for m in hypothesis.measurements]
-    measured = {m.obs_id for m in measurements if m.skipped is None}
+    # A flux with flagged pixels is measured but never combined: it does not count.
+    measured = {m.obs_id for m in measurements if m.skipped is None and not m.flagged}
     global_sigma = None
     if best is not None:
         global_sigma = round(_global_sigma(_stack(usable[best])[2], max(trials, 1)), 2)
-    checks = checks + [
-        Check(
-            code="CUTOUT_MISSING",
-            severity="warning",
-            message="Archive did not deliver a cutout",
-            detail=f"{cutout.visit.obs_id}: {UNREADABLE}, cutout skipped (requesting the same "
-            "follow-up again retries it)",
-            affects=[f"obs:{cutout.visit.obs_id}"],
-        )
-        for cutout in unreadable
-    ]
+    checks = checks + unreadable
     return Followup(
         collection=collection,
         ra=ra,
@@ -649,7 +646,45 @@ def not_covered_reasons(
     return [reason for reason in REASONS if found[reason] > 0]
 
 
-def _readable(path: Path) -> bool:
+def open_cutouts(
+    cutouts: list[Cutout],
+    downloaded: list[tuple[Observation, str, Path]],
+    job: str,
+    detector: bool = False,
+) -> tuple[list[tuple[Cutout, Path | None, str]], list[Check]]:
+    """Each planned cutout with its file, or None and why there is none (MISSING, UNREADABLE).
+
+    A file that is no readable FITS, e.g. an error page sent with HTTP 200, leaves the cache, so
+    the next request fetches it again, and gets a CUTOUT_MISSING check; `detector` names the
+    visit's detector there too, for a job over every detector (one obs_id, two detectors).
+    """
+    paths = {url: path for _, url, path in downloaded}
+    files, checks = [], []
+    for cutout in cutouts:
+        path = paths.get(cutout.url)
+        if path is None or readable(path):
+            files.append((cutout, path, MISSING))
+            continue
+        path.unlink(missing_ok=True)
+        files.append((cutout, None, UNREADABLE))
+        obs = cutout.visit
+        name, affects = obs.obs_id, [f"obs:{obs.obs_id}"]
+        if detector:
+            name, affects = f"{obs.obs_id} D{obs.detector}", [*affects, f"detector:{obs.detector}"]
+        checks.append(
+            Check(
+                code="CUTOUT_MISSING",
+                severity="warning",
+                message="Archive did not deliver a cutout",
+                detail=f"{name}: {UNREADABLE}, cutout skipped (requesting the same {job} again "
+                "retries it)",
+                affects=affects,
+            )
+        )
+    return files, checks
+
+
+def readable(path: Path) -> bool:
     """A FITS file with the IMAGE and VARIANCE extensions the photometry reads."""
     try:
         with fits.open(path) as hdul:
@@ -658,7 +693,7 @@ def _readable(path: Path) -> bool:
         return False
 
 
-def _measure(plan: Plan, cutout: Cutout, h: int, path: Path | None, missing: str = MISSING) -> Row:
+def measure(plan: Plan, cutout: Cutout, h: int, path: Path | None, missing: str = MISSING) -> Row:
     """Forced photometry at one prediction; the raw aperture and PSF fluxes when they can be
     combined."""
     v, obs = cutout.column, cutout.visit

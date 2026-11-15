@@ -37,7 +37,7 @@ from app.config import Settings, get_settings
 from app.coords import parse_dec, parse_jpl_dec, parse_ra
 from app.frames import target_grid
 from app.models import SmallBodiesJob, SmallBodiesRequest, SmallBody, SmallBodyEpoch
-from app.tasks import _report
+from app.tasks import report
 
 SBIDENT_URL = "https://ssd-api.jpl.nasa.gov/sb_ident.api"
 HORIZONS_URL = "https://ssd.jpl.nasa.gov/api/horizons.api"
@@ -253,7 +253,7 @@ def epoch_bodies(
 def find_small_bodies(ra: float, dec: float, size_deg: float, mjds: list[float]) -> dict:
     """Worker job: every epoch's known small bodies; epochs run in parallel, in time order."""
     cache_dir = get_settings().cache_dir
-    _report(0, len(mjds))
+    report(0, len(mjds))
     positions = spherex_positions(mjds, cache_dir)
     with ThreadPoolExecutor(max_workers=PARALLEL_EPOCHS) as pool:
         futures = [
@@ -261,7 +261,7 @@ def find_small_bodies(ra: float, dec: float, size_deg: float, mjds: list[float])
             for mjd in mjds
         ]
         for done, _ in enumerate(as_completed(futures), start=1):
-            _report(done, len(mjds))
+            report(done, len(mjds))
     return {"epochs": [future.result().model_dump() for future in futures]}
 
 

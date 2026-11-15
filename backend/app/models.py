@@ -513,7 +513,8 @@ class Followup(BaseModel):
     # visit that separates most of them (0 without any such hypothesis).
     independent_trials: int = 0
     # Visits of the detector in the track's window that could be measured (the marks' own visits
-    # and other releases' copies not counted), and those of them that gave a flux.
+    # and other releases' copies not counted), and those of them with a usable flux: measured
+    # without flagged pixels in the aperture, so the UI can say "flux in 5 of 6 visits".
     visits_total: int = 0
     visits_measured: int = 0
     not_covered_reasons: list[NotCoveredReason] = []
@@ -600,7 +601,8 @@ class MethaneIndex(BaseModel):
     ]
     # The bands combined, their shared continuum windows taken into account; None without a band.
     sigma: float | None = None
-    # One line for the UI, e.g. "CH₄ absorption 3.8σ – as in T/Y brown dwarfs or a cold giant …".
+    # One line for the UI, e.g. "CH₄ absorption 3.8σ in 3 bands – as in T/Y brown dwarfs or a
+    # cold giant planet; a candidate to check with more visits, not an identification".
     summary: str
     bands: list[MethaneBand] = []
 
@@ -620,7 +622,8 @@ class Fingerprint(BaseModel):
     # Every measured flux has a PSF flux: the spectrum and the index use psf_flux_ujy, else the
     # points' aperture flux_ujy, which is no total and gives no index.
     psf_photometry: bool = False
-    # Visits of every detector in the track's window that could be measured, and with a flux.
+    # Images of every detector in the track's window that could be measured, and those of them
+    # with a usable (unflagged) flux.
     visits_total: int = 0
     visits_measured: int = 0
     windows: list[SpectralWindow] = []
