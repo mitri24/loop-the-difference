@@ -223,7 +223,7 @@ class SmallBodiesRequest(BaseModel):
 
 
 class SmallBody(BaseModel):
-    """Known asteroid or comet from NASA/JPL SBIdent, seen from the geocentre."""
+    """Known asteroid or comet from NASA/JPL SBIdent, seen from SPHEREx or else the geocentre."""
 
     name: str
     ra: float
@@ -241,7 +241,8 @@ class SmallBodyEpoch(BaseModel):
     date: str
     bodies: list[SmallBody] = []
     error: str | None = None
-    # The SBIdent request itself, so every listed body can be checked at the source.
+    # The SBIdent request itself, so every listed body can be checked at the source. Its observer
+    # is SPHEREx's position at `mjd` (xobs) or, without one, the geocentre (mpc-code=500).
     source_url: str
 
 

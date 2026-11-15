@@ -29,7 +29,7 @@ from scipy import ndimage
 
 from . import imaging, psf
 from .astrometry import angular_sep_arcsec, mjd_to_iso, mjd_to_jyear, propagate
-from .catalogs import allwise_cone, gaia_cone, sbident_field
+from .catalogs import gaia_cone, sbident_field, wise_cone
 from .comparability import compare_frames
 from .config import settings
 from .cutouts import DEGRADED_FLAGS, HARD_FLAGS, Cutout, CutoutError, fetch_cutout, load_cutout
@@ -693,11 +693,12 @@ def _filled(variance: np.ndarray, bad: np.ndarray) -> np.ndarray:
 
 @dataclass
 class References:
-    """Reference sources used to explain residuals. ``sso_*`` is None until the
-    (slow) JPL SBIdent check has run for epoch A / B."""
+    """Reference sources used to explain residuals. ``wise`` is CatWISE2020, or AllWISE when
+    IRSA did not deliver it. ``sso_*`` is None until the (slow) JPL SBIdent check has run for
+    epoch A / B."""
 
     gaia: list[CatalogSource]
-    allwise: list[CatalogSource]
+    wise: list[CatalogSource]
     sso_a: list[SolarSystemObject] | None
     sso_b: list[SolarSystemObject] | None
 
@@ -732,17 +733,19 @@ def _find_residual_peaks(sig: np.ndarray, bad: np.ndarray) -> list[tuple[float, 
 
 
 async def _fetch_static_references(grid: imaging.Grid) -> tuple[References, list[Check]]:
-    """Gaia DR3 and AllWISE around the field, in parallel. A failing service degrades
-    the vetting (with a visible warning) instead of failing the difference."""
+    """Gaia DR3 and CatWISE2020 (else AllWISE) around the field, in parallel. A failing service
+    degrades the vetting (with a visible warning) instead of failing the difference."""
     radius = grid.fov_arcmin / 60 * 0.75
     checks: list[Check] = []
     async with httpx.AsyncClient(follow_redirects=True) as client:
-        gaia, allwise = await asyncio.gather(
+        gaia, wise = await asyncio.gather(
             gaia_cone(grid.ra, grid.dec, radius, client),
-            allwise_cone(grid.ra, grid.dec, radius, client),
+            wise_cone(grid.ra, grid.dec, radius, client),
             return_exceptions=True,
         )
-    for name, res in (("Gaia DR3", gaia), ("AllWISE", allwise)):
+    if not isinstance(wise, BaseException):
+        wise, checks = wise
+    for name, res in (("Gaia DR3", gaia), ("WISE", wise)):
         if isinstance(res, BaseException):
             checks.append(
                 Check(
@@ -754,7 +757,7 @@ async def _fetch_static_references(grid: imaging.Grid) -> tuple[References, list
             )
     return References(
         gaia=[] if isinstance(gaia, BaseException) else gaia,
-        allwise=[] if isinstance(allwise, BaseException) else allwise,
+        wise=[] if isinstance(wise, BaseException) else wise,
         sso_a=None,
         sso_b=None,
     ), checks
@@ -848,24 +851,38 @@ def _vet_residuals(
                     "verification."
                 )
         else:
-            wise, wsep = _nearest(refs.allwise, ra, dec, epoch, MATCH_RADIUS_PX * pix)
+            wise, wsep = _nearest(refs.wise, ra, dec, epoch, MATCH_RADIUS_PX * pix)
             if wise is not None:
-                kind, known = "red_source", wise.id
+                pm = math.hypot(wise.pm_ra_mas_yr or 0, wise.pm_dec_mas_yr or 0)
+                moved_px = pm / 1000 * abs(jb - ja) / pix
                 w1 = f"W1={wise.mag:.1f}" if wise.mag is not None else "W1 n/a"
-                expl = (
-                    f'{wise.id} ({w1}) {wsep:.0f}" away but no Gaia DR3 counterpart: a '
-                    "very red object (brown dwarf, young star, dusty galaxy) — needs "
-                    "verification; check its AllWISE/CatWISE motion."
-                )
+                known = wise.id
+                if moved_px >= 0.5:
+                    kind = "moving_star"
+                    expl = (
+                        f'Known moving source {wise.id} ({w1}, µ={pm / 1000:.2f}"/yr), no Gaia '
+                        f"DR3 counterpart: expected to move {moved_px:.1f} px between the "
+                        "frames. Residual explained by known proper motion of a very red "
+                        "object (e.g. a brown dwarf) — needs verification."
+                    )
+                else:
+                    kind = "red_source"
+                    expl = (
+                        f'{wise.id} ({w1}) {wsep:.0f}" away at this epoch but no Gaia DR3 '
+                        "counterpart: a very red object (brown dwarf, young star, dusty "
+                        f"galaxy) that {wise.catalog} sees move less than half a pixel between "
+                        "the frames — needs verification."
+                    )
             else:
                 kind, known = "unknown", None
                 checked = (
                     "" if refs.sso_a is not None else " Run the known asteroid/comet check (JPL)."
                 )
                 expl = (
-                    f'No Gaia DR3 or AllWISE source within {MATCH_RADIUS_PX * pix:.0f}" '
-                    "at this epoch. Inspect the individual frames: artefact, "
-                    "solar-system object, transient or variable — needs verification." + checked
+                    f"No Gaia DR3 or CatWISE2020/AllWISE source within "
+                    f'{MATCH_RADIUS_PX * pix:.0f}" at this epoch. Inspect the individual frames: '
+                    "artefact, solar-system object, transient or variable — needs verification."
+                    + checked
                 )
         if flags:
             expl += f" Pixel flags here: {', '.join(flags)}."
@@ -921,7 +938,7 @@ async def run_solar_system_check(diff_id: str, progress: Progress) -> Difference
     except httpx.HTTPError as exc:
         raise RuntimeError(f"JPL SBIdent is unavailable ({type(exc).__name__}).") from exc
     progress(0.95, "Re-vetting residuals")
-    ctx.refs = References(ctx.refs.gaia, ctx.refs.allwise, sso_a, sso_b)
+    ctx.refs = References(ctx.refs.gaia, ctx.refs.wise, sso_a, sso_b)
     residuals = _vet_residuals(ctx.peaks, ctx.a, ctx.b, ctx.refs)
     n_sso = sum(1 for r in residuals if r.kind == "solar_system")
     markers = []

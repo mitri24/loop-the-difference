@@ -1,6 +1,7 @@
 import { renderToStaticMarkup } from 'react-dom/server'
 import { describe, expect, it } from 'vitest'
 import type { SmallBodiesJob, SmallBodyEpoch } from '../types'
+import { observerText } from '../smallBodyLayer'
 import { SmallBodies, type SmallBodiesLookup, motion, progressText, utc } from './SmallBodies'
 
 const body = {
@@ -85,6 +86,21 @@ describe('SmallBodies', () => {
     expect(html).toContain('href="https://ssd-api.jpl.nasa.gov/sb_ident.api?mpc-code=500"')
     expect(html).toContain('catalogue match, not a detection')
     expect(html).not.toMatch(/discover|confirmed|new object/i)
+  })
+
+  it('names the observer the request was made for: SPHEREx, else the Earth’s centre and why', () => {
+    const fromSpherex = epoch(60989.25, {
+      source_url: 'https://ssd-api.jpl.nasa.gov/sb_ident.api?xobs=2559.544%2C-1082.631%2C6444.070%2C0%2C0%2C0&obs-time=2460989.75000',
+    })
+    const html = render(lookup(job({ epochs: [fromSpherex, epoch(60990.25)] })))
+
+    expect(observerText(fromSpherex)).toBe('seen from SPHEREx')
+    expect(observerText(epoch(60990.25))).toBe('seen from the Earth’s centre – JPL Horizons gave no SPHEREx position')
+    expect(html).toContain('06:00:00 UTC</time> · seen from SPHEREx')
+    expect(html).toContain('UTC</time> · seen from the Earth’s centre – JPL Horizons gave no SPHEREx position')
+    expect(html).toContain('seen from SPHEREx at each looked-up time')
+    expect(html).toContain('typically a few ″, up to ~10″ (1.5 SPHEREx pixels) for main-belt')
+    expect(html).not.toContain('5–10″')
   })
 
   it('formats dates and motion for reading', () => {

@@ -1,5 +1,6 @@
 """Parsers for external services, on recorded real responses (no network)."""
 
+import itertools
 import json
 from pathlib import Path
 
@@ -7,8 +8,18 @@ import httpx
 import pytest
 
 from app import catalogs
+from app.astrometry import angular_sep_arcsec, propagate
 
 DATA = Path(__file__).parent / "data"
+# IRSA Gator answers to the code's own requests, 15 Nov 2026: CatWISE2020 within 36″ of WISE
+# 0855−0714's 2015 position, AllWISE within 30″ of Barnard's Star in 2010.5.
+CATWISE = (DATA / "catwise_wise0855_sample.xml").read_bytes()
+ALLWISE = (DATA / "allwise_barnard_sample.xml").read_bytes()
+# Gator's answer for a catalogue it does not know: a VOTable without a table.
+NO_TABLE = b"""<?xml version="1.0"?>
+<VOTABLE version="1.3" xmlns="http://www.ivoa.net/xml/VOTable/v1.3"><RESOURCE type="results">
+<INFO name="QUERY_STATUS" value="ERROR">The catalog is not on the list.</INFO>
+</RESOURCE></VOTABLE>"""
 
 
 @pytest.mark.asyncio
@@ -36,6 +47,64 @@ def test_sexagesimal_helpers():
     assert catalogs._sexa_ra(120.0) == "08-00-00.00"
     assert catalogs._sexa_dec(-7.245147) == "-07-14-42.5"
     assert catalogs._parse_dec_dms("-07 14'42.5\"") == pytest.approx(-7.245139, abs=1e-5)
+
+
+def _irsa(answers):
+    """IRSA Gator: the recorded answer, or an HTTP error status, per catalogue."""
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        params = request.url.params
+        assert (params["spatial"], params["outfmt"], params["outrows"]) == ("cone", "3", "10000")
+        assert {"ra", "dec", "w1mpro", "pmra", "sigpmdec"} <= set(params["selcols"].split(","))
+        answer = answers[params["catalog"]]
+        if isinstance(answer, int):
+            return httpx.Response(answer, text="Proxy Error")
+        return httpx.Response(200, content=answer)
+
+    return httpx.MockTransport(handler)
+
+
+@pytest.mark.asyncio
+async def test_catwise_positions_lie_at_their_mean_epoch_and_motions_bring_them_together():
+    catalogs._CATALOG_CACHE.clear()
+    async with httpx.AsyncClient(transport=_irsa({"catwise_2020": CATWISE})) as client:
+        sources, checks = await catalogs.wise_cone(133.786, -7.2453, 0.01, client)
+
+    assert checks == [] and len(sources) == 21
+    still = next(s for s in sources if s.id == "CatWISE2020 J085509.47-071502.9")
+    assert still.pm_ra_mas_yr is None and still.mag == pytest.approx(14.999)  # motion < 1σ
+    fragments = [s for s in sources if (s.pm_ra_mas_yr or 0) < -7000]
+    assert [round(s.epoch_jyear, 2) for s in fragments] == [2015.22, 2015.86, 2017.27]
+    assert fragments[0].pm_dec_mas_yr == pytest.approx(806.2)
+    # The three fragments of WISE 0855−0714 meet in 2025 (21″ apart if dated MJD 57170).
+    at_2025 = [
+        propagate(s.ra, s.dec, s.pm_ra_mas_yr, s.pm_dec_mas_yr, s.epoch_jyear, 2025.34)
+        for s in fragments
+    ]
+    assert max(angular_sep_arcsec(*p, *q) for p, q in itertools.combinations(at_2025, 2)) < 6
+
+
+@pytest.mark.parametrize(
+    ("catwise", "reason"),
+    [(502, "HTTPStatusError"), (NO_TABLE, "ValueError"), (b"<html>busy</html>", "ValueError")],
+)
+@pytest.mark.asyncio
+async def test_without_catwise_allwise_is_used_with_a_warning_and_without_both_it_raises(
+    catwise, reason
+):
+    catalogs._CATALOG_CACHE.clear()
+    answers = {"catwise_2020": catwise, "allwise_p3as_psd": ALLWISE}
+    async with httpx.AsyncClient(transport=_irsa(answers)) as client:
+        sources, checks = await catalogs.wise_cone(269.4519, 4.7236, 30 / 3600, client)
+        # Barnard's Star; AllWISE's 2010 motion is significant (and 3.3″/yr off Gaia's in Dec).
+        [barnard] = sources
+        assert barnard.id == "AllWISE J175747.94+044323.8" and barnard.pm_dec_mas_yr == 13703
+        assert [(c.code, c.severity) for c in checks] == [("catwise_unavailable", "warn")]
+        assert reason in checks[0].detail
+        catalogs._CATALOG_CACHE.clear()
+        answers["allwise_p3as_psd"] = 502
+        with pytest.raises(httpx.HTTPStatusError):
+            await catalogs.wise_cone(269.4519, 4.7236, 30 / 3600, client)
 
 
 # ---------------------------------------------------------------- CADC (Canada)

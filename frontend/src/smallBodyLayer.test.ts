@@ -57,7 +57,7 @@ describe('small-body layer', () => {
     expect(marker.data.label).toBe('known asteroid/comet: 298898 (2004 TR48)')
     expect(marker.data.label).toBe(markerLabel(body.name))
     expect(marker.data.V).toBe('19.3')
-    expect(marker.data.Source).toBe('NASA/JPL SBIdent, geocentric')
+    expect(marker.data.Source).toBe('NASA/JPL SBIdent, seen from the Earth’s centre – JPL Horizons gave no SPHEREx position')
     expect(marker.ra).toBeCloseTo(body.ra, 9)
     expect(marker.dec).toBe(body.dec)
   })

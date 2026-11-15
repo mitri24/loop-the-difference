@@ -18,7 +18,7 @@ const KIND_LABEL: Record<ResidualKind, string> = {
   moving_star: "Known moving star",
   bright_star: "Bright-star artefact",
   known_source: "Known source",
-  red_source: "Red source (AllWISE only)",
+  red_source: "Red source (WISE only)",
   solar_system: "Known asteroid/comet",
   unknown: "Needs verification",
 };
