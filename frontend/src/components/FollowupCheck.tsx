@@ -1,43 +1,16 @@
-import { utcMinute } from '../blink'
-import { SEVERITY_ORDER } from '../checkGuide'
 import {
-  followupResult, followupResultText, measurementNotes, progressText, shownHypothesis, visitsText, type FollowupState,
+  followupResult, followupResultText, measurementText, progressText, shownHypothesis, visitsText, type FollowupState,
 } from '../followup'
 import { num } from '../track'
-import type { Check, Followup, FollowupMeasurement, Observation } from '../types'
+import type { Followup, Observation } from '../types'
 import '../styles/followup.css'
-import { SEVERITY } from './EvidencePanel'
+import { CheckList } from './CheckList'
+import { FingerprintCheck } from './FingerprintCheck'
 import { FollowupChart, snrPoints } from './FollowupChart'
 
 export const START = 'Check all SPHEREx visits'
 const HINT = 'Measures the flux where the track puts the object in this detector’s other visits within 400 days of the marks and stacks it. Loads up to 48 IRSA cutouts; takes minutes.'
 const NEEDS_VISITS = 'Needs the archive’s list of this field’s visits.'
-
-/** One line per check code, the most severe first; a repeated check (one per visit) is counted, not listed. */
-export function checkLines(checks: Check[]) {
-  const codes = [...new Set(checks.map((c) => c.code))]
-  return codes
-    .map((code) => {
-      const group = checks.filter((c) => c.code === code)
-      const severity = SEVERITY_ORDER.find((s) => group.some((c) => c.severity === s)) ?? 'info'
-      return { code, severity, message: group[0].message, count: group.length, detail: group.length === 1 ? group[0].detail : '' }
-    })
-    .sort((a, b) => SEVERITY_ORDER.indexOf(a.severity) - SEVERITY_ORDER.indexOf(b.severity))
-}
-
-/** Date, wavelength, flux, S/N and what qualifies them, for one visit: the PSF flux when the follow-up stacks PSF fluxes. */
-export function measurementText(m: FollowupMeasurement, psf: boolean) {
-  const [kind, flux, err, snr] = psf && m.psf_flux_ujy != null
-    ? ['PSF', m.psf_flux_ujy, m.psf_flux_err_ujy, m.psf_snr]
-    : ['aperture', m.flux_ujy, m.flux_err_ujy, m.snr]
-  return [
-    utcMinute(m.date),
-    m.wavelength_um != null ? `${m.wavelength_um.toFixed(3)} µm` : null,
-    flux != null && err != null ? `${kind} ${flux.toFixed(1)} ± ${err.toFixed(1)} µJy` : null,
-    snr != null ? `S/N ${snr.toFixed(1)}` : null,
-    ...measurementNotes(m),
-  ].filter(Boolean).join(' · ')
-}
 
 function Details({ followup }: { followup: Followup }) {
   const shown = shownHypothesis(followup)
@@ -65,17 +38,7 @@ function Details({ followup }: { followup: Followup }) {
             </ol>
           </>
         )}
-        {followup.checks.length > 0 && <ul className="followup-checks">
-          {checkLines(followup.checks).map(({ code, severity, message, count, detail }) => (
-            <li key={code}>
-              <span aria-hidden="true">{SEVERITY[severity].icon}</span>
-              <span>
-                <span className="sr-only">{SEVERITY[severity].word}: </span>{message}{count > 1 && ` (${count}×)`}
-                {detail && <span className="candidate-hint"> – {detail}</span>}
-              </span>
-            </li>
-          ))}
-        </ul>}
+        <CheckList checks={followup.checks} />
       </div>
     </details>
   )
@@ -103,15 +66,18 @@ export function FollowupCheck({ state, observations }: { state: FollowupState; o
       </p>
     )
   }
+  const result = followupResult(followup)
   return (
     <div className="followup">
-      <p className="track-check-summary">{followupResultText(followupResult(followup))}</p>
+      <p className="track-check-summary">{followupResultText(result)}</p>
       {!followup.complete && (
         <p className="notice">
           Incomplete: the archive did not answer every request. <button type="button" onClick={start}>Retry</button>
         </p>
       )}
       <Details followup={followup} />
+      {/* A signal is worth a spectrum: the same track in the visits of every detector. New result, new fingerprint. */}
+      {result.kind === 'signal' && <FingerprintCheck key={job?.job_id} request={() => state.fingerprint(observations)} />}
     </div>
   )
 }

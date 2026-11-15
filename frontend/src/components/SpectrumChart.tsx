@@ -166,8 +166,23 @@ export function pointLines(p: SpectrumPoint, beyond: boolean): string[] {
   ]
 }
 
-export function Plot({ points }: { points: SpectrumPoint[] }) {
-  const { x: xr, y: yr } = ranges(points)
+// A wavelength window shaded behind the points: a CH₄ band of the fingerprint or a continuum window beside it.
+export interface PlotWindow {
+  name: string
+  lo_um: number
+  hi_um: number
+  kind: 'band' | 'continuum'
+}
+
+export function Plot({ points, title = 'Flux at the target by wavelength', windows = [] }: {
+  points: SpectrumPoint[]
+  title?: string
+  windows?: PlotWindow[]
+}) {
+  const { x: xp, y: yr } = ranges(points)
+  // Every window stays in view, also one without a visit in it.
+  const xr: [number, number] = windows.length === 0 ? xp
+    : [Math.min(xp[0], ...windows.map((w) => w.lo_um)), Math.max(xp[1], ...windows.map((w) => w.hi_um))]
   const toY = scale(yr, [H - M.bottom, M.top])
   // Points outside the range sit on the plot edge as arrows; the tooltip keeps the real value.
   const y = (v: number) => Math.min(H - M.bottom, Math.max(M.top, toY(v)))
@@ -200,6 +215,10 @@ export function Plot({ points }: { points: SpectrumPoint[] }) {
       )}
       {beyond && (
         <LegendItem mark={<path d="M0 -5L5 3L-5 3Z" fill="var(--text-secondary)" />}>beyond the flux axis (value in the tooltip)</LegendItem>
+      )}
+      {windows.some((w) => w.kind === 'band') && <LegendItem mark={<rect className="viz-window band" x={-6} y={-6} width={12} height={12} />}>CH₄ band</LegendItem>}
+      {windows.some((w) => w.kind === 'continuum') && (
+        <LegendItem mark={<rect className="viz-window continuum" x={-6} y={-6} width={12} height={12} />}>continuum window</LegendItem>
       )}
     </>
   )
@@ -236,13 +255,19 @@ export function Plot({ points }: { points: SpectrumPoint[] }) {
   )
 
   return (
-    <ChartFrame className="spectrum-chart" title="Flux at the target by wavelength" legend={legend} table={table}>
+    <ChartFrame className="spectrum-chart" title={title} legend={legend} table={table}>
       {(W, tip) => {
         const x = scale(xr, [M.left, W - M.right])
         const xTicks = niceTicks(xr, Math.max(2, Math.floor((W - M.left - M.right) / 70)))
         return (
           <svg width={W} height={H} viewBox={`0 0 ${W} ${H}`} role="img"
             aria-label={`Flux against wavelength: ${points.length} ${points.length === 1 ? 'visit' : 'visits'} on ${detectors.map((d) => `D${d}`).join(', ')}`}>
+            {windows.map((w) => (
+              <rect key={w.name} className={`viz-window ${w.kind}`} x={x(w.lo_um)} y={M.top} width={Math.max(0, x(w.hi_um) - x(w.lo_um))}
+                height={H - M.top - M.bottom}>
+                <title>{w.name}</title>
+              </rect>
+            ))}
             <g className="viz-axis">
               {yTicks.values.map((t) => (
                 <g key={`y${t}`}>

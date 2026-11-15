@@ -89,6 +89,7 @@ describe('CandidatePanel', () => {
     }
     const followup: FollowupState = {
       kind: 'distances', phase: 'idle', job: null, followup: null, error: null, ready: () => true, start: () => undefined,
+      fingerprint: () => null,
     }
     const html = render(marks, null, false, possibleTrack(marks, { ra: 308.5283, dec: -22.8925 }, [61172.96]), distant, true, followup)
     expect(html.indexOf('Distant-object track')).toBeLessThan(html.indexOf('Check all SPHEREx visits'))

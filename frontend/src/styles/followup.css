@@ -11,3 +11,6 @@
 .followup-chart .followup-curve { fill:none; stroke-width:1.5; stroke-linejoin:round; }
 .followup-chart .followup-threshold { stroke:var(--axis-line); stroke-dasharray:4 3; }
 .followup-chart .followup-best { fill:none; stroke:var(--text-primary); stroke-width:1.5; pointer-events:none; }
+/* Fingerprint spectrum (components/FingerprintCheck.tsx): the CH₄ bands and their continuum windows behind the points. */
+.viz-window.band { fill:var(--accent-subtle); }
+.viz-window.continuum { fill:var(--surface-2); }

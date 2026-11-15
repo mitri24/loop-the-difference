@@ -1,13 +1,14 @@
 import { renderToStaticMarkup } from 'react-dom/server'
 import { describe, expect, it } from 'vitest'
-import type { FollowupState } from '../followup'
+import { checkLines, type FollowupState } from '../followup'
 import { followupOf, hypothesis, measurement } from '../followupFixtures'
 import type { Check, Followup } from '../types'
-import { FollowupCheck, checkLines } from './FollowupCheck'
+import { FollowupCheck } from './FollowupCheck'
 import { curveRuns, distanceTicks, snrPoints } from './FollowupChart'
 
 const state = (change: Partial<FollowupState>): FollowupState => ({
-  kind: 'distances', phase: 'idle', job: null, followup: null, error: null, ready: () => true, start: () => undefined, ...change,
+  kind: 'distances', phase: 'idle', job: null, followup: null, error: null, ready: () => true, start: () => undefined,
+  fingerprint: () => null, ...change,
 })
 const render = (change: Partial<FollowupState>) => renderToStaticMarkup(<FollowupCheck state={state(change)} observations={null} />)
 
@@ -57,6 +58,8 @@ describe('FollowupCheck', () => {
     expect(html).toContain('<details class="disclosure"><summary>S/N per distance, visits and checks</summary>')
     expect(html).not.toContain('Check all SPHEREx visits')
     expect(html).not.toContain('Incomplete')
+    // A signal offers the next step after the follow-up's details: the same track in every detector.
+    expect(html.indexOf('<button type="button">Spectral fingerprint</button>')).toBeGreaterThan(html.lastIndexOf('</details>'))
     // The chart in the app's chart frame, with its table.
     expect(html).toContain('<figure class="viz followup-chart"')
     expect(html).toContain('aria-label="S/N at 4 assumed distances from 20 to 2000 AU, best 7.2 at 310 AU over 2 visits"')
@@ -81,6 +84,10 @@ describe('FollowupCheck', () => {
     const html = render({ phase: 'done', followup: psf })
     expect(html).toContain('2026-05-28 10:00 UTC · 1.200 µm · PSF 15.3 ± 1.5 µJy · S/N 10.2</span>')
     expect(html).toContain('2026-05-28 10:00 UTC · 1.200 µm · aperture 12.0 ± 2.0 µJy · S/N 6.0</span>')
+  })
+
+  it('offers no fingerprint without a signal', () => {
+    expect(render({ phase: 'done', followup: { ...FOUND, significant: false } })).not.toContain('Spectral fingerprint')
   })
 
   it('says when the result is incomplete and offers to measure again', () => {

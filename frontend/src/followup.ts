@@ -3,12 +3,14 @@
 // straight line. Started on request only, since every visit is an IRSA cutout. It tests a candidate, never confirms one.
 import { useEffect, useState } from 'react'
 import { createFollowup, getFollowupJob } from './api'
+import { utcMinute } from './blink'
 import type { Mark } from './candidate'
-import { distanceGrid, errorText } from './distantTrack'
+import { SEVERITY_ORDER } from './checkGuide'
+import { distanceGrid, errorText, MAX_AU, MIN_AU } from './distantTrack'
 import { num, predict, type PossibleTrack } from './track'
 import type {
-  Followup, FollowupHypothesis, FollowupJob, FollowupMeasurement, FollowupPoint, FollowupRequest, Frame, FrameManifest, MarkedFrame,
-  NotCoveredReason, Observation,
+  Check, FingerprintRequest, Followup, FollowupHypothesis, FollowupJob, FollowupMeasurement, FollowupPoint, FollowupRequest, Frame,
+  FrameManifest, MarkedFrame, NotCoveredReason, Observation,
 } from './types'
 
 const POLL_MS = 3000
@@ -37,9 +39,10 @@ export function markedFrames(marks: Mark[], frames: Frame[]): MarkedFrame[] {
   })
 }
 
-/** The straight line at every visit time of the detector, at most MAX_POINTS spread over all of them. */
-export function linePoints(track: PossibleTrack, observations: Observation[], detector: number): FollowupPoint[] {
-  const mjds = [...new Set(observations.filter((o) => o.detector === detector).map((o) => o.mjd))].sort((a, b) => a - b)
+/** The straight line at every visit time of the detector (of every detector: null), at most MAX_POINTS spread over all. */
+export function linePoints(track: PossibleTrack, observations: Observation[], detector: number | null): FollowupPoint[] {
+  const mjds = [...new Set(observations.filter((o) => detector == null || o.detector === detector).map((o) => o.mjd))]
+    .sort((a, b) => a - b)
   const kept = mjds.length <= MAX_POINTS ? mjds
     : Array.from({ length: MAX_POINTS }, (_, i) => mjds[Math.round((i * (mjds.length - 1)) / (MAX_POINTS - 1))])
   return kept.map((mjd) => {
@@ -64,6 +67,28 @@ export function followupRequest(
   }
   const asked = distanceGrid(track, marks)
   return asked && 'grid' in asked ? { ...base, grid: asked.grid } : null
+}
+
+/**
+ * The spectral fingerprint's request (backend/app/fingerprint.py): the follow-up's track at its best distance, or the
+ * straight line at the visit times of every detector, since it measures all six. Null without a distance to measure at.
+ */
+export function fingerprintRequest(
+  track: PossibleTrack | null, marks: Mark[], field: FollowupField, observations: Observation[] | null, followup: Followup,
+): FingerprintRequest | null {
+  const kind = followupKind(track, marks)
+  if (!kind || !track) return null
+  const base = { ra: String(field.ra), dec: String(field.dec), detector: field.detector, marked: markedFrames(marks, field.frames) }
+  if (kind === 'line') {
+    const points = linePoints(track, observations ?? [], null)
+    return points.length > 0 ? { ...base, points } : null
+  }
+  const best = followup.best == null ? null : followup.hypotheses[followup.best]?.distance_au ?? null
+  const asked = distanceGrid(track, marks)
+  if (best == null || !asked || !('grid' in asked)) return null
+  // The best distance is one of the grid's; rounding must not move it past either end, which the API refuses.
+  const { d_min_au = MIN_AU, d_max_au = MAX_AU } = asked.grid
+  return { ...base, grid: asked.grid, distance_au: Math.min(d_max_au, Math.max(d_min_au, best)) }
 }
 
 export interface FollowupRun {
@@ -117,6 +142,8 @@ export interface FollowupState {
   ready: (observations: Observation[] | null) => boolean
   // Starts the job, or again after an error or an incomplete result.
   start: (observations: Observation[] | null) => void
+  // The spectral fingerprint's request for the shown result, or null.
+  fingerprint: (observations: Observation[] | null) => FingerprintRequest | null
 }
 
 /**
@@ -172,6 +199,10 @@ export function useFollowup(track: PossibleTrack | null, marks: Mark[], field: F
     start: (observations) => {
       const next = key && field ? followupRequest(track, marks, field, observations) : null
       if (next) setRun((old) => ({ key, attempt: old.attempt + 1, request: next, job: null, error: null }))
+    },
+    fingerprint: (observations) => {
+      const result = phase === 'done' ? job?.followup ?? null : null
+      return result && field ? fingerprintRequest(track, marks, field, observations, result) : null
     },
   }
 }
@@ -270,6 +301,32 @@ export function shownHypothesis(followup: Followup): FollowupHypothesis | null {
   if (followup.best != null) return followup.hypotheses[followup.best] ?? null
   return followup.hypotheses.reduce<FollowupHypothesis | null>((most, h) => (!most || h.visits > most.visits
     || (h.visits === most.visits && h.measurements.length > most.measurements.length) ? h : most), null)
+}
+
+/** One line per check code, the most severe first; a repeated check (one per visit) is counted, not listed. */
+export function checkLines(checks: Check[]) {
+  const codes = [...new Set(checks.map((c) => c.code))]
+  return codes
+    .map((code) => {
+      const group = checks.filter((c) => c.code === code)
+      const severity = SEVERITY_ORDER.find((s) => group.some((c) => c.severity === s)) ?? 'info'
+      return { code, severity, message: group[0].message, count: group.length, detail: group.length === 1 ? group[0].detail : '' }
+    })
+    .sort((a, b) => SEVERITY_ORDER.indexOf(a.severity) - SEVERITY_ORDER.indexOf(b.severity))
+}
+
+/** Date, wavelength, flux, S/N and what qualifies them, for one visit: the PSF flux when the result stacks PSF fluxes. */
+export function measurementText(m: FollowupMeasurement, psf: boolean) {
+  const [kind, flux, err, snr] = psf && m.psf_flux_ujy != null
+    ? ['PSF', m.psf_flux_ujy, m.psf_flux_err_ujy, m.psf_snr]
+    : ['aperture', m.flux_ujy, m.flux_err_ujy, m.snr]
+  return [
+    utcMinute(m.date),
+    m.wavelength_um != null ? `${m.wavelength_um.toFixed(3)} µm` : null,
+    flux != null && err != null ? `${kind} ${flux.toFixed(1)} ± ${err.toFixed(1)} µJy` : null,
+    snr != null ? `S/N ${snr.toFixed(1)}` : null,
+    ...measurementNotes(m),
+  ].filter(Boolean).join(' · ')
 }
 
 /** What qualifies one visit's flux: why there is none, flagged pixels, an uncertain position. */

@@ -4,7 +4,7 @@ import { createFollowup, getFollowupJob } from './api'
 import type { Mark } from './candidate'
 import { distanceGrid } from './distantTrack'
 import {
-  MAX_POINTS, currentRun, followupKind, followupPhase, followupRequest, followupResult, followupResultText, globalSignificance,
+  MAX_POINTS, currentRun, fingerprintRequest, followupKind, followupPhase, followupRequest, followupResult, followupResultText, globalSignificance,
   linePoints, progressText, runError, runKey, shortfalls, shownHypothesis, useFollowup, withAnswer, type FollowupField, type FollowupRun,
 } from './followup'
 import { followupOf as result, hypothesis, measurement } from './followupFixtures'
@@ -85,6 +85,29 @@ describe('follow-up request', () => {
     const points = linePoints(track(STAR), many, 3)
     expect(points).toHaveLength(MAX_POINTS)
     expect([points[0].mjd, points.at(-1)!.mjd]).toEqual([60000, 60249.9])
+  })
+})
+
+describe('fingerprint request', () => {
+  it('measures the follow-up’s track at its best distance, kept inside the grid the API checks it against', () => {
+    const asked = followupRequest(track(ACROSS), ACROSS, field(), null)!
+    const grid = asked.grid!
+    const found = result({ best: 1, hypotheses: [hypothesis(20, 1, 2), hypothesis(307.6, 7.2, 3)] })
+    expect(fingerprintRequest(track(ACROSS), ACROSS, field(), null, found)).toEqual({ ...asked, distance_au: 307.6 })
+    const edge = result({ best: 0, hypotheses: [hypothesis(grid.d_max_au! * (1 + 1e-12), 7, 3)] })
+    expect(fingerprintRequest(track(ACROSS), ACROSS, field(), null, edge)!.distance_au).toBe(grid.d_max_au)
+    expect(fingerprintRequest(track(ACROSS), ACROSS, field(), null, result({}))).toBeNull()
+  })
+
+  it('measures a star’s straight line at the visit times of every detector, not only the marks’ one', () => {
+    const star = track(STAR)
+    const visits = [visit('v1', 60100), visit('v2', 60200), visit('d6', 60150, 6)]
+    const line = result({ best: 0, hypotheses: [hypothesis(null, 6.3, 2)] })
+    const request = fingerprintRequest(star, STAR, field(), visits, line)!
+    expect(request.points!.map((p) => p.mjd)).toEqual([60100, 60150, 60200])
+    expect(request.distance_au).toBeUndefined()
+    expect(request.grid).toBeUndefined()
+    expect(fingerprintRequest(star, STAR, field(), null, line)).toBeNull()
   })
 })
 
