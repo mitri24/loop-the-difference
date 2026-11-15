@@ -78,6 +78,7 @@ class Frame(BaseModel):
     epoch: int = 0
     n_combined: int = 1
     date_end: str | None = None
+    # Share of the covered field without usable data (flagged pixels after resampling and stacking).
     masked_fraction: float | None = None
     wavelength_um: float | None = None
     bandwidth_um: float | None = None
@@ -190,9 +191,12 @@ class DetectedSource(BaseModel):
     # row (north is up). ra/dec are the reliable fields.
     x: float
     y: float
-    # Background-subtracted peak pixel, and that peak over the frame's noise.
+    # Height of the PSF fitted at the source above the sky (for a saturated core its brightest
+    # usable rim pixel, a lower limit), and its significance in the frame's S/N map.
     peak_mjy_sr: float
     snr: float
+    # Placed by the rim of a masked core too large for a PSF fit: good to about 2.5″ per axis.
+    saturated: bool = False
     match: Literal["gaia", "allwise", "none", "unknown"]
     catalog_id: str | None = None
     separation_arcsec: float | None = None

@@ -6,10 +6,12 @@ import threading
 import time
 import warnings
 from pathlib import Path
+from typing import NamedTuple
 
 import httpx
 import numpy as np
 from astropy.io import fits
+from astropy.stats import sigma_clipped_stats
 from astropy.wcs import WCS, FITSFixedWarning
 from PIL import Image
 from reproject import reproject_interp
@@ -56,8 +58,22 @@ UNUSABLE_FLAGS = frozenset(
 )
 # A flagged pixel this close to the target (in pixels) makes the frame unreliable there.
 TARGET_FLAG_RADIUS_PX = 2
-# Unusable pixels take the median of their neighbours in this window, so the blink shows no holes.
+# In the blink PNGs only, masked pixels take the median of their neighbours in this window, so
+# the blink shows no holes. Detection and measurement keep them NaN.
 FILL_RADIUS_PX = 2
+
+
+class Aligned(NamedTuple):
+    """An exposure or an epoch stack on the target grid; image and variance are NaN together
+    where there is no usable data (outside the exposure, masked pixels).
+
+    The variance is the archive's pixel noise: resampling makes it overstate the noise of a grid
+    pixel, and it leaves out the confusion of faint stars, so scale it to the measured scatter.
+    """
+
+    image: np.ndarray  # MJy/sr, sky level removed
+    variance: np.ndarray  # (MJy/sr)², from the cutouts' VARIANCE planes
+    covered: np.ndarray  # bool: inside the footprint of at least one exposure
 
 
 def cutout_url(access_url: str, ra: float, dec: float, size_deg: float) -> str:
@@ -112,19 +128,28 @@ def unusable_bits(flags_header: fits.Header) -> int:
     return bits
 
 
-def read_image(path: Path) -> tuple[np.ndarray, WCS, np.ndarray]:
-    """Image with unusable pixels filled from their neighbours, its WCS and the mask of those."""
+def read_image(path: Path) -> tuple[np.ndarray, np.ndarray, WCS, np.ndarray]:
+    """Image and variance with unusable pixels set to NaN, their WCS and the mask of those."""
     with warnings.catch_warnings():
         warnings.simplefilter("ignore", FITSFixedWarning)
         with fits.open(path) as hdul:
             hdu = hdul["IMAGE"]
             data = hdu.data.astype(np.float64)
+            variance = hdul["VARIANCE"].data.astype(np.float64)
             unusable = np.zeros(data.shape, dtype=bool)
             if "FLAGS" in hdul:
                 flags = hdul["FLAGS"]
                 unusable = (flags.data & unusable_bits(flags.header)) != 0
-                fill_with_local_median(data, unusable)
-            return data, WCS(hdu.header), unusable
+            data[unusable] = np.nan
+            variance[unusable] = np.nan
+            return data, variance, WCS(hdu.header), unusable
+
+
+def for_display(frame: Aligned) -> np.ndarray:
+    """The frame as the blink shows it: masked pixels inside the footprint are filled."""
+    image = frame.image.copy()
+    fill_with_local_median(image, frame.covered & np.isnan(image))
+    return image
 
 
 def fill_with_local_median(
@@ -206,16 +231,23 @@ def target_grid(
 
 
 def align(
-    data: np.ndarray, wcs: WCS, target: WCS, shape: tuple[int, int]
-) -> tuple[np.ndarray, float]:
-    """Resample onto the target grid and remove the background level; returns image and coverage."""
-    aligned, footprint = reproject_interp((data, wcs), target, shape_out=shape)
-    covered = footprint > 0
-    coverage = float(covered.mean())
-    aligned[~covered] = np.nan
-    if coverage > 0:
-        aligned -= np.nanmedian(aligned)
-    return aligned, coverage
+    data: np.ndarray, variance: np.ndarray, wcs: WCS, target: WCS, shape: tuple[int, int]
+) -> Aligned:
+    """Resample image and variance onto the target grid and remove the sky level.
+
+    Both are interpolated bilinearly, so an unusable (NaN) pixel blanks every grid pixel it enters.
+    The sky level is the sigma-clipped median: stars do not lift it.
+    """
+    # One call: reproject maps the three planes with one coordinate transform.
+    planes = np.stack([data, variance, np.zeros(data.shape)])
+    resampled, footprint = reproject_interp((planes, wcs), target, shape_out=shape)
+    image, variance, footprint = resampled[0], resampled[1], footprint[2]
+    usable = np.isfinite(image) & (variance > 0)
+    image[~usable] = np.nan
+    variance[~usable] = np.nan
+    if usable.any():
+        image -= sigma_clipped_stats(image[usable], sigma=3.0, maxiters=5)[1]
+    return Aligned(image, variance, footprint > 0)
 
 
 def render_png(images: list[np.ndarray], directory: Path, prefix: str = "") -> list[str]:
