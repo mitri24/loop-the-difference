@@ -185,6 +185,12 @@ def test_the_distance_of_the_object_stacks_to_the_highest_snr(monkeypatch, setti
     assert "distances reach S/N 5: visits close to the marks" in significance["detail"]
     assert "FOLLOWUP_GEOCENTRIC" in checks
     assert "FOLLOWUP_ONE_VISIT" not in checks
+    # The same numbers as fields, for the UI: no text to parse.
+    assert result["independent_trials"] == 5
+    assert result["global_sigma"] == pytest.approx(followup._global_sigma(snr[TRUE], 5), abs=0.02)
+    assert f"{result['global_sigma']:.1f}σ global" in significance["detail"]
+    assert (result["visits_total"], result["visits_measured"]) == (len(FAR) + len(NEAR),) * 2
+    assert result["not_covered_reasons"] == ["beyond_window"]
 
 
 def test_psf_photometry_raises_the_snr_along_the_track(monkeypatch, settings, tmp_path):
@@ -244,6 +250,9 @@ def test_flagged_and_clipped_visits_are_left_out_and_said(monkeypatch, settings,
     assert checks["FOLLOWUP_EDGE"]["detail"].startswith(f"{len(DISTANCES)} predicted positions")
     measurements = [m for h in result["hypotheses"] for m in h["measurements"]]
     assert all(m["flagged"] or m["skipped"] == SKIP_EDGE for m in measurements)
+    assert result["not_covered_reasons"] == ["image_edge", "flagged_pixels"]
+    assert (result["global_sigma"], result["independent_trials"]) == (None, 0)
+    assert (result["visits_total"], result["visits_measured"]) == (len(visits), len(visits) - 1)
 
 
 def test_a_marked_stack_measures_none_of_its_exposures(monkeypatch, settings, tmp_path):
@@ -286,6 +295,8 @@ def test_predictions_outside_the_image_are_searched_elsewhere(monkeypatch, setti
         "16 predictions left out: 16 outside the visit's image"
     )
     assert "found 2 more visits of this detector" in checks["FOLLOWUP_SEARCHED"]["detail"]
+    assert result["not_covered_reasons"] == ["outside_image"]
+    assert result["visits_total"] == len(visits) + len(elsewhere)
 
 
 def test_visits_close_to_the_marks_leave_the_distance_open(monkeypatch, settings, tmp_path):
@@ -316,6 +327,8 @@ def test_missing_and_unreadable_cutouts_leave_the_result_incomplete(
     assert len(checks) == len({m["source_url"] for m in skipped}) == len(DISTANCES) * 2
     assert {m["skipped"] for m in skipped} == {followup.MISSING, followup.UNREADABLE}
     assert "FOLLOWUP_SKIPPED" not in _checks(result)
+    assert result["not_covered_reasons"] == ["cutout_missing"]
+    assert (result["visits_total"], result["visits_measured"]) == (len(visits), len(visits) - 2)
     # The error page is gone from the cache, so the next request fetches it again.
     assert not any(path.exists() for url, path in written.items() if url.startswith(broken))
 
@@ -382,6 +395,7 @@ def test_a_silent_extra_search_is_said_and_retried(monkeypatch, settings, tmp_pa
     searched = _checks(result)["FOLLOWUP_SEARCHED"]
     assert searched["severity"] == "warning"
     assert "got no answer from the archive" in searched["detail"]
+    assert result["not_covered_reasons"] == ["outside_image", "search_unanswered"]
 
 
 def test_a_bright_source_keeps_a_finite_global_significance():
@@ -411,6 +425,7 @@ def test_cutouts_stay_within_the_budget():
         "At most 48 cutouts per job: 2 of 5 distances, evenly spread in 1/d (narrow "
         "d_min_au–d_max_au for a finer grid); 24 of 60 visits, spread over all epochs"
     )
+    assert (sixty.reasons, sixty.visits_total) == ({"thinned": 36}, 60)
 
 
 def test_imprecise_marks_leave_distant_visits_to_the_eye():
@@ -425,6 +440,7 @@ def test_imprecise_marks_leave_distant_visits_to_the_eye():
         "1 visits left out: 1 listed again by another release (counted once); "
         "5 predictions left out: 5 with a 2σ search circle wider than 25″"
     )
+    assert (plan.reasons, plan.visits_total) == ({"search_circle_too_wide": 5}, 2)
 
 
 def test_a_straight_line_is_measured_where_the_client_puts_it(monkeypatch, settings, tmp_path):
@@ -438,6 +454,11 @@ def test_a_straight_line_is_measured_where_the_client_puts_it(monkeypatch, setti
 
     (line,) = result["hypotheses"]
     assert (line["distance_au"], line["visits"], result["best"]) == (None, 3, 0)
+    # One line is one try: its global significance is its S/N.
+    assert result["independent_trials"] == 1
+    assert result["global_sigma"] == pytest.approx(line["snr"], abs=0.01)
+    assert result["not_covered_reasons"] == ["no_prediction", "unmatched_prediction"]
+    assert (result["visits_total"], result["visits_measured"]) == (4, 3)
     assert result["model"] == followup.STRAIGHT_LINE
     checks = _checks(result)
     assert checks["FOLLOWUP_NOT_COVERED"]["detail"] == (

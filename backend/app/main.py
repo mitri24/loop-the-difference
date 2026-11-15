@@ -24,6 +24,8 @@ from app.catalogs import find_proper_motion
 from app.config import Settings, get_settings
 from app.coords import CoordinateError, parse_dec, parse_ra
 from app.models import (
+    FingerprintJob,
+    FingerprintRequest,
     FollowupJob,
     FollowupRequest,
     FrameJob,
@@ -176,6 +178,11 @@ def spectrum_job(job_id: str, settings: SettingsDep) -> SpectrumJob:
 
 @app.post("/api/followup")
 def create_followup(request: FollowupRequest, settings: SettingsDep) -> FollowupJob:
+    return jobs.submit_followup(jobs.connect(settings.redis_url), settings, _track(request))
+
+
+def _track(request: FollowupRequest) -> dict:
+    """A follow-up's parameters as the worker takes them (followup.plan)."""
     params = {
         "ra": parse_ra(request.ra),
         "dec": parse_dec(request.dec),
@@ -187,11 +194,27 @@ def create_followup(request: FollowupRequest, settings: SettingsDep) -> Followup
         params |= {"marks": marks.tolist(), "distances": distances.tolist()}
     else:
         params["points"] = [[p.mjd, p.ra, p.dec, p.radius_arcsec] for p in request.points]
-    return jobs.submit_followup(jobs.connect(settings.redis_url), settings, params)
+    return params
 
 
 def _mjd(moment: datetime | None) -> float | None:
     return None if moment is None else float(Time(moment).mjd)
+
+
+# The spectrum along one track of a follow-up: its request plus distance_au (app/fingerprint.py).
+@app.post("/api/followup/fingerprint")
+def create_fingerprint(request: FingerprintRequest, settings: SettingsDep) -> FingerprintJob:
+    params = _track(request)
+    if request.grid is not None:
+        params["distances"] = [request.distance_au]
+    return jobs.submit_fingerprint(jobs.connect(settings.redis_url), settings, params)
+
+
+@app.get("/api/followup/fingerprint/{job_id}")
+def fingerprint_job(job_id: str, settings: SettingsDep) -> FingerprintJob:
+    if not _JOB_ID.match(job_id):
+        raise HTTPException(status_code=404, detail="Unknown job")
+    return jobs.fingerprint_status(jobs.connect(settings.redis_url), job_id)
 
 
 @app.get("/api/followup/{job_id}")

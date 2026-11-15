@@ -363,6 +363,13 @@ export interface Followup {
   psf_photometry: boolean // the hypotheses combine PSF fluxes (every measured flux has one)
   hypotheses: FollowupHypothesis[]
   checks: Check[]
+  // The best S/N corrected for trying independent_trials hypotheses (look-elsewhere), in σ; the local S/N itself for
+  // one trial; null without a best hypothesis.
+  global_sigma: number | null
+  independent_trials: number // 0 without a hypothesis of two or more visits
+  visits_total: number // visits of the detector in the track's window that could be measured (not the marks' own)
+  visits_measured: number // of those, the ones that gave a flux
+  not_covered_reasons: NotCoveredReason[] // why visits or predictions gave no usable flux, most actionable first
 }
 
 export interface FollowupJob {
@@ -371,5 +378,94 @@ export interface FollowupJob {
   progress: number
   total: number
   followup: Followup | null
+  error: string | null
+}
+
+// Why a follow-up measured fewer visits (backend/app/models.py NotCoveredReason; the FOLLOWUP_* checks say it in words).
+export type NotCoveredReason =
+  | 'outside_image' // prediction outside the visit's image
+  | 'search_circle_too_wide' // 2σ search circle wider than the aperture's diameter
+  | 'model_error_too_large' // the distance model can be off by more than that
+  | 'image_edge' // prediction at the edge of the cutout
+  | 'flagged_pixels' // flagged pixels in the aperture: flux left out
+  | 'cutout_missing' // the archive did not deliver a readable cutout
+  | 'search_unanswered' // an archive search where the track leaves the field got no answer
+  | 'release_unavailable' // a SPHEREx release could not be searched
+  | 'no_flux' // NaN pixels, too few sky pixels or invalid VARIANCE
+  | 'thinned' // left out to stay within the cutout budget
+  | 'not_searched' // more positions outside the field's images than searches per job
+  | 'beyond_window' // visits more than 400 days from the marks
+  | 'no_prediction' // straight line: no position sent for the visit
+  | 'unmatched_prediction' // straight line: a position matches no visit
+
+// One track of a follow-up in the visits of every detector (backend/app/fingerprint.py): the follow-up's request plus
+// distance_au (its best distance) for a grid; straight-line points at the visit times of every detector.
+export interface FingerprintRequest extends FollowupRequest {
+  distance_au?: number | null
+}
+
+export type SpectralWindowCode = 'h_peak' | 'ch4_1.7' | 'k_peak' | 'ch4_2.25' | 'ch4_3.3' | 'peak_4um'
+
+// A wavelength window of the methane index: a CH₄ band or a flux peak that serves as its continuum.
+export interface SpectralWindow {
+  code: SpectralWindowCode
+  name: string
+  lo_um: number
+  hi_um: number
+  kind: 'band' | 'continuum'
+}
+
+// One visit's flux along the track in any detector; wavelength_um from its cutout's WCS-WAVE table.
+export interface FingerprintPoint extends FollowupMeasurement {
+  detector: number
+  planned_wavelength_um: number | null // expected from where the track crosses the visit's image, before download
+  window: SpectralWindowCode | null // window of the methane index the measured wavelength lies in
+}
+
+export interface MethaneBand {
+  band: SpectralWindowCode
+  continuum: SpectralWindowCode[] // blue and red continuum window
+  status: 'measured' | 'not_enough_channels' | 'continuum_too_faint'
+  points: number // usable visits in the band
+  continuum_points: number[] // and in each continuum window
+  flux_ujy: number | null // weighted mean in the band (PSF totals)
+  continuum_ujy: number | null // the power law through the continuum windows, at the band
+  depth: number | null // 1 − band / continuum
+  depth_err: number | null
+  sigma: number | null // how far the band lies below the continuum
+}
+
+// CH₄ absorption along the track: a reason to look closer, never an identification.
+export interface MethaneIndex {
+  verdict: 'absorption' | 'hint' | 'none' | 'not_enough_channels' | 'continuum_too_faint' | 'no_total_flux'
+  sigma: number | null // the bands combined, shared continuum windows taken into account
+  summary: string // one line, e.g. "CH₄ absorption 3.8σ – as in T/Y brown dwarfs or a cold giant planet; …"
+  bands: MethaneBand[]
+}
+
+// Quick-look spectrum of one possible track from the visits of every detector.
+export interface Fingerprint {
+  collection: string
+  ra: number
+  dec: number
+  detector: number // the marks' detector
+  model: string
+  distance_au: number | null // null for a straight line
+  complete: boolean
+  psf_photometry: boolean // the spectrum uses psf_flux_ujy; false: aperture flux_ujy, no total, no index
+  visits_total: number
+  visits_measured: number
+  windows: SpectralWindow[]
+  points: FingerprintPoint[] // by wavelength, visits without one last
+  methane: MethaneIndex
+  checks: Check[]
+}
+
+export interface FingerprintJob {
+  job_id: string
+  status: FrameJob['status']
+  progress: number
+  total: number
+  fingerprint: Fingerprint | null
   error: string | null
 }

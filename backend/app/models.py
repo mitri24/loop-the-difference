@@ -458,6 +458,26 @@ class FollowupHypothesis(BaseModel):
     measurements: list[FollowupMeasurement] = []
 
 
+# Why visits or predictions of a follow-up were not measured or gave no usable flux, most
+# actionable first (app/followup.py counts them; the FOLLOWUP_* checks say the same in words).
+NotCoveredReason = Literal[
+    "outside_image",  # prediction outside the visit's image (s_region)
+    "search_circle_too_wide",  # 2σ search circle wider than the aperture's diameter
+    "model_error_too_large",  # the distance model can be off by more than that
+    "image_edge",  # prediction at the edge of the cutout
+    "flagged_pixels",  # pixels the archive marks unusable in the aperture: flux left out
+    "cutout_missing",  # the archive did not deliver a readable cutout
+    "search_unanswered",  # an archive search where the track leaves the field got no answer
+    "release_unavailable",  # a SPHEREx release could not be searched
+    "no_flux",  # NaN pixels, too few sky pixels or invalid VARIANCE at the prediction
+    "thinned",  # left out to stay within the cutout budget
+    "not_searched",  # more positions outside the field's images than searches per job
+    "beyond_window",  # visits more than TRACK_WINDOW_DAYS from the marks
+    "no_prediction",  # straight line: the client sent no position for the visit
+    "unmatched_prediction",  # straight line: a position matches no visit
+]
+
+
 class Followup(BaseModel):
     """Flux where a possible track puts the object at other visits, combined per hypothesis
     (shift-and-stack): it tests a candidate, it never confirms one."""
@@ -478,6 +498,17 @@ class Followup(BaseModel):
     psf_photometry: bool = False
     hypotheses: list[FollowupHypothesis] = []
     checks: list[Check] = []
+    # The best S/N as the significance of the best of independent_trials tries (look-elsewhere,
+    # one-sided Šidák), in σ; the local S/N itself for one trial; None without a best hypothesis.
+    global_sigma: float | None = None
+    # Independent hypotheses among those with two or more visits: groups an aperture apart at the
+    # visit that separates most of them (0 without any such hypothesis).
+    independent_trials: int = 0
+    # Visits of the detector in the track's window that could be measured (the marks' own visits
+    # and other releases' copies not counted), and those of them that gave a flux.
+    visits_total: int = 0
+    visits_measured: int = 0
+    not_covered_reasons: list[NotCoveredReason] = []
 
 
 class FollowupJob(BaseModel):
@@ -486,4 +517,115 @@ class FollowupJob(BaseModel):
     progress: int = 0
     total: int = 0
     followup: Followup | None = None
+    error: str | None = None
+
+
+class FingerprintRequest(FollowupRequest):
+    """One track of a follow-up measured in the visits of every detector (app/fingerprint.py).
+
+    The follow-up's request with distance_au, the distance to measure at (its best), for a grid;
+    straight-line points then at the visit times of every detector. detector stays the marks'
+    one: only its visits that made the marks are left out.
+    """
+
+    distance_au: float | None = Field(default=None, ge=5, le=100000)
+
+    @model_validator(mode="after")
+    def _one_distance(self) -> "FingerprintRequest":
+        if self.grid is None:
+            if self.distance_au is not None:
+                raise ValueError("distance_au needs a distance grid, not straight-line points")
+            return self
+        if self.distance_au is None:
+            raise ValueError("Give distance_au, the distance to measure the spectrum at")
+        if not self.grid.d_min_au <= self.distance_au <= self.grid.d_max_au:
+            raise ValueError("distance_au must lie between the grid's d_min_au and d_max_au")
+        return self
+
+
+# Wavelength windows of the methane index (app/fingerprint.py WINDOWS).
+SpectralWindowCode = Literal["h_peak", "ch4_1.7", "k_peak", "ch4_2.25", "ch4_3.3", "peak_4um"]
+
+
+class SpectralWindow(BaseModel):
+    code: SpectralWindowCode
+    name: str
+    lo_um: float
+    hi_um: float
+    # A CH₄ band, or a flux peak between bands that serves as its continuum.
+    kind: Literal["band", "continuum"]
+
+
+class FingerprintPoint(FollowupMeasurement):
+    """One visit's flux along the track in any detector; wavelength_um from its WCS-WAVE table."""
+
+    detector: int
+    # The wavelength expected from where the track crosses the visit's image, before downloading.
+    planned_wavelength_um: float | None = None
+    # The window of the methane index the measured wavelength lies in.
+    window: SpectralWindowCode | None = None
+
+
+class MethaneBand(BaseModel):
+    """One CH₄ band against the power law through a continuum window on either side."""
+
+    band: SpectralWindowCode
+    continuum: list[SpectralWindowCode]
+    status: Literal["measured", "not_enough_channels", "continuum_too_faint"]
+    # Usable visits in the band and in each continuum window.
+    points: int = 0
+    continuum_points: list[int] = []
+    # Weighted mean flux in the band and the continuum there (µJy, PSF totals).
+    flux_ujy: float | None = None
+    continuum_ujy: float | None = None
+    # 1 − band / continuum with its 1σ error, and how far the band lies below the continuum in σ.
+    depth: float | None = None
+    depth_err: float | None = None
+    sigma: float | None = None
+
+
+class MethaneIndex(BaseModel):
+    """CH₄ absorption along the track: a reason to look closer, never an identification."""
+
+    verdict: Literal[
+        "absorption", "hint", "none", "not_enough_channels", "continuum_too_faint", "no_total_flux"
+    ]
+    # The bands combined, their shared continuum windows taken into account; None without a band.
+    sigma: float | None = None
+    # One line for the UI, e.g. "CH₄ absorption 3.8σ – as in T/Y brown dwarfs or a cold giant …".
+    summary: str
+    bands: list[MethaneBand] = []
+
+
+class Fingerprint(BaseModel):
+    """Quick-look spectrum of one possible track from the visits of every detector."""
+
+    collection: str
+    ra: float
+    dec: float
+    # The marks' detector.
+    detector: int
+    model: str
+    # The distance measured at; None for a straight line.
+    distance_au: float | None = None
+    complete: bool = True
+    # Every measured flux has a PSF flux: the spectrum and the index use psf_flux_ujy, else the
+    # points' aperture flux_ujy, which is no total and gives no index.
+    psf_photometry: bool = False
+    # Visits of every detector in the track's window that could be measured, and with a flux.
+    visits_total: int = 0
+    visits_measured: int = 0
+    windows: list[SpectralWindow] = []
+    # Sorted by wavelength; visits without one last.
+    points: list[FingerprintPoint] = []
+    methane: MethaneIndex
+    checks: list[Check] = []
+
+
+class FingerprintJob(BaseModel):
+    job_id: str
+    status: Literal["queued", "started", "finished", "failed", "not_found"]
+    progress: int = 0
+    total: int = 0
+    fingerprint: Fingerprint | None = None
     error: str | None = None

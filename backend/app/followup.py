@@ -9,9 +9,10 @@ checking, never a detection.
 import re
 from collections import Counter
 from collections.abc import Callable
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from itertools import pairwise
 from pathlib import Path
+from typing import get_args
 
 import numpy as np
 from astropy.io import fits
@@ -26,6 +27,7 @@ from app.models import (
     Followup,
     FollowupHypothesis,
     FollowupMeasurement,
+    NotCoveredReason,
     Observation,
 )
 from app.photometry import (
@@ -37,8 +39,8 @@ from app.photometry import (
 )
 from app.tracks import ARCSEC_PER_RAD, ECCENTRICITY, MODEL, model_error, predict, unit
 
-# Bump whenever the measurement changes: the job key changes, so results are rebuilt.
-VERSION = 2
+# Bump whenever the measurement or the result changes: the job key changes, so results are rebuilt.
+VERSION = 3
 # Every cutout is one IRSA request that opens a whole SPHEREx image.
 MAX_CUTOUTS = 48
 # Around each prediction: the aperture and its sky ring with a margin, as for a spectrum.
@@ -61,6 +63,12 @@ ORBIT_AU = 7000 / 1.495978707e8
 MISSING = "archive did not deliver the cutout"
 UNREADABLE = "archive sent no readable FITS"
 _NUMBER = re.compile(r"^[-+]?(\d+\.?\d*|\.\d+)([eE][-+]?\d+)?$")
+# Followup.not_covered_reasons in their order.
+REASONS: tuple[str, ...] = get_args(NotCoveredReason)
+MARKED = "marked (their pixels made the marks)"
+REPEATED = "listed again by another release (counted once)"
+BEYOND = f"more than {TRACK_WINDOW_DAYS} days from the marks"
+UNPREDICTED = "without a predicted position"
 
 # Usable flux of one hypothesis at one visit: obs_id, flux and 1σ error (µJy), unit vector.
 Usable = tuple[str, float, float, np.ndarray]
@@ -94,6 +102,37 @@ class Plan:
     elsewhere: list[tuple[float, float]]
     # False when an archive search did not answer: the next request tries again.
     complete: bool = True
+    # Visits in the track's window that could be measured (Followup.visits_total).
+    visits_total: int = 0
+    # Followup.not_covered_reasons codes with the number of visits or predictions they cost.
+    reasons: Counter[str] = field(default_factory=Counter)
+
+
+@dataclass
+class Predictions:
+    """Where a track puts the object at the visits of its window, and what is left out."""
+
+    model: str
+    distances: list[float | None]
+    visits: list[Observation]
+    # Predicted positions (degrees), 2σ search radii and model errors (arcsec), hypotheses × visits.
+    ra: np.ndarray
+    dec: np.ndarray
+    radius: np.ndarray
+    error: np.ndarray
+    units: np.ndarray
+    # Precise enough and inside the visit's image: worth a cutout.
+    ok: np.ndarray
+    # Visits in the window that are not the marks' own (Followup.visits_total).
+    candidates: int
+    # What is left out, in words for FOLLOWUP_NOT_COVERED and as Followup.not_covered_reasons.
+    visits_out: Counter[str]
+    predictions_out: dict[str, int]
+    unmatched: int
+    reasons: Counter[str]
+    elsewhere: list[tuple[float, float]]
+    # The position limit as the checks print it, e.g. "25″".
+    limit: str
 
 
 def search_and_plan(
@@ -108,16 +147,31 @@ def search_and_plan(
 ) -> tuple[Plan, list[str]]:
     """The visits at the field and, where predictions leave those images, at up to MAX_SEARCHES
     more positions: the plan over all of them and the collections that did not answer."""
+    return searched(
+        search, ra, dec, lambda found: plan(found, marked, marks, distances, points), report
+    )
+
+
+def searched(
+    search: Search,
+    ra: float,
+    dec: float,
+    planner: Callable[[list[Observation]], Plan],
+    report: Callable[[int, int], None] = lambda done, total: None,
+    visits: str = "visits of this detector",
+) -> tuple[Plan, list[str]]:
+    """search_and_plan for any planner, e.g. one over the visits of every detector."""
     observations, failed = search(ra, dec)
-    first = plan(observations, marked, marks, distances, points)
+    first = planner(observations)
     positions = first.elsewhere[:MAX_SEARCHES]
     if not positions:
         return first, sorted(set(failed))
     # The extra searches can take minutes: the planned cutouts already show as the total.
     report(0, len(first.cutouts))
-    known = {obs.obs_id for obs in observations}
+    known = {(obs.obs_id, obs.detector) for obs in observations}
     # Overlapping searches find the same images again; only another release's copy counts twice.
-    seen = {(obs.obs_id, obs.collection) for obs in observations}
+    # One exposure is one obs_id for every detector that took it.
+    seen = {(obs.obs_id, obs.detector, obs.collection) for obs in observations}
     silent = 0
     for at_ra, at_dec in positions:
         try:
@@ -125,21 +179,21 @@ def search_and_plan(
         except ArchiveError:
             silent += 1
             continue
-        new = [obs for obs in more if (obs.obs_id, obs.collection) not in seen]
-        seen |= {(obs.obs_id, obs.collection) for obs in new}
+        new = [obs for obs in more if (obs.obs_id, obs.detector, obs.collection) not in seen]
+        seen |= {(obs.obs_id, obs.detector, obs.collection) for obs in new}
         observations, failed = observations + new, failed + missed
-    final = plan(observations, marked, marks, distances, points)
+    final = planner(observations)
     final.complete = not silent
-    notes = [
-        f"{len(positions)} more searches found "
-        f"{len({obs.obs_id for obs in observations} - known)} more visits of this detector"
-    ]
+    found = len({(obs.obs_id, obs.detector) for obs in observations} - known)
+    notes = [f"{len(positions)} more searches found {found} more {visits}"]
     if silent:
+        final.reasons["search_unanswered"] += silent
         notes.append(
             f"{silent} of them got no answer from the archive (requesting the same follow-up "
             "again retries them)"
         )
     if rest := len(first.elsewhere) - len(positions):
+        final.reasons["not_searched"] += rest
         notes.append(f"{rest} more positions not searched (at most {MAX_SEARCHES} per job)")
     final.checks.append(
         Check(
@@ -165,85 +219,14 @@ def plan(
     Either marks, 2 × (ra°, dec°, mjd, σ″), with the distances to assume, or points,
     (mjd, ra°, dec°, 2σ radius″), of one straight line.
     """
-    visits_out = Counter[str]()
-    unique: dict[str, Observation] = {}
-    for obs in sorted(observations, key=lambda o: o.collection or ""):
-        unique.setdefault(obs.obs_id, obs)
-    if repeated := len(observations) - len(unique):
-        visits_out["listed again by another release (counted once)"] = repeated
-    everyone = sorted(unique.values(), key=lambda o: o.mjd)
-    times = [mark[2] for mark in marks or []]
-    candidates = []
-    for obs in everyone:
-        if _marked(obs, marked, times):
-            visits_out["marked (their pixels made the marks)"] += 1
-        elif times and max(abs(obs.mjd - t) for t in times) > TRACK_WINDOW_DAYS:
-            visits_out[f"more than {TRACK_WINDOW_DAYS} days from the marks"] += 1
-        else:
-            candidates.append(obs)
-    unmatched = 0
-    if marks is not None:
-        visits = candidates
-        targets = np.array([obs.mjd for obs in visits])
-        ra, dec, radius = predict(np.array(marks), np.array(distances), targets)
-        error = model_error(np.array(marks), np.array(distances), targets)
-        model, hypotheses = MODEL, list(distances)
-    else:
-        allowed, visits, rows = {obs.obs_id for obs in candidates}, [], []
-        mjds = np.array([obs.mjd for obs in everyone])
-        for mjd, *row in sorted(points):
-            nearest = everyone[int(np.argmin(np.abs(mjds - mjd)))] if everyone else None
-            if nearest is None or abs(nearest.mjd - mjd) > SAME_VISIT_DAYS:
-                unmatched += 1
-            elif nearest.obs_id in allowed:
-                allowed.discard(nearest.obs_id)
-                visits.append(nearest)
-                rows.append(row)
-        if missing := len(candidates) - len(visits):
-            visits_out["without a predicted position"] = missing
-        ra, dec, radius = np.array(rows, dtype=float).reshape(-1, 3).T[:, None, :]
-        error = np.zeros_like(radius)
-        model, hypotheses = STRAIGHT_LINE, [None]
-    units = unit(ra, dec)
-    precise = radius <= MAX_RADIUS_ARCSEC
-    trusted = precise & (radius + error <= MAX_RADIUS_ARCSEC)
-    inside = np.ones(radius.shape, dtype=bool)
-    for v, visit in enumerate(visits):
-        inside[:, v] = _inside(visit.s_region, units[:, v])
-    ok = trusted & inside
-    limit = f"{MAX_RADIUS_ARCSEC:.0f}″"
-    predictions_out = {
-        f"with a 2σ search circle wider than {limit}": int((~precise).sum()),
-        f"where the distance model can be off by more than {limit} (motion along the line "
-        "of sight, the Sun's changing pull)": int((precise & ~trusted).sum()),
-        "outside the visit's image": int((trusted & ~inside).sum()),
-    }
+    found = predictions(observations, marked, marks, distances, points)
+    visits, hypotheses, units, ok = found.visits, found.distances, found.units, found.ok
+    radius, error, limit = found.radius, found.error, found.limit
     usable = [v for v in range(len(visits)) if ok[:, v].any()]
     kept, columns, cutouts = _fit(visits, usable, units, ok)
+    reasons = Counter(found.reasons)
 
-    checks = []
-    notes = []
-    if visits_out:
-        notes.append(
-            f"{visits_out.total()} visits left out: "
-            + ", ".join(f"{n} {reason}" for reason, n in visits_out.most_common())
-        )
-    if out := {reason: n for reason, n in predictions_out.items() if n}:
-        notes.append(
-            f"{sum(out.values())} predictions left out: "
-            + ", ".join(f"{n} {reason}" for reason, n in out.items())
-        )
-    if unmatched:
-        notes.append(f"{unmatched} predicted positions match no visit of this detector")
-    if notes:
-        checks.append(
-            Check(
-                code="FOLLOWUP_NOT_COVERED",
-                severity="info",
-                message="Not every visit is measured",
-                detail="; ".join(notes),
-            )
-        )
+    checks = not_covered(found)
     thinned = []
     if len(kept) < len(hypotheses):
         thinned.append(
@@ -252,6 +235,7 @@ def plan(
         )
     if len(columns) < len(usable):
         thinned.append(f"{len(columns)} of {len(usable)} visits, spread over all epochs")
+        reasons["thinned"] += len(usable) - len(columns)
     if thinned:
         checks.append(
             Check(
@@ -262,28 +246,7 @@ def plan(
             )
         )
     if marks is not None:
-        nearest_au = min(hypotheses[h] for h in kept)
-        checks.append(
-            Check(
-                code="FOLLOWUP_GEOCENTRIC",
-                severity="info",
-                message="Positions predicted for Earth's centre",
-                detail="SPHEREx orbits about 7,000 km from Earth's centre, which shifts an object "
-                f"at {nearest_au:.0f} AU by up to {ORBIT_AU / nearest_au * ARCSEC_PER_RAD:.1f}″ "
-                f"(one pixel is {SPHEREX_PIXEL_SCALE_ARCSEC}″); light travel time is ignored",
-            )
-        )
-        checks.append(
-            Check(
-                code="FOLLOWUP_MODEL_ERROR",
-                severity="info",
-                message=f"Orbits up to e = {ECCENTRICITY:g} assumed",
-                detail=f"A distance is tested at a visit where its 2σ search circle plus the "
-                f"model's error stays within {limit}: the most an orbit around the Sun with "
-                f"eccentricity up to {ECCENTRICITY:g} can stray (motion along the line of sight, "
-                "the Sun's changing pull). More eccentric orbits can miss the aperture",
-            )
-        )
+        checks += model_checks(min(hypotheses[h] for h in kept), limit)
         steps = [_largest_step(units[:, v], [h for h in kept if ok[h, v]]) for v in columns]
         if coarse := [step for step in steps if step > 2 * APERTURE_ARCSEC]:
             checks.append(
@@ -314,8 +277,173 @@ def plan(
                 "model error. They count, but a low flux there tests less",
             )
         )
-    elsewhere = _elsewhere(units[trusted & ~inside])
-    return Plan(model, hypotheses, ra, dec, radius, error, kept, cutouts, checks, elsewhere)
+    return Plan(
+        found.model,
+        hypotheses,
+        found.ra,
+        found.dec,
+        radius,
+        error,
+        kept,
+        cutouts,
+        checks,
+        found.elsewhere,
+        visits_total=found.candidates,
+        reasons=reasons,
+    )
+
+
+def predictions(
+    observations: list[Observation],
+    marked: list[list],
+    marks: list[list[float]] | None = None,
+    distances: list[float] | None = None,
+    points: list[list[float]] | None = None,
+    *,
+    detector: int | None = None,
+    max_radius: float = MAX_RADIUS_ARCSEC,
+) -> Predictions:
+    """The visits in the track's window and where each hypothesis puts the object there (`plan`).
+
+    detector: the marks' detector when the observations hold every detector. Only its visits are
+    the marks' own; the paired detector's image of the same exposure saw other wavelengths, and
+    a straight-line position holds for every detector at its time.
+    max_radius: the widest 2σ search circle plus model error (″) a prediction may have.
+    """
+    visits_out = Counter[str]()
+    reasons = Counter[str]()
+    unique: dict[tuple[str, int], Observation] = {}
+    for obs in sorted(observations, key=lambda o: o.collection or ""):
+        unique.setdefault((obs.obs_id, obs.detector), obs)
+    if repeated := len(observations) - len(unique):
+        visits_out[REPEATED] = repeated
+    everyone = sorted(unique.values(), key=lambda o: o.mjd)
+    times = [mark[2] for mark in marks or []]
+    candidates = []
+    for obs in everyone:
+        if detector in (None, obs.detector) and _marked(obs, marked, times):
+            visits_out[MARKED] += 1
+        elif times and max(abs(obs.mjd - t) for t in times) > TRACK_WINDOW_DAYS:
+            visits_out[BEYOND] += 1
+            reasons["beyond_window"] += 1
+        else:
+            candidates.append(obs)
+    unmatched = 0
+    if marks is not None:
+        visits = candidates
+        targets = np.array([obs.mjd for obs in visits])
+        ra, dec, radius = predict(np.array(marks), np.array(distances), targets)
+        error = model_error(np.array(marks), np.array(distances), targets)
+        model, hypotheses = MODEL, list(distances)
+    else:
+        allowed = {(obs.obs_id, obs.detector) for obs in candidates}
+        visits, rows = [], []
+        # Per detector the visit nearest to each position's time.
+        detectors = sorted({obs.detector for obs in everyone})
+        groups = [[obs for obs in everyone if obs.detector == d] for d in detectors]
+        mjds = [np.array([obs.mjd for obs in group]) for group in groups]
+        for mjd, *row in sorted(points):
+            matched = False
+            for group, times_of in zip(groups, mjds, strict=True):
+                nearest = group[int(np.argmin(np.abs(times_of - mjd)))]
+                if abs(nearest.mjd - mjd) > SAME_VISIT_DAYS:
+                    continue
+                matched = True
+                if (nearest.obs_id, nearest.detector) in allowed:
+                    allowed.discard((nearest.obs_id, nearest.detector))
+                    visits.append(nearest)
+                    rows.append(row)
+            unmatched += not matched
+        if missing := len(candidates) - len(visits):
+            visits_out[UNPREDICTED] = missing
+            reasons["no_prediction"] += missing
+        reasons["unmatched_prediction"] += unmatched
+        ra, dec, radius = np.array(rows, dtype=float).reshape(-1, 3).T[:, None, :]
+        error = np.zeros_like(radius)
+        model, hypotheses = STRAIGHT_LINE, [None]
+    units = unit(ra, dec)
+    precise = radius <= max_radius
+    trusted = precise & (radius + error <= max_radius)
+    inside = np.ones(radius.shape, dtype=bool)
+    for v, visit in enumerate(visits):
+        inside[:, v] = _inside(visit.s_region, units[:, v])
+    limit = f"{max_radius:.0f}″"
+    predictions_out = {
+        f"with a 2σ search circle wider than {limit}": int((~precise).sum()),
+        f"where the distance model can be off by more than {limit} (motion along the line "
+        "of sight, the Sun's changing pull)": int((precise & ~trusted).sum()),
+        "outside the visit's image": int((trusted & ~inside).sum()),
+    }
+    codes = ("search_circle_too_wide", "model_error_too_large", "outside_image")
+    reasons.update(dict(zip(codes, predictions_out.values(), strict=True)))
+    return Predictions(
+        model=model,
+        distances=hypotheses,
+        visits=visits,
+        ra=ra,
+        dec=dec,
+        radius=radius,
+        error=error,
+        units=units,
+        ok=trusted & inside,
+        candidates=len(candidates),
+        visits_out=visits_out,
+        predictions_out=predictions_out,
+        unmatched=unmatched,
+        reasons=+reasons,
+        elsewhere=_elsewhere(units[trusted & ~inside]),
+        limit=limit,
+    )
+
+
+def not_covered(found: Predictions, visit: str = "visit of this detector") -> list[Check]:
+    """FOLLOWUP_NOT_COVERED: the visits and predictions left out, and why."""
+    notes = []
+    if found.visits_out:
+        notes.append(
+            f"{found.visits_out.total()} visits left out: "
+            + ", ".join(f"{n} {reason}" for reason, n in found.visits_out.most_common())
+        )
+    if out := {reason: n for reason, n in found.predictions_out.items() if n}:
+        notes.append(
+            f"{sum(out.values())} predictions left out: "
+            + ", ".join(f"{n} {reason}" for reason, n in out.items())
+        )
+    if found.unmatched:
+        notes.append(f"{found.unmatched} predicted positions match no {visit}")
+    if not notes:
+        return []
+    return [
+        Check(
+            code="FOLLOWUP_NOT_COVERED",
+            severity="info",
+            message="Not every visit is measured",
+            detail="; ".join(notes),
+        )
+    ]
+
+
+def model_checks(nearest_au: float, limit: str) -> list[Check]:
+    """What the distance model assumes: the geocentre and orbits up to ECCENTRICITY."""
+    return [
+        Check(
+            code="FOLLOWUP_GEOCENTRIC",
+            severity="info",
+            message="Positions predicted for Earth's centre",
+            detail="SPHEREx orbits about 7,000 km from Earth's centre, which shifts an object "
+            f"at {nearest_au:.0f} AU by up to {ORBIT_AU / nearest_au * ARCSEC_PER_RAD:.1f}″ "
+            f"(one pixel is {SPHEREX_PIXEL_SCALE_ARCSEC}″); light travel time is ignored",
+        ),
+        Check(
+            code="FOLLOWUP_MODEL_ERROR",
+            severity="info",
+            message=f"Orbits up to e = {ECCENTRICITY:g} assumed",
+            detail=f"A distance is tested at a visit where its 2σ search circle plus the "
+            f"model's error stays within {limit}: the most an orbit around the Sun with "
+            f"eccentricity up to {ECCENTRICITY:g} can stray (motion along the line of sight, "
+            "the Sun's changing pull). More eccentric orbits can miss the aperture",
+        ),
+    ]
 
 
 def _marked(obs: Observation, marked: list[list], times: list[float]) -> bool:
@@ -463,6 +591,11 @@ def evaluate(
     best = max(candidates, key=lambda i: _stack(usable[i])[2], default=None)
     trials = _independent([usable[i] for i in candidates])
     determined = plan.model == MODEL and trials > 1
+    measurements = [m for hypothesis in hypotheses for m in hypothesis.measurements]
+    measured = {m.obs_id for m in measurements if m.skipped is None}
+    global_sigma = None
+    if best is not None:
+        global_sigma = round(_global_sigma(_stack(usable[best])[2], max(trials, 1)), 2)
     checks = checks + [
         Check(
             code="CUTOUT_MISSING",
@@ -489,7 +622,31 @@ def evaluate(
         checks=plan.checks
         + checks
         + _checks(hypotheses, usable, best, detector, trials, determined, plan.model == MODEL, psf),
+        global_sigma=global_sigma,
+        independent_trials=trials,
+        visits_total=plan.visits_total,
+        visits_measured=len(measured),
+        not_covered_reasons=not_covered_reasons(plan.reasons, measurements, checks),
     )
+
+
+def not_covered_reasons(
+    planned: Counter[str], measurements: list[FollowupMeasurement], checks: list[Check]
+) -> list[str]:
+    """The REASONS that cost visits or predictions: from the plan, the measurements and the
+    archive's answers."""
+    found = Counter(planned)
+    for m in measurements:
+        if m.skipped in (MISSING, UNREADABLE):
+            found["cutout_missing"] += 1
+        elif m.skipped == SKIP_EDGE:
+            found["image_edge"] += 1
+        elif m.skipped is not None:
+            found["no_flux"] += 1
+        elif m.flagged:
+            found["flagged_pixels"] += 1
+    found["release_unavailable"] += sum(check.code == "RELEASE_UNAVAILABLE" for check in checks)
+    return [reason for reason in REASONS if found[reason] > 0]
 
 
 def _readable(path: Path) -> bool:
