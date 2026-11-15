@@ -73,6 +73,13 @@ describe('SourceList', () => {
     expect(render(frame([source('none', 40, 2)]))).not.toContain('Mark source')
   })
 
+  it('offers a Spectrum button per row when the spectrum is wired', () => {
+    const html = renderToStaticMarkup(
+      <SourceList frame={frame([source('none', 40, 2)])} onSelect={() => undefined} onSpectrum={() => undefined} />,
+    )
+    expect(html).toContain('aria-label="Spectrum of the source at RA 2.00000° Dec −7.25000°"')
+  })
+
   it('has honest empty states', () => {
     expect(render(null)).toContain('Sources appear once frames are loaded.')
     expect(render(frame())).toContain('prepared before source detection existed')
