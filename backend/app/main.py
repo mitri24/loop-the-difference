@@ -44,7 +44,7 @@ from app.tasks import manifest_path
 
 _JOB_ID = re.compile(r"^[0-9a-f]{16}$")
 _FRAME_FILE = re.compile(
-    r"^((?:preview_\d{3}_)?frame_\d{2}|diff_\d{2}_\d{2}|pair(?:sig|diff)_\d{2}_\d{2}_v\d+)\.png$"
+    r"^((?:preview_\d{3}_)?frame_\d{2}|diff_\d{2}_\d{2}|pair(?:sig|diff)_\d{2}_\d{2}_v\d+(?:_[0-9a-f]{16})?)\.png$"
 )
 
 SettingsDep = Annotated[Settings, Depends(get_settings)]

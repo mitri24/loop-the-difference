@@ -104,7 +104,7 @@ export default function App() {
   // The source map runs UMAP in the browser: only while its section is open.
   const [sourceMapOpen, setSourceMapOpen] = useState(false)
   // The difference of A and B instead of the blink, for this job; back in the blink, the player starts on that pair.
-  const [pairView, setPairView] = useState<{ job: string; open: boolean } | null>(null)
+  const [pairView, setPairView] = useState<{ job: string; open: boolean; pair: BlinkPair | null } | null>(null)
   const [analysisSkyCaption, setAnalysisSkyCaption] = useState<string | null>(null)
   const [framesOnSky, setFramesOnSky] = useState(true)
   const [sourcesOnSky, setSourcesOnSky] = useState(true)
@@ -563,10 +563,10 @@ export default function App() {
   const imagesToggle = <ImagesToggle value={query.mode === 'exposures' ? 'exposures' : 'stacks'} onChange={selectMode} disabled={busy && !job} />
   const changeText = changeLine(pairChanges)
   const changes = manifest && hasFrames && (
-    <section className="changes" aria-label="Difference image">
-      <h3 className="side-label">Difference image</h3>
+    <section className="changes" aria-label="Changes between A and B">
+      <h3 className="side-label">Changes between A and B</h3>
       {changeText
-        ? <p>{changeText}{pairChanges.result?.comparable && job && <> · <button type="button" className="text-button" onClick={() => setPairView({ job: job.job_id, open: true })}>Show the difference</button></>}</p>
+        ? <p>{changeText}{pairChanges.result?.comparable && job && <> · <button type="button" className="text-button" onClick={() => setPairView({ job: job.job_id, open: true, pair })}>Show the difference</button></>}</p>
         : differenceBlocked && <p className="muted">{differenceBlocked}{liftAction && <> <button type="button" className="text-button" onClick={() => onCheckAction(liftAction.id)}>{liftAction.label}</button></>}</p>}
     </section>
   )
@@ -601,14 +601,14 @@ export default function App() {
     ? <>
       <div className="view-back">
         <button type="button" className="text-button" onClick={() => (query.mode === 'difference' ? selectMode('stacks')
-          : setPairView({ job: job.job_id, open: false }))}><span aria-hidden="true">←</span> Back to the blink</button>
+          : setPairView({ job: job.job_id, open: false, pair }))}><span aria-hidden="true">←</span> Back to the blink</button>
         <span className="muted">The blink&apos;s A and B</span>
       </div>
       <DifferenceView key={job.job_id} manifest={manifest} changes={pairChanges} />
       {!EMBED && candidateSide}
     </>
     : <BlinkPlayer key={`${job.job_id}-${manifest.preview ? manifest.frames[0]?.url : 'final'}`} frames={manifest.frames} checks={checks} grid={manifest} motion={motion} predictions={predictions}
-      onIndexChange={showFrame} onPairChange={setPair} seek={seek} pairRequest={pairRequest} initialPair={pairView?.job === job.job_id ? pair : linkedPair} active={EMBED || stage === 'investigate'} showShare={EMBED}
+      onIndexChange={showFrame} onPairChange={setPair} seek={seek} pairRequest={pairRequest} initialPair={pairView?.job === job.job_id ? pairView.pair : linkedPair} active={EMBED || stage === 'investigate'} showShare={EMBED}
       controls={imagesToggle} changes={changes} marks={imageMarks} candidate={!EMBED && candidateSide}
       marking={candidate.armed} candidateMarks={candidate.marks} onMark={(shown, ra, dec) => candidate.markAt(shown, manifest, ra, dec)} />)
   const evidence = manifest && <EvidencePanel checks={checks} manifest={manifest} frameLabel={`this comparison · ${manifest.frames.length} ${manifest.frames.length === 1 ? 'image' : 'images'}`}

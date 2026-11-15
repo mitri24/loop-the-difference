@@ -13,7 +13,7 @@ from rq.job import Job, JobStatus
 from app import fingerprint, followup
 from app.archive import collection_key, spherex_collections
 from app.config import Settings
-from app.difference import DIFFERENCE_VERSION, build_difference, result_path
+from app.difference import DIFFERENCE_VERSION, build_difference, pair_revision, result_path
 from app.models import (
     FingerprintJob,
     FollowupJob,
@@ -249,8 +249,10 @@ def status(redis: Redis, settings: Settings, job_id: str) -> FrameJob:
     return FrameJob(job_id=job_id, status=running, progress=progress, total=total, manifest=preview)
 
 
-def difference_job_id(job_id: str, a: int, b: int, small_bodies_job: str | None) -> str:
-    key = f"difference|{job_id}|{a}|{b}|{small_bodies_job or '-'}|v{DIFFERENCE_VERSION}"
+def difference_job_id(
+    job_id: str, a: int, b: int, small_bodies_job: str | None, revision: str = ""
+) -> str:
+    key = f"difference|{job_id}|{a}|{b}|{small_bodies_job or '-'}|v{DIFFERENCE_VERSION}|{revision}"
     return hashlib.sha256(key.encode()).hexdigest()[:16]
 
 
@@ -266,7 +268,10 @@ def submit_difference(
     part of the comparison the user waits for. A finished small-body lookup goes into the job and
     its key, so the residuals are explained again once it is there."""
     looked_up = small_bodies if small_bodies and small_bodies.status == "finished" else None
-    key = difference_job_id(job_id, a, b, looked_up.job_id if looked_up else None)
+    folder = manifest_path(settings.cache_dir, job_id).parent
+    manifest = FrameManifest.model_validate_json((folder / "manifest.json").read_text())
+    revision = pair_revision(folder, manifest, a, b)
+    key = difference_job_id(job_id, a, b, looked_up.job_id if looked_up else None, revision)
     current = difference_status(redis, settings, key)
     if current.status in ("queued", "started", "finished"):
         return current
@@ -278,7 +283,14 @@ def submit_difference(
     epochs = [epoch.model_dump() for epoch in looked_up.epochs] if looked_up else None
     queue.enqueue(
         build_difference,
-        kwargs={"key": key, "job_id": job_id, "a": a, "b": b, "small_bodies": epochs},
+        kwargs={
+            "key": key,
+            "job_id": job_id,
+            "a": a,
+            "b": b,
+            "small_bodies": epochs,
+            "revision": revision,
+        },
         job_id=key,
         job_timeout=DIFFERENCE_TIMEOUT_S,
         result_ttl=3600,

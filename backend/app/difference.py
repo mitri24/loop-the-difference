@@ -12,8 +12,10 @@ together, tests/test_difference.py compares them. Grid, Cutout, StoredFrame and 
 the attributes they read there.
 """
 
+import hashlib
 import math
 import os
+import uuid
 import warnings
 from pathlib import Path
 from typing import NamedTuple
@@ -321,31 +323,53 @@ def result_path(cache_dir: Path, key: str) -> Path:
     return cache_dir / "differences" / f"{key}.json"
 
 
-def image_names(a: int, b: int) -> tuple[str, str]:
+def pair_revision(folder: Path, manifest: FrameManifest, a: int, b: int) -> str:
+    """Identify the actual input manifest and aligned pixels, including rebuilt partial jobs."""
+    digest = hashlib.sha256(manifest.model_dump_json().encode())
+    for index in (a, b):
+        path = aligned_path(folder, index)
+        if path.is_file():
+            with path.open("rb") as source:
+                for chunk in iter(lambda: source.read(1024 * 1024), b""):
+                    digest.update(chunk)
+    return digest.hexdigest()[:16]
+
+
+def image_names(a: int, b: int, revision: str = "") -> tuple[str, str]:
     """The significance and the difference image of A and B in the frames job's folder."""
     return (
-        f"pairsig_{a:02d}_{b:02d}_v{DIFFERENCE_VERSION}.png",
-        f"pairdiff_{a:02d}_{b:02d}_v{DIFFERENCE_VERSION}.png",
+        f"pairsig_{a:02d}_{b:02d}_v{DIFFERENCE_VERSION}{revision}.png",
+        f"pairdiff_{a:02d}_{b:02d}_v{DIFFERENCE_VERSION}{revision}.png",
     )
 
 
 def build_difference(
-    key: str, job_id: str, a: int, b: int, small_bodies: list[dict] | None = None
+    key: str,
+    job_id: str,
+    a: int,
+    b: int,
+    small_bodies: list[dict] | None = None,
+    revision: str | None = None,
 ) -> dict:
     """Worker job: the changes between frames a and b of a finished frames job. small_bodies:
     the epochs of a finished SBIdent lookup of the same comparison, None without one."""
     settings = get_settings()
     folder = manifest_path(settings.cache_dir, job_id).parent
     manifest = FrameManifest.model_validate_json((folder / "manifest.json").read_text())
+    if revision is not None and pair_revision(folder, manifest, a, b) != revision:
+        raise PairUnavailableError("The images changed: request this pair again")
     epochs = (
         None
         if small_bodies is None
         else [models.SmallBodyEpoch.model_validate(epoch) for epoch in small_bodies]
     )
     result = find_changes(folder, manifest, job_id, a, b, epochs, settings)
+    current_manifest = FrameManifest.model_validate_json((folder / "manifest.json").read_text())
+    if revision is not None and pair_revision(folder, current_manifest, a, b) != revision:
+        raise PairUnavailableError("The images changed during processing: request this pair again")
     path = result_path(settings.cache_dir, key)
     path.parent.mkdir(parents=True, exist_ok=True)
-    partial = path.with_name(f"{path.name}.{os.getpid()}.part")
+    partial = path.with_name(f"{path.name}.{os.getpid()}.{uuid.uuid4().hex}.part")
     partial.write_text(result.model_dump_json())
     partial.replace(path)
     return result.model_dump()
@@ -360,6 +384,7 @@ def find_changes(
     small_bodies: list[models.SmallBodyEpoch] | None,
     settings: Settings,
 ) -> PairDifference:
+    revision = pair_revision(folder, manifest, a, b)
     target, shape = target_grid(manifest.ra, manifest.dec, manifest.size_deg)
     grid = Grid(target, shape[0])
     frame_a, frame_b = (_stored(folder, manifest, index, grid, settings) for index in (a, b))
@@ -383,7 +408,7 @@ def find_changes(
         )
     )
     sig, diff, rescale = significance(frame_a, frame_b, scale, registration_px, matched)
-    sig_name, diff_name = image_names(a, b)
+    sig_name, diff_name = image_names(a, b, "_" + revision)
     render_signed(sig, S_LIMIT, folder, sig_name)
     finite = diff[np.isfinite(diff)]
     spread = float(sigma_clipped_stats(finite)[2]) if finite.size else 0.0

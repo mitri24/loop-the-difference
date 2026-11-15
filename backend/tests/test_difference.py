@@ -248,12 +248,14 @@ def test_images_go_to_the_frames_folder_on_a_diverging_scale(tmp_path):
     result = _changes(tmp_path, manifest)
 
     folder = manifest_path(tmp_path, JOB).parent
-    assert result.significance_url == f"/api/frames/{JOB}/pairsig_00_01_v1.png"
-    assert result.difference_url == f"/api/frames/{JOB}/pairdiff_00_01_v1.png"
-    pixels = np.asarray(Image.open(folder / "pairsig_00_01_v1.png"))
+    revision = difference.pair_revision(folder, manifest, 0, 1)
+    sig_name, diff_name = difference.image_names(0, 1, "_" + revision)
+    assert result.significance_url == f"/api/frames/{JOB}/{sig_name}"
+    assert result.difference_url == f"/api/frames/{JOB}/{diff_name}"
+    pixels = np.asarray(Image.open(folder / sig_name))
     x, y = round(TRANSIENT_PX[0]), 116 - round(TRANSIENT_PX[1])
     assert pixels[y, x][2] > pixels[y, x][0]  # blue: brighter in B
-    assert (folder / "pairdiff_00_01_v1.png").is_file()
+    assert (folder / diff_name).is_file()
 
 
 def test_a_pair_at_different_wavelengths_gets_its_reason_and_images_but_no_residuals(tmp_path):
@@ -265,7 +267,7 @@ def test_a_pair_at_different_wavelengths_gets_its_reason_and_images_but_no_resid
     assert result.reason == "A and B were observed at different wavelengths (Δλ 2.2 %)"
     assert result.residuals == []
     assert result.delta_lambda_pct == pytest.approx(2.151, abs=1e-3)
-    assert (manifest_path(tmp_path, JOB).parent / "pairsig_00_01_v1.png").is_file()
+    assert list(manifest_path(tmp_path, JOB).parent.glob("pairsig_00_01_v1_*.png"))
 
 
 def _source(xy, match, catalog_id=None, mag=None, band=None, saturated=False) -> DetectedSource:
@@ -402,7 +404,16 @@ def test_a_finished_small_body_lookup_goes_into_the_job_and_its_id(
 
     finished = state == "finished"
     assert answer["job_id"] == jobs.difference_job_id(
-        JOB, 0, 1, lookup.job_id if finished else None
+        JOB,
+        0,
+        1,
+        lookup.job_id if finished else None,
+        difference.pair_revision(
+            manifest_path(tmp_path, JOB).parent,
+            FrameManifest.model_validate_json(manifest_path(tmp_path, JOB).read_text()),
+            0,
+            1,
+        ),
     )
     expected = [epoch.model_dump()] if finished else None
     assert queued[0][2]["kwargs"]["small_bodies"] == expected
@@ -528,3 +539,56 @@ def _definitions(path: Path) -> dict[str, str]:
         elif isinstance(node, ast.Assign) and isinstance(node.targets[0], ast.Name):
             found[node.targets[0].id] = ast.dump(node.value)
     return found
+
+
+def test_rebuilt_pixels_invalidate_result_and_image_cache(tmp_path):
+    manifest, _ = _pair(tmp_path)
+    folder = manifest_path(tmp_path, JOB).parent
+    before = difference.pair_revision(folder, manifest, 0, 1)
+    original = _changes(tmp_path, manifest)
+    path = aligned_path(folder, 1)
+    # Same frame numbers and metadata; a new set of aligned pixels must still invalidate it.
+    path.write_bytes(path.read_bytes() + b"rebuilt")
+    after = difference.pair_revision(folder, manifest, 0, 1)
+    assert before != after
+    assert jobs.difference_job_id(JOB, 0, 1, None, before) != jobs.difference_job_id(
+        JOB, 0, 1, None, after
+    )
+    assert before in original.significance_url
+    assert difference.image_names(0, 1, "_" + before) != difference.image_names(0, 1, "_" + after)
+
+
+def test_difference_version_invalidates_job_and_image_names(monkeypatch):
+    key = jobs.difference_job_id(JOB, 0, 1, None)
+    names = difference.image_names(0, 1)
+    monkeypatch.setattr(jobs, "DIFFERENCE_VERSION", jobs.DIFFERENCE_VERSION + 1)
+    monkeypatch.setattr(difference, "DIFFERENCE_VERSION", difference.DIFFERENCE_VERSION + 1)
+    assert jobs.difference_job_id(JOB, 0, 1, None) != key
+    assert difference.image_names(0, 1) != names
+
+
+def test_queued_pair_refuses_inputs_rebuilt_before_worker_starts(tmp_path, monkeypatch, settings):
+    manifest, _ = _pair(tmp_path)
+    folder = manifest_path(tmp_path, JOB).parent
+    revision = difference.pair_revision(folder, manifest, 0, 1)
+    manifest.frames[0].obs_id = "replacement-observation"
+    (folder / "manifest.json").write_text(manifest.model_dump_json())
+    monkeypatch.setattr(difference, "get_settings", lambda: settings)
+    with pytest.raises(difference.PairUnavailableError, match="images changed"):
+        build_difference("cachekey", JOB, 0, 1, revision=revision)
+
+
+def test_mask_margin_excludes_a_peak_beside_a_masked_pixel(tmp_path, monkeypatch):
+    manifest, _ = _pair(tmp_path)
+
+    def significance(*args):
+        sig = np.zeros((117, 117))
+        sig[50, 50] = np.nan
+        sig[50, 51] = 12
+        sig[70, 70] = 11
+        return sig, np.nan_to_num(sig), 1.0
+
+    monkeypatch.setattr(difference, "significance", significance)
+    result = _changes(tmp_path, manifest)
+    assert len(result.residuals) == 1
+    assert result.residuals[0].significance == pytest.approx(11)

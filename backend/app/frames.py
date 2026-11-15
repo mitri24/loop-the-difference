@@ -4,6 +4,7 @@ import random
 import re
 import threading
 import time
+import uuid
 import warnings
 from pathlib import Path
 from typing import NamedTuple
@@ -291,7 +292,7 @@ def render_signed(values: np.ndarray, limit: float, directory: Path, name: str) 
     rgb = DIFF_GREY + np.abs(v) * (np.where(v < 0, DIFF_EARLIER, DIFF_LATER) - DIFF_GREY)
     pixels = np.rint(rgb).astype(np.uint8)
     pixels[~covered] = DIFF_NO_DATA
-    partial = directory / f"{name}.part"
+    partial = directory / f"{name}.{uuid.uuid4().hex}.part"
     Image.fromarray(np.flipud(pixels)).save(partial, format="PNG")
     partial.replace(directory / name)
 
@@ -303,7 +304,7 @@ def aligned_path(directory: Path, index: int) -> Path:
 def save_aligned(path: Path, frame: Aligned, cutouts: list[str], weights: list[float]) -> None:
     """A blink frame before filling, for its changes against another frame: image and variance as
     float32, the footprint, and the cached cutouts it was made of with their stack weights."""
-    partial = path.with_name(f"{path.name}.part")
+    partial = path.with_name(f"{path.name}.{uuid.uuid4().hex}.part")
     with partial.open("wb") as file:
         np.savez(
             file,
