@@ -23,6 +23,8 @@
 /* The search centred, the tools right; the first column stays empty so the search keeps the middle. */
 .hud-row > .search-group { grid-column:2; }
 .hud-row > .header-actions { grid-column:3; }
+/* The logo sits in the free first column; where that column goes (narrow bars) the logo goes with it. */
+.hud-row > .brand-logo { grid-column:1; justify-self:start; display:block; height:44px; width:auto; }
 .search-group { position:relative; display:flex; align-items:center; gap:8px; min-width:0; }
 .global-search { flex:1; display:flex; align-items:center; gap:8px; min-width:0; padding:4px 4px 4px 14px; border:1px solid var(--border-strong); border-radius:999px; background:var(--surface-1); }
 .global-search:focus-within { border-color:var(--accent); }
@@ -36,9 +38,9 @@
 .hud-chips { position:absolute; top:calc(100% + 6px); left:0; display:flex; flex-wrap:wrap; gap:6px; width:min(360px,calc(100cqw - 32px)); padding:12px; border:1px solid var(--border-strong); border-radius:var(--radius-md); background:var(--surface-1); box-shadow:0 8px 24px #0006; }
 .hud-chips[hidden] { display:none; }
 .chip { flex:none; min-height:32px; padding:var(--space-1) var(--space-3); border-radius:999px; font-size:var(--text-xs); background:var(--surface-2); }
-@media (max-width:1000px) { .hud-row { grid-template-columns:minmax(0,1fr) auto; } .hud-row > .search-group { grid-column:1; } .hud-row > .header-actions { grid-column:2; } }
+@media (max-width:1000px) { .hud-row > .brand-logo { display:none; } .hud-row { grid-template-columns:minmax(0,1fr) auto; } .hud-row > .search-group { grid-column:1; } .hud-row > .header-actions { grid-column:2; } }
 /* A narrow bar leaves out what does not fit instead of overlapping it. */
-@container (max-width:640px) { .hud-row { grid-template-columns:minmax(0,1fr) auto; } .hud-row > .search-group { grid-column:1; } .hud-row > .header-actions { grid-column:2; } }
+@container (max-width:640px) { .hud-row > .brand-logo { display:none; } .hud-row { grid-template-columns:minmax(0,1fr) auto; } .hud-row > .search-group { grid-column:1; } .hud-row > .header-actions { grid-column:2; } }
 @media (max-width:700px) { .hud { padding:8px; } .hud-row { gap:6px; } .search-mark { display:none; } .global-search { padding-left:12px; } .examples-toggle { padding:4px; } }
 
 .stage { grid-area:main; position:relative; min-width:0; min-height:0; overflow:hidden; }

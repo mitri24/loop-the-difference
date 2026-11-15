@@ -3,6 +3,7 @@ import { CHALLENGE_TARGETS } from '../targets'
 import type { TargetQuery } from '../url'
 import { useLightDismiss } from '../useLightDismiss'
 import { openTarget } from './TargetForm'
+import logoUrl from '../assets/logo-loop.png'
 
 // "RA, Dec" (or two numbers or sexagesimal parts split by space) goes to the backend as coordinates;
 // anything with other letters is a name. The backend parses the coordinates (coords.py).
@@ -44,6 +45,7 @@ export function SearchBar({ value, onChange, draft, busy, onShow, onFind, onDraf
       <div className="hud-row">
         {/* No visible name (the sky and the search come first); the page still has one heading for screen readers. */}
         <h1 className="sr-only">Loop the Difference · SPHEREx observation workspace</h1>
+        <img className="brand-logo" src={logoUrl} alt="" title="Loop the Difference · SPHEREx observation workspace" />
         <div className="search-group">
           <form className="global-search" role="search" onSubmit={(event) => { event.preventDefault(); submit() }}>
             <span className="search-mark" aria-hidden="true" />
