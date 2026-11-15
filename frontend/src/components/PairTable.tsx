@@ -80,7 +80,7 @@ export function PairTable({ frames, pair, index, letter, grid, motion, predictio
     return (
       <div className="pair-col-head">
         {/* Pressed while the image shows this letter, like the stamp. */}
-        <button type="button" className="pair-letter" aria-pressed={letter === name} aria-label={`Show frame ${name}`}
+        <button type="button" className={`pair-letter ${which}`} aria-pressed={letter === name} aria-label={`Show frame ${name}`}
           onClick={() => onShow(which)}>{name}</button>
         {/* The choice reads as short text (the thumbnails' numbers); the list it opens names every frame by date. */}
         <label className="pair-pick">
