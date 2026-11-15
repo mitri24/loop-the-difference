@@ -130,7 +130,7 @@ const plan = (frames: Frame[], skip: DistantPlan['frames'][number]['skip'] = nul
 })
 
 describe('distant-object track check', () => {
-  it('finds the distances whose search circle (2σ, at least 1.5 pixels) holds an uncatalogued detection', () => {
+  it('finds the distances whose search circle (2σ plus the model error, at least 1.5 pixels) holds an uncatalogued detection', () => {
     const sources = [
       source(at(2).ra, at(2).dec + 4 / 3600),
       source(at(1).ra, at(1).dec - 8 / 3600, 'none', 20),

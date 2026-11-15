@@ -10,7 +10,7 @@ import { SEVERITY } from './EvidencePanel'
 import { FollowupChart, snrPoints } from './FollowupChart'
 
 export const START = 'Check all SPHEREx visits'
-const HINT = 'Measures the flux where the track puts the object in this detector’s other visits and stacks it. Loads IRSA cutouts; takes minutes.'
+const HINT = 'Measures the flux where the track puts the object in this detector’s other visits within 400 days of the marks and stacks it. Loads up to 48 IRSA cutouts; takes minutes.'
 const NEEDS_VISITS = 'Needs the archive’s list of this field’s visits.'
 
 /** One line per check code, the most severe first; a repeated check (one per visit) is counted, not listed. */
@@ -25,14 +25,19 @@ export function checkLines(checks: Check[]) {
     .sort((a, b) => SEVERITY_ORDER.indexOf(a.severity) - SEVERITY_ORDER.indexOf(b.severity))
 }
 
-/** Date, wavelength, flux, S/N and what qualifies them, for one visit. */
-export const measurementText = (m: FollowupMeasurement) => [
-  utcMinute(m.date),
-  m.wavelength_um != null ? `${m.wavelength_um.toFixed(3)} µm` : null,
-  m.flux_ujy != null && m.flux_err_ujy != null ? `${m.flux_ujy.toFixed(1)} ± ${m.flux_err_ujy.toFixed(1)} µJy` : null,
-  m.snr != null ? `S/N ${m.snr.toFixed(1)}` : null,
-  ...measurementNotes(m),
-].filter(Boolean).join(' · ')
+/** Date, wavelength, flux, S/N and what qualifies them, for one visit: the PSF flux when the follow-up stacks PSF fluxes. */
+export function measurementText(m: FollowupMeasurement, psf: boolean) {
+  const [kind, flux, err, snr] = psf && m.psf_flux_ujy != null
+    ? ['PSF', m.psf_flux_ujy, m.psf_flux_err_ujy, m.psf_snr]
+    : ['aperture', m.flux_ujy, m.flux_err_ujy, m.snr]
+  return [
+    utcMinute(m.date),
+    m.wavelength_um != null ? `${m.wavelength_um.toFixed(3)} µm` : null,
+    flux != null && err != null ? `${kind} ${flux.toFixed(1)} ± ${err.toFixed(1)} µJy` : null,
+    snr != null ? `S/N ${snr.toFixed(1)}` : null,
+    ...measurementNotes(m),
+  ].filter(Boolean).join(' · ')
+}
 
 function Details({ followup }: { followup: Followup }) {
   const shown = shownHypothesis(followup)
@@ -48,10 +53,10 @@ function Details({ followup }: { followup: Followup }) {
             <p className="followup-subhead">
               {where}, D{followup.detector}: {shown.visits} of {visitsText(shown.measurements.length)} usable
             </p>
-            <ol className="track-check-rows followup-visits">
+            <ol className="track-check-rows">
               {shown.measurements.map((m) => (
                 <li key={m.obs_id}>
-                  <span>{measurementText(m)}</span>
+                  <span>{measurementText(m, followup.psf_photometry)}</span>
                   <a href={m.source_url} target="_blank" rel="noopener noreferrer">
                     {m.obs_id}<span aria-hidden="true"> ↗</span><span className="sr-only"> (cutout, opens in a new tab)</span>
                   </a>

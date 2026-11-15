@@ -29,6 +29,18 @@ export const snrPoints = (followup: Followup): SnrPoint[] => followup.hypotheses
     distance_au != null && snr != null ? [{ index, distance_au, snr, flux_ujy, flux_err_ujy, visits }] : [])
   .sort((a, b) => a.distance_au - b.distance_au)
 
+/** The points in runs of neighbouring tested distances: the curve breaks where a distance between two has no S/N. */
+export function curveRuns(followup: Followup, points: SnrPoint[]): SnrPoint[][] {
+  const gaps = followup.hypotheses.flatMap(({ distance_au, snr }) => (distance_au != null && snr == null ? [distance_au] : []))
+  const runs: SnrPoint[][] = []
+  points.forEach((p, i) => {
+    const prev = points[i - 1]
+    if (prev && !gaps.some((au) => au > prev.distance_au && au < p.distance_au)) runs.at(-1)!.push(p)
+    else runs.push([p])
+  })
+  return runs
+}
+
 /** Both ends of the distance axis and round distances between them, labels at least LABEL_GAP_PX apart. */
 export function distanceTicks(near: number, far: number, x: (au: number) => number): number[] {
   const ticks = [near]
@@ -64,7 +76,7 @@ export function FollowupChart({ followup }: { followup: Followup }) {
   const single = points.some((p) => p.visits < MIN_VISITS)
   const markR = points.length > 24 ? 2.5 : 4
   const summary = `S/N at ${points.length} assumed distances from ${num(near, 2)} to ${num(far, 2)} AU`
-    + `${best ? `, highest ${best.snr.toFixed(1)} at ${num(best.distance_au, 2)} AU` : ''}`
+    + `${best ? `, best ${best.snr.toFixed(1)} at ${num(best.distance_au, 2)} AU over ${visitsText(best.visits)}` : ''}`
   const legend = (
     <>
       {best && <LegendItem mark={<circle r={5} fill="none" stroke="var(--text-primary)" strokeWidth={1.5} />}>best</LegendItem>}
@@ -119,7 +131,9 @@ export function FollowupChart({ followup }: { followup: Followup }) {
                 transform={`rotate(-90 12 ${(H - M.bottom + M.top) / 2})`}>S/N</text>
             </g>
             <line className="followup-threshold" x1={M.left} x2={W - M.right} y1={y(SIGNIFICANT_SNR)} y2={y(SIGNIFICANT_SNR)} />
-            <polyline className="followup-curve" stroke={colour} points={points.map((p) => `${x(p.distance_au)},${y(p.snr)}`).join(' ')} />
+            {curveRuns(followup, points).filter((run) => run.length > 1).map((run) => (
+              <polyline key={run[0].index} className="followup-curve" stroke={colour} points={run.map((p) => `${x(p.distance_au)},${y(p.snr)}`).join(' ')} />
+            ))}
             {points.map((p) => (
               <Marker key={p.index} shape="circle" x={x(p.distance_au)} y={y(p.snr)} r={markR} colour={colour} hollow={p.visits < MIN_VISITS} />
             ))}
