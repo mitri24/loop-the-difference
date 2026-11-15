@@ -47,6 +47,21 @@ def test_pluto_at_its_true_distance_lands_on_its_real_positions(client):
     assert earlier["radius_arcsec"] > later["radius_arcsec"] > 3
 
 
+def test_marks_half_a_year_apart_predict_a_third_visit(client):
+    # Mark A in April 2026 (Pluto at 35.49 AU), mark B 198 days earlier, a third visit 18 days on.
+    marks = [MARKS[0], {"ra": f"{EARLIER[1]}", "dec": f"{EARLIER[2]}", "mjd": EARLIER[0]}]
+    body = {"marks": marks, "target_mjds": [LATER[0]], "d_min_au": 30, "d_max_au": PLUTO_AU}
+    answer = client.post("/api/track/distant", json={**body, "steps": 2}).json()
+
+    true, wrong = point_at(answer, PLUTO_AU, LATER[0]), point_at(answer, 30, LATER[0])
+    miss = separation_arcsec(true["ra"], true["dec"], *LATER[1:])
+    assert miss < 10
+    assert separation_arcsec(wrong["ra"], wrong["dec"], *LATER[1:]) > 100
+    # The search radius and the bound on the model's own error cover the remaining miss.
+    assert miss <= true["radius_arcsec"] + true["model_error_arcsec"]
+    assert true["model_error_arcsec"] < wrong["model_error_arcsec"]
+
+
 def test_a_wrong_distance_misses_the_earlier_epoch(client):
     answer = track(client, d_min_au=30, d_max_au=31, steps=2).json()
     earlier = point_at(answer, 30, EARLIER[0])
@@ -103,7 +118,7 @@ def test_sexagesimal_marks_are_parsed_like_degrees(client):
         {"marks": MARKS[:1]},
         {"marks": [MARKS[0], {**MARKS[1], "ra": "not an angle"}]},
         {"marks": [MARKS[0], {**MARKS[1], "dec": "95"}]},
-        {"marks": [MARKS[0], {**MARKS[1], "mjd": MARKS[0]["mjd"] + 31}]},
+        {"marks": [MARKS[0], {**MARKS[1], "mjd": MARKS[0]["mjd"] + 401}]},
         {"marks": [MARKS[0], {**MARKS[1], "mjd": MARKS[0]["mjd"]}]},
         {"marks": [MARKS[0], {**MARKS[1], "sigma_arcsec": 31}]},
         {"target_mjds": []},
