@@ -316,12 +316,14 @@ def test_the_analysis_service_asks_horizons_for_spherex_with_the_same_code():
         pytest.skip("analysis-service is not in this checkout")
 
     def definitions(path: Path) -> dict[str, str]:
+        """Functions by name, and module constants by the name they are assigned to."""
         tree = ast.parse(path.read_text())
-        return {
-            node.name: ast.dump(node) for node in tree.body if isinstance(node, ast.FunctionDef)
-        }
+        named = {n.name: ast.dump(n) for n in tree.body if isinstance(n, ast.FunctionDef)}
+        for node in tree.body:
+            if isinstance(node, ast.Assign) and isinstance(node.targets[0], ast.Name):
+                named[node.targets[0].id] = ast.dump(node.value)
+        return named
 
     ours, theirs = definitions(Path(smallbodies.__file__)), definitions(ANALYSIS_CATALOGS)
-    assert [
-        name for name in ("horizons_params", "parse_horizons") if ours[name] != theirs[name]
-    ] == []
+    shared = ("SPHEREX_HORIZONS_ID", "horizons_params", "parse_horizons", "sbident_observer")
+    assert [name for name in shared if ours[name] != theirs[name]] == []

@@ -230,18 +230,27 @@ async def test_solar_system_check_explains_residual(monkeypatch):
 
     async def fake_sbident(ra0, dec0, half, mjd, client):
         if abs(mjd - 60900.0) < 1:
-            return [
-                SolarSystemObject(
-                    name="(433) Eros", ra=ra, dec=dec, vmag=14.0, ra_rate_arcsec_h=30.0, mjd=mjd
-                )
-            ]
-        return []
+            eros = SolarSystemObject(
+                name="(433) Eros",
+                ra=ra,
+                dec=dec,
+                vmag=14.0,
+                ra_rate_arcsec_h=30.0,
+                mjd=mjd,
+                observer="SPHEREx",
+            )
+            return "SPHEREx", [eros]
+        return "geocentre", []
 
     monkeypatch.setattr(analysis, "sbident_field", fake_sbident)
     updated = await analysis.run_solar_system_check(res.id, lambda p, m: None)
     top = next(r for r in updated.residuals if r.significance > 0)
     assert top.kind == "solar_system" and top.known_source == "(433) Eros"
+    assert "(JPL SBIdent, seen from SPHEREx)" in top.explanation
     assert updated.solar_system and updated.solar_system[0].epoch == "A"
+    detail = next(c.detail for c in updated.checks if c.code == "solar_system")
+    assert detail.startswith("JPL Small-Body Identification API, A seen from SPHEREx (its position")
+    assert "; B seen from the geocentre, as JPL Horizons gave no SPHEREx position" in detail
 
 
 def test_sso_match_uses_track_and_magnitude_limit():
