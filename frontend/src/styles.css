@@ -545,15 +545,15 @@ summary { cursor:pointer; min-height:32px; padding:5px 0; font-size:13px; }
 .pair-panel { display:flex; flex-direction:column; gap:var(--space-2); min-width:0; }
 .pair-shown { display:flex; flex-wrap:wrap; align-items:center; gap:var(--space-1) var(--space-2); margin:0; color:var(--text-secondary); font-size:var(--text-xs); }
 .pair-table { width:100%; max-width:680px; border-collapse:collapse; table-layout:fixed; font-size:var(--text-xs); font-variant-numeric:tabular-nums; }
-.pair-table th[scope='row'] { width:80px; padding:5px var(--space-2) 5px 0; color:var(--text-secondary); font-weight:500; text-align:left; vertical-align:top; }
-.pair-table td { padding:5px var(--space-2); vertical-align:top; overflow-wrap:anywhere; }
+.pair-table th[scope='row'] { width:80px; padding:3px var(--space-2) 3px 0; color:var(--text-secondary); font-weight:500; text-align:left; vertical-align:top; }
+.pair-table td { padding:3px var(--space-2); vertical-align:top; overflow-wrap:anywhere; line-height:1.35; }
 .pair-table tbody tr { border-top:1px solid var(--border); }
 /* The archive ID: one click selects all of it for copying. */
 .pair-id { font-family:var(--font-mono); font-size:inherit; -webkit-user-select:all; user-select:all; }
 .pair-table thead td,.pair-table thead th { padding:0 var(--space-2) var(--space-2); font-weight:400; text-align:left; vertical-align:bottom; }
 .pair-table thead td { padding-left:0; }
-/* Column head: the letter (shows it) over the frame choice, so the date gets the column's width. */
-.pair-col-head { display:flex; flex-direction:column; align-items:flex-start; gap:var(--space-1); min-width:0; }
+/* Column head: the letter (shows it) beside the short frame choice ("frame 3 of 12 ▾"), one line. */
+.pair-col-head { display:flex; flex-wrap:wrap; align-items:center; gap:var(--space-1) var(--space-2); min-width:0; }
 /* A and B have one colour each everywhere: amber A, light B – badge on the thumbnails, letter on the image, the
    table heads. The letter itself always names them; the colour only helps to find them at a glance. */
 .pair-letter { flex:none; width:28px; min-width:28px; min-height:28px; padding:0; border-radius:999px; border-width:2px; font-weight:750; }
@@ -603,3 +603,17 @@ summary { cursor:pointer; min-height:32px; padding:5px 0; font-size:13px; }
 .candidate-actions { display:flex; flex-wrap:wrap; gap:var(--space-2); }
 /* The candidate check beside the image, under the A/B table (under the difference image in that mode). */
 .candidate-side { display:flex; flex-direction:column; gap:var(--space-3); min-width:0; font-size:var(--text-sm); }
+
+/* A calmer side column: the same content, less height. The A/B table's second half (All metadata) folds; the candidate
+   check below it keeps every part, with tighter spacing and secondary lines in small type. */
+.pair-more > summary { min-height:24px; padding:2px 0; font-size:var(--text-xs); color:var(--text-secondary); }
+.pair-more[open] { display:flex; flex-direction:column; gap:var(--space-2); }
+.player-side { gap:var(--space-2); }
+.candidate-side { gap:var(--space-2); font-size:var(--text-xs); }
+.candidate-side .candidate-check,.candidate-side .known-check,.candidate-side .track-check { gap:var(--space-1); }
+.candidate-side .candidate-check { padding-top:var(--space-2); }
+.candidate-side .candidate-marks,.candidate-side .track-check-rows,.candidate-side .track-check-summary { font-size:var(--text-xs); }
+.candidate-side .candidate-check h3 { font-size:var(--text-sm); }
+.candidate-side .candidate-check button,.candidate-side .known-check button { min-height:28px; padding:0 var(--space-2); font-size:var(--text-xs); }
+.candidate-side .disclosure { padding-top:var(--space-2); }
+.candidate-side summary { min-height:24px; padding:2px 0; font-size:var(--text-xs); }
