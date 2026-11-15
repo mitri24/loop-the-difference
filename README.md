@@ -18,18 +18,22 @@ http://localhost:8080/?ra=08h55m10.831s&dec=-7d14m42.53s&fov=0.2&band=6
 ## How it works
 
 ```
-browser ──► web (nginx + React, Aladin Lite)
-              │ /api
-              ▼
-            api (FastAPI) ──► redis queue ──► worker(s)
-                                                │ search (SIA2) + cutouts
-                                                ▼
-                                   NASA/IPAC IRSA · SPHEREx releases
+browser ──► web (nginx + React, Aladin Lite) ──► catalogue layers: VizieR, SIMBAD, SkyBoT
+              │ /api                                    │ /analysis
+              ▼                                         ▼
+            api (FastAPI) ──► redis queue ──► worker(s)  analysis (FastAPI)
+                                                │              │
+                                                ▼              ▼
+                     NASA/IPAC IRSA · SPHEREx releases, AllWISE, CatWISE2020
+                     ESA Gaia DR3 · NASA/JPL SBIdent + Horizons · CADC (NEOSSat)
 ```
 
 1. The API searches IRSA for every SPHEREx observation of the position.
 2. A worker downloads small cutouts, spread over all epochs, and resamples them onto one north-up grid.
 3. All frames get one shared brightness stretch and are cached, so a target is prepared only once.
+4. The worker finds every source in the frames (Photutils) and labels it with its Gaia DR3 or AllWISE match, or as needing verification.
+
+The analysis service (`analysis-service/`, served under `/analysis`) is a second, independent pipeline for the same comparison: its own inverse-variance visit stacks, comparability checks, PSF-matched significance maps (ZOGY) with the SPHEREx ePSF, and context checks against Gaia DR3 and CatWISE2020. The app shows its results as a second method next to the main pipeline.
 
 Scale the heavy part with more workers: `docker compose up --scale worker=4`. Spectra run on a worker of their own (`worker-slow`, queue `slow`), so they never delay a frame job. A new SPHEREx data release needs no change: the search covers every SPHEREx image release IRSA lists (DR1, QR3, their deep fields); `SKYSHIFT_SPHEREX_COLLECTION` is only the fallback while IRSA cannot list them.
 
@@ -58,6 +62,7 @@ docker run --rm -v skyshift_cache:/data -v "$PWD":/backup alpine tar xzf /backup
 - Backend with live reload is the default (`docker-compose.override.yml`); API docs at http://localhost:8000/docs
 - Frontend with hot reload: `cd frontend && npm ci && npm run dev` → http://localhost:5173
 - Browser tests against the running stack: `cd frontend && npm run test:e2e`. They use the installed Chrome on macOS; elsewhere run `npx playwright install chromium` once, or point `CHROME_PATH` at a Chrome. `SKYSHIFT_BASE_URL` tests another address (default http://localhost:8080).
+- Analysis service tests (offline): `docker compose run --rm --no-deps analysis pytest -q`
 - Checks: see `CLAUDE.md`, they also run in CI on every push and pull request.
 
 ## Deploy
@@ -74,7 +79,7 @@ cp .env.example .env            # set DOMAIN=your.domain
 docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d --build
 ```
 
-Redeploy after a change, then warm the cache for the demo targets (`app.warm` arrives with the cache-warming step; skip that part until it exists):
+Redeploy after a change, then warm the cache for the demo targets:
 
 ```sh
 git pull && docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d --build && docker compose -f docker-compose.yml -f docker-compose.prod.yml run --rm worker python -m app.warm
@@ -91,14 +96,22 @@ docker compose -f docker-compose.yml -f docker-compose.prod.yml logs -f caddy ap
 Loop the Difference is a discovery aid – every change it shows is a candidate that needs checking against the catalogues before it counts as anything. It never claims a discovery.
 
 - **SPHEREx images** – NASA/IPAC Infrared Science Archive (IRSA), via the IRSA SIA2 search and cutout services. "This publication makes use of data products from the Spectro-Photometer for the History of the Universe, Epoch of Reionization and Ices Explorer (SPHEREx), which is a joint project of the Jet Propulsion Laboratory and the California Institute of Technology, and is funded by the National Aeronautics and Space Administration." – "This research has made use of the NASA/IPAC Infrared Science Archive, which is funded by the National Aeronautics and Space Administration and operated by the California Institute of Technology." [SPHEREx at IRSA](https://irsa.ipac.caltech.edu/Missions/spherex.html) · [IRSA acknowledgements](https://irsa.ipac.caltech.edu/ack.html)
-- **Sky context** – [Aladin Lite](https://aladin.cds.unistra.fr/AladinLite/), developed at CDS, Strasbourg Observatory, France (Boch & Fernique 2014; Baumann et al. 2022), LGPL-3.0-or-later. Target names are resolved with Sesame (CDS). HiPS sky surveys come from CDS and the mirrors at ESA ESDC and NASA/IPAC IRSA.
-- **AllWISE sky layer** – "This publication makes use of data products from the Wide-field Infrared Survey Explorer, which is a joint project of the University of California, Los Angeles, and the Jet Propulsion Laboratory/California Institute of Technology, funded by the National Aeronautics and Space Administration."
-- **ESA Gaia DR3** (proper motions, when a named target is looked up) – "This work has made use of data from the European Space Agency (ESA) mission Gaia (https://www.cosmos.esa.int/gaia), processed by the Gaia Data Processing and Analysis Consortium (DPAC, https://www.cosmos.esa.int/web/gaia/dpac/consortium). Funding for the DPAC has been provided by national institutions, in particular the institutions participating in the Gaia Multilateral Agreement."
+- **Sky context** – [Aladin Lite](https://aladin.cds.unistra.fr/AladinLite/), developed at CDS, Strasbourg Observatory, France (Boch & Fernique 2014; Baumann et al. 2022), LGPL-3.0-or-later. Target names are resolved with Sesame (CDS). The sky layers (SPHEREx DR1 all-sky, AllWISE, 2MASS and DSS2 colour) are HiPS surveys from NASA/IPAC IRSA, which mirrors the CDS surveys.
+- **AllWISE** (sky layer, catalogue layer, matches of detected sources) – "This publication makes use of data products from the Wide-field Infrared Survey Explorer, which is a joint project of the University of California, Los Angeles, and the Jet Propulsion Laboratory/California Institute of Technology, funded by the National Aeronautics and Space Administration."
+- **CatWISE2020** (motions of red sources in the analysis service) – catalogue from WISE and NEOWISE data (Marocco et al. 2021, ApJS 253, 8), via NASA/IPAC IRSA.
+- **2MASS sky layer** – "This publication makes use of data products from the Two Micron All Sky Survey, which is a joint project of the University of Massachusetts and the Infrared Processing and Analysis Center/California Institute of Technology, funded by the National Aeronautics and Space Administration and the National Science Foundation."
+- **1950 photographic plate and DSS2 layer** – "The Digitized Sky Surveys were produced at the Space Telescope Science Institute under U.S. Government grant NAG W-2166; POSS-I: National Geographic Society – Palomar Observatory." [STScI DSS](https://archive.stsci.edu/cgi-bin/dss_form)
+- **ESA Gaia DR3** (proper motions, catalogue layer at the frame date, matches of detected sources) – "This work has made use of data from the European Space Agency (ESA) mission Gaia (https://www.cosmos.esa.int/gaia), processed by the Gaia Data Processing and Analysis Consortium (DPAC, https://www.cosmos.esa.int/web/gaia/dpac/consortium). Funding for the DPAC has been provided by national institutions, in particular the institutions participating in the Gaia Multilateral Agreement."
+- **SIMBAD and VizieR** (catalogue layers, through the mirrors at the Harvard-Smithsonian CfA) – "This research has made use of the SIMBAD database and the VizieR catalogue access tool, CDS, Strasbourg Observatory, France."
+- **Known asteroids and comets** – SkyBoT (IMCCE, Observatoire de Paris; Berthier et al. 2006) and the NASA/JPL Solar System Dynamics Small-Body Identification API (SBIdent). JPL Horizons gives SPHEREx's own position, so known bodies are placed as SPHEREx saw them.
+- **NEOSSat** (Canadian Space Agency) – observations of the same field from the Canadian Astronomy Data Centre: "This research used the facilities of the Canadian Astronomy Data Centre operated by the National Research Council of Canada with the support of the Canadian Space Agency."
+- **Cross-check links** – [WiseView](http://byw.tools/wiseview) (Backyard Worlds), the IRSA Viewer ([Firefly](https://github.com/Caltech-IPAC/firefly)) and the full SPHEREx Level-2 files in the AWS Open Data bucket `nasa-irsa-spherex`.
+- **Software** – [Astropy](https://www.astropy.org/) (Astropy Collaboration 2013, 2018, 2022), [reproject](https://reproject.readthedocs.io/) for the alignment, [Photutils](https://photutils.readthedocs.io/) (Bradley et al.) for source detection and photometry, NumPy, SciPy, FastAPI, RQ, React and Vite. PSF-matched differences follow ZOGY (Zackay, Ofek & Gal-Yam 2016, ApJ 830, 27).
 
 ## Use of AI
 
-The code in this repository was written with Claude Code (Anthropic) under human review: the team wrote the tickets, decided the architecture and reviewed every pull request. Texts in this README and in the app were drafted the same way and reviewed by the team. There are no AI-generated images, audio or video in the project; the demo video is produced by the team.
+The code in this repository was written with AI coding assistants under human review: Claude Code (Anthropic) for most of it, and OpenAI Codex, which brought in the analysis service (`analysis-service/`) and the analysis workbench (`frontend/src/analysis/`) from our earlier prototype, itself built with AI coding assistants. The team wrote the tickets, decided the architecture and reviewed the changes. Texts in this README and in the app were drafted the same way and reviewed by the team. There are no AI-generated images, audio or video in the project; the demo video is produced by the team.
 
 ## License
 
-Loop the Difference is free software under the [GNU General Public License v3.0](LICENSE). SPHEREx, AllWISE and Gaia data stay under the terms of their archives (IRSA, ESA); Aladin Lite is LGPL-3.0-or-later.
+Loop the Difference is free software under the [GNU General Public License v3.0](LICENSE). The data stay under the terms of their archives (NASA/IPAC IRSA, ESA, CDS, IMCCE, NASA/JPL, CADC, STScI); Aladin Lite is LGPL-3.0-or-later.
