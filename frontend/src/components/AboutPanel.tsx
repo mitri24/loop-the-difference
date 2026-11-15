@@ -66,8 +66,9 @@ export function AboutPanel() {
               Aladin Lite
             </a>
             , developed at CDS, Strasbourg Observatory, France (Boch &amp; Fernique 2014; Baumann et
-            al. 2022), LGPL-3.0-or-later. Target names are resolved with Sesame (CDS). HiPS sky surveys
-            come from CDS and the mirrors at ESA ESDC and NASA/IPAC IRSA.
+            al. 2022), LGPL-3.0-or-later. Target names are resolved with Sesame (CDS). The sky layers
+            (SPHEREx DR1 all-sky, AllWISE, 2MASS and DSS2 colour) are HiPS surveys from NASA/IPAC
+            IRSA, which mirrors the CDS surveys.
           </li>
           <li>
             <strong>AllWISE sky layer</strong> – “This publication makes use of data products from the
@@ -79,7 +80,17 @@ export function AboutPanel() {
             </a>
           </li>
           <li>
-            <strong>1950 photographic plate</strong> – “The Digitized Sky Surveys were produced at the
+            <strong>CatWISE2020</strong> – motions of red sources from WISE and NEOWISE data (Marocco et
+            al. 2021, ApJS 253, 8), via NASA/IPAC IRSA.
+          </li>
+          <li>
+            <strong>2MASS sky layer</strong> – “This publication makes use of data products from the Two
+            Micron All Sky Survey, which is a joint project of the University of Massachusetts and the
+            Infrared Processing and Analysis Center/California Institute of Technology, funded by the
+            National Aeronautics and Space Administration and the National Science Foundation.”
+          </li>
+          <li>
+            <strong>1950 photographic plate and DSS2 layer</strong> – “The Digitized Sky Surveys were produced at the
             Space Telescope Science Institute under U.S. Government grant NAG W-2166; POSS-I: National
             Geographic Society – Palomar Observatory.”{' '}
             <a href="https://archive.stsci.edu/cgi-bin/dss_form" target="_blank" rel="noreferrer">
@@ -87,7 +98,8 @@ export function AboutPanel() {
             </a>
           </li>
           <li>
-            <strong>ESA Gaia DR3</strong> (proper motions, when a named target is looked up) – “This
+            <strong>ESA Gaia DR3</strong> (proper motions, catalogue layer at the frame date, matches of
+            detected sources) – “This
             work has made use of data from the European Space Agency (ESA) mission Gaia
             (https://www.cosmos.esa.int/gaia), processed by the Gaia Data Processing and Analysis
             Consortium (DPAC, https://www.cosmos.esa.int/web/gaia/dpac/consortium). Funding for the
@@ -110,7 +122,8 @@ export function AboutPanel() {
           </li>
           <li>
             <strong>Known asteroids and comets</strong> – NASA/JPL Solar System Dynamics,
-            Small-Body Identification API (SBIdent).
+            Small-Body Identification API (SBIdent); JPL Horizons gives SPHEREx’s own position, so
+            known bodies are placed as SPHEREx saw them.
           </li>
           <li>
             <strong>NEOSSat</strong> (Canadian Space Agency) – “This research used the facilities of
@@ -119,7 +132,8 @@ export function AboutPanel() {
           </li>
           <li>
             <strong>Code</strong> – free software under the GNU General Public License v3.0, written
-            with Claude Code (Anthropic) under human review. Built for NASA Space Apps 2026.{' '}
+            with AI coding assistants under human review: Claude Code (Anthropic), and OpenAI Codex for
+            the analysis service and its workbench. Built for NASA Space Apps 2026.{' '}
             <a href={REPO_URL} target="_blank" rel="noreferrer">
               Source on GitHub
             </a>
