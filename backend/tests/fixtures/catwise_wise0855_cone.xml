@@ -1,0 +1,385 @@
+<?xml version="1.0" encoding="utf-8"?>
+<VOTABLE version="1.3" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns="http://www.ivoa.net/xml/VOTable/v1.3" xmlns:stc="http://www.ivoa.net/xml/STC/v1.30" xsi:schemaLocation="http://www.ivoa.net/xml/VOTable/v1.3 http://www.ivoa.net/xml/VOTable/v1.3 http://www.ivoa.net/xml/STC/v1.30 http://www.ivoa.net/xml/STC/v1.30">
+  <RESOURCE>
+    <INFO name="ORIGIN" value="IPAC Infrared Science Archive (IRSA), Caltech/JPL"/>
+    <INFO name="SIMULATED_TABLE" value="n"/>
+    <INFO name="DATETIME" value="2026-11-15 02:49:48"/>
+    <INFO name="DATABASE" value="CatWISE2020 Catalog (catwise_2020)"/>
+    <INFO name="EQUINOX" value="J2000"/>
+    <INFO name="SKYAREA" value="within 36.00 arcsec of  ra=133.78600 dec=-7.24530 Eq J2000 "/>
+    <INFO name="StatusFile" value="/workspace/TMP_QsTrfn_3046171/Gator/irsa/3046171/log.3046171.html"/>
+    <INFO name="SQL" value="WHERE (no constraints)"/>
+    <INFO name="SQL" value="SELECT (11 column names follow in next row.)"/>
+    <TABLE>
+      <DESCRIPTION>                                                                              
+
+source_name 
+___ source hexagesimal designation
+ra (deg) 
+___ right ascension (J2000)
+dec (deg) 
+___ declination (J2000)
+clon 
+___ Right ascention in Sexagesimal format.
+clat 
+___ Declination in Sexagesimal format.
+w1mpro (mag) 
+___ instrumental profile-fit photometry magnitude, band 1
+meanobsmjd (d) 
+___ mean observation epoch
+pmra (arcsec/yr) 
+___ Apparent motion in RA
+pmdec (arcsec/yr) 
+___ Apparent motion in Dec
+sigpmra (arcsec/yr) 
+___ Uncertainty in the RA motion estimate
+sigpmdec (arcsec/yr) 
+___ Uncertainty in the Dec motion estimate
+dist (arcsec) 
+___ Distance between the target position and each source in arcsec.
+angle (deg) 
+___ Position Angle in degree.
+</DESCRIPTION>
+      <FIELD name="source_name" datatype="char" arraysize="*" ucd="meta.id;meta.main" unit="null" width="26">
+        <DESCRIPTION>source hexagesimal designation</DESCRIPTION>
+      </FIELD>
+      <FIELD name="ra" datatype="double" precision="7" ucd="null" unit="deg" width="12">
+        <DESCRIPTION>right ascension (J2000)</DESCRIPTION>
+      </FIELD>
+      <FIELD name="dec" datatype="double" precision="7" ucd="null" unit="deg" width="12">
+        <DESCRIPTION>declination (J2000)</DESCRIPTION>
+      </FIELD>
+      <FIELD name="clon" datatype="char" arraysize="*"/>
+      <FIELD name="clat" datatype="char" arraysize="*"/>
+      <FIELD name="w1mpro" datatype="double" precision="3" ucd="phot.mag;em.IR.3-4um" unit="mag" width="7">
+        <DESCRIPTION>instrumental profile-fit photometry magnitude, band 1</DESCRIPTION>
+      </FIELD>
+      <FIELD name="meanobsmjd" datatype="double" unit="d"/>
+      <FIELD name="pmra" datatype="double" unit="arcsec/yr"/>
+      <FIELD name="pmdec" datatype="double" unit="arcsec/yr"/>
+      <FIELD name="sigpmra" datatype="double" unit="arcsec/yr"/>
+      <FIELD name="sigpmdec" datatype="double" unit="arcsec/yr"/>
+      <FIELD name="dist" datatype="double" unit="arcsec"/>
+      <FIELD name="angle" datatype="double" unit="deg"/>
+      <DATA>
+        <TABLEDATA>
+          <TR>
+            <TD>J085508.77-071440.3</TD>
+            <TD>133.7865463</TD>
+            <TD>-7.2445399999999998</TD>
+            <TD>08h55m08.77s</TD>
+            <TD>-07d14m40.34s</TD>
+            <TD>19.702999999999999</TD>
+            <TD>57095.972847999998</TD>
+            <TD>1.1316200000000001</TD>
+            <TD>-0.17999999999999999</TD>
+            <TD>0.18990000000000001</TD>
+            <TD>0.21940000000000001</TD>
+            <TD>3.3603589999999999</TD>
+            <TD>35.491822999999997</TD>
+          </TR>
+          <TR>
+            <TD>J085508.34-071439.2</TD>
+            <TD>133.78476130000001</TD>
+            <TD>-7.2442498000000004</TD>
+            <TD>08h55m08.34s</TD>
+            <TD>-07d14m39.30s</TD>
+            <TD>18.507000000000001</TD>
+            <TD>57104.762545999998</TD>
+            <TD>-7.9649999999999999</TD>
+            <TD>0.80620000000000003</TD>
+            <TD>0.1903</TD>
+            <TD>0.2646</TD>
+            <TD>5.8192029999999999</TD>
+            <TD>310.51869299999998</TD>
+          </TR>
+          <TR>
+            <TD>J085508.52-071436.9</TD>
+            <TD>133.78552869999999</TD>
+            <TD>-7.2436005999999997</TD>
+            <TD>08h55m08.53s</TD>
+            <TD>-07d14m36.96s</TD>
+            <TD>17.956</TD>
+            <TD>57178.098389999999</TD>
+            <TD>-0.027040000000000002</TD>
+            <TD>-0.107</TD>
+            <TD>0.086900000000000005</TD>
+            <TD>0.094899999999999998</TD>
+            <TD>6.3451490000000002</TD>
+            <TD>344.617366</TD>
+          </TR>
+          <TR>
+            <TD>J085507.96-071439.3</TD>
+            <TD>133.7831722</TD>
+            <TD>-7.2442516000000001</TD>
+            <TD>08h55m07.96s</TD>
+            <TD>-07d14m39.31s</TD>
+            <TD>19.577000000000002</TD>
+            <TD>57338.571064999996</TD>
+            <TD>-8.0212000000000003</TD>
+            <TD>1.0357000000000001</TD>
+            <TD>0.089200000000000002</TD>
+            <TD>0.14119999999999999</TD>
+            <TD>10.781038000000001</TD>
+            <TD>290.49211000000003</TD>
+          </TR>
+          <TR>
+            <TD>J085508.17-071453.6</TD>
+            <TD>133.784042</TD>
+            <TD>-7.2482414999999998</TD>
+            <TD>08h55m08.17s</TD>
+            <TD>-07d14m53.67s</TD>
+            <TD>16.818999999999999</TD>
+            <TD>57324.055579</TD>
+            <TD>0.082180000000000003</TD>
+            <TD>-0.063500000000000001</TD>
+            <TD>0.042099999999999999</TD>
+            <TD>0.0511</TD>
+            <TD>12.689774</TD>
+            <TD>213.43784199999999</TD>
+          </TR>
+          <TR>
+            <TD>J085508.60-071456.3</TD>
+            <TD>133.7858497</TD>
+            <TD>-7.2489768999999997</TD>
+            <TD>08h55m08.60s</TD>
+            <TD>-07d14m56.32s</TD>
+            <TD>17.867000000000001</TD>
+            <TD>57295.080680999999</TD>
+            <TD>-0.023040000000000001</TD>
+            <TD>0.028799999999999999</TD>
+            <TD>0.097500000000000003</TD>
+            <TD>0.11070000000000001</TD>
+            <TD>13.247718000000001</TD>
+            <TD>182.322078</TD>
+          </TR>
+          <TR>
+            <TD>J085509.09-071455.7</TD>
+            <TD>133.78790100000001</TD>
+            <TD>-7.2488212000000001</TD>
+            <TD>08h55m09.10s</TD>
+            <TD>-07d14m55.76s</TD>
+            <TD>18.23</TD>
+            <TD>57371.338612</TD>
+            <TD>-0.051369999999999999</TD>
+            <TD>-0.66500000000000004</TD>
+            <TD>0.15820000000000001</TD>
+            <TD>0.17380000000000001</TD>
+            <TD>14.379799999999999</TD>
+            <TD>151.82840100000001</TD>
+          </TR>
+          <TR>
+            <TD>J085507.45-071437.8</TD>
+            <TD>133.78104400000001</TD>
+            <TD>-7.2438510999999997</TD>
+            <TD>08h55m07.45s</TD>
+            <TD>-07d14m37.86s</TD>
+            <TD>19.774000000000001</TD>
+            <TD>57444.593259000001</TD>
+            <TD>-4.2515599999999996</TD>
+            <TD>-3.6099999999999999</TD>
+            <TD>0.22170000000000001</TD>
+            <TD>0.221</TD>
+            <TD>18.451765000000002</TD>
+            <TD>286.42021599999998</TD>
+          </TR>
+          <TR>
+            <TD>J085507.72-071428.2</TD>
+            <TD>133.78220020000001</TD>
+            <TD>-7.2411702</TD>
+            <TD>08h55m07.73s</TD>
+            <TD>-07d14m28.21s</TD>
+            <TD>16.356999999999999</TD>
+            <TD>57264.632273000003</TD>
+            <TD>-0.023519999999999999</TD>
+            <TD>-0.010500000000000001</TD>
+            <TD>0.033300000000000003</TD>
+            <TD>0.036900000000000002</TD>
+            <TD>20.129185</TD>
+            <TD>317.61147899999997</TD>
+          </TR>
+          <TR>
+            <TD>J085507.74-071458.6</TD>
+            <TD>133.78224929999999</TD>
+            <TD>-7.2496168000000001</TD>
+            <TD>08h55m07.74s</TD>
+            <TD>-07d14m58.62s</TD>
+            <TD>17.739999999999998</TD>
+            <TD>57319.167411000002</TD>
+            <TD>0.082989999999999994</TD>
+            <TD>-0.031099999999999999</TD>
+            <TD>0.091499999999999998</TD>
+            <TD>0.1014</TD>
+            <TD>20.516407000000001</TD>
+            <TD>220.758454</TD>
+          </TR>
+          <TR>
+            <TD>J085509.47-071502.9</TD>
+            <TD>133.78946289999999</TD>
+            <TD>-7.2508305000000002</TD>
+            <TD>08h55m09.47s</TD>
+            <TD>-07d15m02.99s</TD>
+            <TD>14.999000000000001</TD>
+            <TD>57230.364977999998</TD>
+            <TD>-0.0053800000000000002</TD>
+            <TD>-0.0081200000000000005</TD>
+            <TD>0.0088999999999999999</TD>
+            <TD>0.010500000000000001</TD>
+            <TD>23.43797</TD>
+            <TD>148.154045</TD>
+          </TR>
+          <TR>
+            <TD>J085509.96-071458.7</TD>
+            <TD>133.79150300000001</TD>
+            <TD>-7.2496391999999998</TD>
+            <TD>08h55m09.96s</TD>
+            <TD>-07d14m58.70s</TD>
+            <TD>17.306999999999999</TD>
+            <TD>57220.673483999999</TD>
+            <TD>-0.041300000000000003</TD>
+            <TD>0.082600000000000007</TD>
+            <TD>0.068699999999999997</TD>
+            <TD>0.083400000000000002</TD>
+            <TD>25.104600999999999</TD>
+            <TD>128.48033899999999</TD>
+          </TR>
+          <TR>
+            <TD>J085506.91-071437.5</TD>
+            <TD>133.77882550000001</TD>
+            <TD>-7.2437545999999999</TD>
+            <TD>08h55m06.92s</TD>
+            <TD>-07d14m37.52s</TD>
+            <TD>19.456</TD>
+            <TD>57853.135215000002</TD>
+            <TD>-7.9199000000000002</TD>
+            <TD>0.49390000000000001</TD>
+            <TD>0.152</TD>
+            <TD>0.23530000000000001</TD>
+            <TD>26.219066000000002</TD>
+            <TD>282.25030700000002</TD>
+          </TR>
+          <TR>
+            <TD>J085510.44-071445.1</TD>
+            <TD>133.79352900000001</TD>
+            <TD>-7.2458765999999999</TD>
+            <TD>08h55m10.45s</TD>
+            <TD>-07d14m45.16s</TD>
+            <TD>17.556999999999999</TD>
+            <TD>56022.035824999999</TD>
+            <TD>-0.021850000000000001</TD>
+            <TD>-0.0149</TD>
+            <TD>0.099900000000000003</TD>
+            <TD>0.1085</TD>
+            <TD>26.967967999999999</TD>
+            <TD>94.414973000000003</TD>
+          </TR>
+          <TR>
+            <TD>J085506.63-071442.8</TD>
+            <TD>133.77765529999999</TD>
+            <TD>-7.2452234000000004</TD>
+            <TD>08h55m06.64s</TD>
+            <TD>-07d14m42.80s</TD>
+            <TD>18.16</TD>
+            <TD>57989.647650999999</TD>
+            <TD>-0.15831999999999999</TD>
+            <TD>-0.115</TD>
+            <TD>0.14979999999999999</TD>
+            <TD>0.17449999999999999</TD>
+            <TD>29.802330999999999</TD>
+            <TD>270.52963699999998</TD>
+          </TR>
+          <TR>
+            <TD>J085510.05-071421.0</TD>
+            <TD>133.79190940000001</TD>
+            <TD>-7.2391738999999999</TD>
+            <TD>08h55m10.06s</TD>
+            <TD>-07d14m21.03s</TD>
+            <TD>17.542000000000002</TD>
+            <TD>57022.950785000001</TD>
+            <TD>-0.034270000000000002</TD>
+            <TD>-0.033399999999999999</TD>
+            <TD>0.094500000000000001</TD>
+            <TD>0.115</TD>
+            <TD>30.524760000000001</TD>
+            <TD>43.739584999999998</TD>
+          </TR>
+          <TR>
+            <TD>J085510.70-071440.7</TD>
+            <TD>133.7946139</TD>
+            <TD>-7.2446586000000002</TD>
+            <TD>08h55m10.71s</TD>
+            <TD>-07d14m40.77s</TD>
+            <TD>16.940999999999999</TD>
+            <TD>56235.235575999999</TD>
+            <TD>-0.15765999999999999</TD>
+            <TD>0.085599999999999996</TD>
+            <TD>0.042599999999999999</TD>
+            <TD>0.046199999999999998</TD>
+            <TD>30.848993</TD>
+            <TD>85.707953000000003</TD>
+          </TR>
+          <TR>
+            <TD>J085510.73-071452.8</TD>
+            <TD>133.79473390000001</TD>
+            <TD>-7.2480108999999997</TD>
+            <TD>08h55m10.74s</TD>
+            <TD>-07d14m52.84s</TD>
+            <TD>17.544</TD>
+            <TD>56919.561759999997</TD>
+            <TD>0.30915999999999999</TD>
+            <TD>-0.22</TD>
+            <TD>0.083199999999999996</TD>
+            <TD>0.10489999999999999</TD>
+            <TD>32.682020000000001</TD>
+            <TD>107.37479999999999</TD>
+          </TR>
+          <TR>
+            <TD>J085510.83-071444.6</TD>
+            <TD>133.79515559999999</TD>
+            <TD>-7.2457455</TD>
+            <TD>08h55m10.84s</TD>
+            <TD>-07d14m44.68s</TD>
+            <TD>16.523</TD>
+            <TD>56957.676211999998</TD>
+            <TD>0.08548</TD>
+            <TD>-0.25700000000000001</TD>
+            <TD>0.032500000000000001</TD>
+            <TD>0.033300000000000003</TD>
+            <TD>32.736277000000001</TD>
+            <TD>92.808708999999993</TD>
+          </TR>
+          <TR>
+            <TD>J085506.35-071437.5</TD>
+            <TD>133.77649460000001</TD>
+            <TD>-7.2437721000000002</TD>
+            <TD>08h55m06.36s</TD>
+            <TD>-07d14m37.58s</TD>
+            <TD>19.219000000000001</TD>
+            <TD>57735.071023999997</TD>
+            <TD>-0.10435</TD>
+            <TD>0.33500000000000002</TD>
+            <TD>0.115</TD>
+            <TD>0.1439</TD>
+            <TD>34.389006999999999</TD>
+            <TD>279.20325700000001</TD>
+          </TR>
+          <TR>
+            <TD>J085506.65-071423.5</TD>
+            <TD>133.7777102</TD>
+            <TD>-7.2398676000000002</TD>
+            <TD>08h55m06.65s</TD>
+            <TD>-07d14m23.52s</TD>
+            <TD>18.091999999999999</TD>
+            <TD>57310.044040000001</TD>
+            <TD>-0.036319999999999998</TD>
+            <TD>-0.14599999999999999</TD>
+            <TD>0.091499999999999998</TD>
+            <TD>0.106</TD>
+            <TD>35.481377999999999</TD>
+            <TD>303.44750800000003</TD>
+          </TR>
+        </TABLEDATA>
+      </DATA>
+    </TABLE>
+  </RESOURCE>
+</VOTABLE>
