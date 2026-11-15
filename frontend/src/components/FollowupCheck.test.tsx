@@ -1,29 +1,22 @@
 import { renderToStaticMarkup } from 'react-dom/server'
 import { describe, expect, it } from 'vitest'
 import type { FollowupState } from '../followup'
-import type { Check, Followup, FollowupHypothesis, FollowupMeasurement } from '../types'
+import { followupOf, hypothesis, measurement } from '../followupFixtures'
+import type { Check, Followup } from '../types'
 import { FollowupCheck, checkLines } from './FollowupCheck'
-import { distanceTicks } from './FollowupChart'
+import { curveRuns, distanceTicks, snrPoints } from './FollowupChart'
 
 const state = (change: Partial<FollowupState>): FollowupState => ({
   kind: 'distances', phase: 'idle', job: null, followup: null, error: null, ready: () => true, start: () => undefined, ...change,
 })
 const render = (change: Partial<FollowupState>) => renderToStaticMarkup(<FollowupCheck state={state(change)} observations={null} />)
 
-const measurement = (obs_id: string, change: Partial<FollowupMeasurement> = {}): FollowupMeasurement => ({
-  obs_id, date: '2026-05-28T10:00:00Z', mjd: 61188.4, ra: 150, dec: 20, radius_arcsec: 2, model_error_arcsec: 0.5, position_uncertain: false,
-  flux_ujy: 12, flux_err_ujy: 2, snr: 6, flagged: false, skipped: null, wavelength_um: 1.2, bandwidth_um: 0.03,
-  source_url: `https://irsa.example/${obs_id}.fits?center=150,20&size=0.03`, ...change,
-})
 const VISITS = [
   measurement('2026W22_1A_0001_1'),
   measurement('2026W22_1A_0002_1', { date: '2026-05-29T11:30:00Z', flagged: true, position_uncertain: true }),
   measurement('2026W22_1A_0003_1', { date: '2026-05-30T12:00:00Z', flux_ujy: null, flux_err_ujy: null, snr: null, wavelength_um: null,
     skipped: 'target at the cutout edge' }),
 ]
-const hypothesis = (distance_au: number | null, snr: number, visits: number, measurements: FollowupMeasurement[] = []): FollowupHypothesis => ({
-  distance_au, flux_ujy: 2 * snr, flux_err_ujy: 2, snr, visits, measurements,
-})
 const check = (code: string, severity: Check['severity'], message: string, detail = ''): Check => ({ code, severity, message, detail, affects: [] })
 const CHECKS = [
   check('FOLLOWUP_QUICK_LOOK', 'info', 'Quick-look photometry, not calibrated', 'Aperture flux at each predicted position without aperture correction'),
@@ -32,18 +25,17 @@ const CHECKS = [
   check('FOLLOWUP_SIGNIFICANCE', 'info', 'Flux along the track at 308 AU (S/N 7.2): a candidate to check, not a detection',
     'Inverse-variance weighted flux over 2 visits; the best of 12 independent hypotheses is inflated by chance: 7.2σ local ≈ 4.1σ global'),
 ]
-const FOUND: Followup = {
-  collection: 'spherex_dr1', ra: 150, dec: 20, detector: 3, model: 'straight-line heliocentric motion + Earth parallax', complete: true,
+const FOUND = followupOf({
   best: 2, significant: true, distance_determined: true, checks: CHECKS,
   hypotheses: [hypothesis(20, 1.2, 2), hypothesis(40, 2.1, 1), hypothesis(307.6, 7.24, 2, VISITS), hypothesis(2000, -0.4, 2)],
-}
+})
 
 describe('FollowupCheck', () => {
   it('offers nothing without a track to follow up, and only a button before it is asked', () => {
     expect(render({ kind: null })).toBe('')
     const idle = render({})
     expect(idle).toContain('<button type="button">Check all SPHEREx visits</button>')
-    expect(idle).toContain('Loads IRSA cutouts; takes minutes.')
+    expect(idle).toContain('within 400 days of the marks and stacks it. Loads up to 48 IRSA cutouts; takes minutes.')
     const waiting = render({ kind: 'line', ready: () => false })
     expect(waiting).toContain('<button type="button" disabled="">Check all SPHEREx visits</button>')
     expect(waiting).toContain('Needs the archive’s list of this field’s visits.')
@@ -67,13 +59,13 @@ describe('FollowupCheck', () => {
     expect(html).not.toContain('Incomplete')
     // The chart in the app's chart frame, with its table.
     expect(html).toContain('<figure class="viz followup-chart"')
-    expect(html).toContain('aria-label="S/N at 4 assumed distances from 20 to 2000 AU, highest 7.2 at 310 AU"')
+    expect(html).toContain('aria-label="S/N at 4 assumed distances from 20 to 2000 AU, best 7.2 at 310 AU over 2 visits"')
     expect(html).toContain('>Table</button>')
     expect(html).toContain('<td>308 (best)</td><td>7.2</td><td>14.48 ± 2.00</td><td>2</td>')
     // Every visit of the best distance: date, λ, flux, S/N, what qualifies it and the cutout as provenance.
     expect(html).toContain('At 310 AU, D3: 2 of 3 visits usable')
-    expect(html).toContain('2026-05-28 10:00 UTC · 1.200 µm · 12.0 ± 2.0 µJy · S/N 6.0</span>')
-    expect(html).toContain('2026-05-29 11:30 UTC · 1.200 µm · 12.0 ± 2.0 µJy · S/N 6.0 · flagged pixels, left out · position uncertain')
+    expect(html).toContain('2026-05-28 10:00 UTC · 1.200 µm · aperture 12.0 ± 2.0 µJy · S/N 6.0</span>')
+    expect(html).toContain('2026-05-29 11:30 UTC · 1.200 µm · aperture 12.0 ± 2.0 µJy · S/N 6.0 · flagged pixels, left out · position uncertain')
     expect(html).toContain('2026-05-30 12:00 UTC · target at the cutout edge')
     expect(html).toContain('href="https://irsa.example/2026W22_1A_0001_1.fits?center=150,20&amp;size=0.03" target="_blank" rel="noopener noreferrer">2026W22_1A_0001_1')
     // The checks in short: the most severe first, a repeated one counted.
@@ -81,6 +73,14 @@ describe('FollowupCheck', () => {
     expect(html.indexOf('Archive did not deliver')).toBeLessThan(html.indexOf('Quick-look photometry'))
     expect(html).toContain('Quick-look photometry, not calibrated<span class="candidate-hint"> – Aperture flux')
     expect(html).not.toMatch(/confirmed|discover/i)
+  })
+
+  it('lists the PSF flux of each visit when the follow-up stacks PSF fluxes, the aperture flux where a visit has none', () => {
+    const visits = [measurement('v1', { psf_flux_ujy: 15.25, psf_flux_err_ujy: 1.5, psf_snr: 10.2 }), measurement('v2')]
+    const psf = followupOf({ ...FOUND, psf_photometry: true, hypotheses: [hypothesis(20, 1.2, 2), hypothesis(307.6, 7.24, 2, visits)], best: 1 })
+    const html = render({ phase: 'done', followup: psf })
+    expect(html).toContain('2026-05-28 10:00 UTC · 1.200 µm · PSF 15.3 ± 1.5 µJy · S/N 10.2</span>')
+    expect(html).toContain('2026-05-28 10:00 UTC · 1.200 µm · aperture 12.0 ± 2.0 µJy · S/N 6.0</span>')
   })
 
   it('says when the result is incomplete and offers to measure again', () => {
@@ -105,6 +105,13 @@ describe('follow-up details', () => {
       ['CUTOUT_MISSING', 'warning', 2], ['FOLLOWUP_QUICK_LOOK', 'info', 1], ['FOLLOWUP_SIGNIFICANCE', 'info', 1],
     ])
     expect(checkLines(CHECKS)[0].detail).toBe('')
+  })
+
+  it('breaks the S/N curve where a tested distance between two has no S/N', () => {
+    const gappy = followupOf({ hypotheses: [hypothesis(20, 1, 2), hypothesis(40, 2, 2), hypothesis(80, null, 0), hypothesis(160, 3, 2), hypothesis(320, 4, 2)] })
+    const runs = curveRuns(gappy, snrPoints(gappy)).map((run) => run.map((p) => p.distance_au))
+    expect(runs).toEqual([[20, 40], [160, 320]])
+    expect(curveRuns(FOUND, snrPoints(FOUND))).toHaveLength(1)
   })
 
   it('labels both ends of the distance axis and round distances between that keep their distance', () => {

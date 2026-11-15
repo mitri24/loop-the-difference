@@ -7,8 +7,9 @@ import {
   MAX_POINTS, currentRun, followupKind, followupPhase, followupRequest, followupResult, followupResultText, globalSignificance,
   linePoints, progressText, runError, runKey, shortfalls, shownHypothesis, useFollowup, withAnswer, type FollowupField, type FollowupRun,
 } from './followup'
+import { followupOf as result, hypothesis, measurement } from './followupFixtures'
 import { possibleTrack, predict, type PossibleTrack } from './track'
-import type { Check, Followup, FollowupHypothesis, FollowupJob, FollowupMeasurement, Frame, Observation } from './types'
+import type { Check, FollowupJob, Frame, Observation } from './types'
 
 const CENTRE = { ra: 150, dec: 20 }
 const mark = (obs_id: string, mjd: number, dec: number, sigma = 1): Mark => ({
@@ -133,21 +134,7 @@ describe('follow-up run', () => {
   })
 })
 
-const measurement = (obs_id: string, change: Partial<FollowupMeasurement> = {}): FollowupMeasurement => ({
-  obs_id, date: '2026-05-28T10:00:00Z', mjd: 61188.4, ra: 150, dec: 20, radius_arcsec: 2, model_error_arcsec: 0.5, position_uncertain: false,
-  flux_ujy: 12, flux_err_ujy: 2, snr: 6, flagged: false, skipped: null, wavelength_um: 1.2, bandwidth_um: 0.03,
-  source_url: `https://irsa.example/${obs_id}.fits?center=150,20&size=0.03`, ...change,
-})
-const hypothesis = (distance_au: number | null, snr: number | null, visits: number, measurements: FollowupMeasurement[] = []): FollowupHypothesis => ({
-  distance_au, flux_ujy: snr == null ? null : 2 * snr, flux_err_ujy: snr == null ? null : 2, snr, visits, measurements,
-})
 const check = (code: string, detail: string, message = code): Check => ({ code, severity: 'info', message, detail, affects: [] })
-function result(change: Partial<Followup>): Followup {
-  return {
-    collection: 'spherex_dr1', ra: 150, dec: 20, detector: 3, model: 'straight-line heliocentric motion + Earth parallax', complete: true,
-    best: null, significant: false, distance_determined: false, hypotheses: [], checks: [], ...change,
-  }
-}
 // The backend's words (backend/app/followup.py `_significance`, `plan`; backend/tests/test_followup.py).
 const SIGNIFICANCE = check('FOLLOWUP_SIGNIFICANCE', 'Inverse-variance weighted flux over 6 visits; the best of 12 independent hypotheses is inflated '
   + 'by chance: 7.2σ local ≈ 4.1σ global. A low S/N does not rule out an object fainter than the noise', 'Flux along the track at 308 AU (S/N 7.2): a candidate to check, not a detection')
