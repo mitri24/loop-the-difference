@@ -28,4 +28,4 @@ A single Uvicorn process owns the imported pipeline's in-memory jobs/frame regis
 
 Scientific routines and their tests were copied together. Do not confuse the original comparison's frames with this service's separately aligned sequence. Differences are candidates for verification; ePSF model errors and local noise/significance systematics remain. Remote services can be slow or unavailable; their warnings remain visible.
 
-Python 3.12 is used so the frozen dependency lock includes Linux ARM wheels for photutils. `uv sync --frozen` installs the exact locked versions. See frontend/docs/menu-integration-ux.md for interaction QA and the feature mapping.
+Python 3.12 is used so the frozen dependency lock includes Linux ARM wheels for photutils. `uv sync --frozen` installs the exact locked versions. The app shows its results as the second method in the Measure, Coverage and Analysis tabs (`frontend/src/analysis/`).
