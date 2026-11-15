@@ -1,12 +1,11 @@
 import { bandText, fingerprintProgress, spectrumPoints, useFingerprint, type FingerprintState } from '../fingerprint'
-import { measurementText, visitsText } from '../followup'
+import { measurementText, NEEDS_VISITS, visitsText } from '../followup'
 import type { Fingerprint, FingerprintRequest } from '../types'
 import { CheckList } from './CheckList'
 import { Plot } from './SpectrumChart'
 
 export const FINGERPRINT = 'Spectral fingerprint'
 const HINT = 'Measures the track in the visits of all six detectors (0.75–5 µm) and tests for methane bands. Loads up to 48 IRSA cutouts; takes minutes.'
-const NEEDS_VISITS = 'Needs the archive’s list of this field’s visits.'
 
 function Details({ fingerprint }: { fingerprint: Fingerprint }) {
   const points = spectrumPoints(fingerprint)

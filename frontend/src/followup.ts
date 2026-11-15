@@ -14,6 +14,8 @@ import type {
 } from './types'
 
 const POLL_MS = 3000
+// A straight line needs the archive's visits of the field (FollowupCheck, FingerprintCheck).
+export const NEEDS_VISITS = 'Needs the archive’s list of this field’s visits.'
 // FollowupRequest.points in backend/app/models.py: at most this many straight-line positions.
 export const MAX_POINTS = 1000
 

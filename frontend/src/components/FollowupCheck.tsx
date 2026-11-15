@@ -1,5 +1,5 @@
 import {
-  followupResult, followupResultText, measurementText, progressText, shownHypothesis, visitsText, type FollowupState,
+  followupResult, followupResultText, measurementText, NEEDS_VISITS, progressText, shownHypothesis, visitsText, type FollowupState,
 } from '../followup'
 import { num } from '../track'
 import type { Followup, Observation } from '../types'
@@ -13,7 +13,6 @@ const HINT = {
   distances: 'Measures the flux where the track puts the object in this detector’s other visits within 400 days of the marks and stacks it. Loads up to 48 IRSA cutouts; takes minutes.',
   line: 'Measures the flux along the straight line in this detector’s other visits and stacks it. Loads up to 48 IRSA cutouts; takes minutes.',
 }
-const NEEDS_VISITS = 'Needs the archive’s list of this field’s visits.'
 
 function Details({ followup }: { followup: Followup }) {
   const shown = shownHypothesis(followup)
