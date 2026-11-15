@@ -29,7 +29,7 @@ describe('blink helpers', () => {
 
   it('opens with a compatible pair: same wavelength, different epochs, the longest baseline, the earlier one as A', () => {
     const at = (epoch: number, mjd: number, wavelength_um: number | null) => ({ ...frame(epoch), mjd, wavelength_um })
-    // D3 resolves λ/Δλ = 41: 1.65 and 1.70 µm are two wavelengths, 1.65 and 1.66 µm one.
+    // D3 resolves λ/Δλ = 41, matched within half an element (±0.6 %): 1.65 and 1.70 µm differ, 1.65 and 1.66 µm match.
     const frames = [at(0, 0, 1.65), at(0, 1, 1.7), at(1, 180, 1.7), at(2, 360, 1.66), at(2, 361, 1.8)]
     expect(compatiblePair(frames)).toEqual({ a: 0, b: 3 })
     expect(defaultBlinkPair(frames)).toEqual({ a: 0, b: 3 })

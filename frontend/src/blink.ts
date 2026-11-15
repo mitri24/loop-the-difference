@@ -10,8 +10,9 @@ export interface BlinkPair {
 export const REDUCED_DELAY_MS = 1000
 export const REDUCED_MAX_SWAPS = 20
 
-// A compatible pair (§3 of the workspace brief): two epochs at the same wavelength (|Δλ|/λ ≤ 1/R), the longest
-// time baseline among them, the earlier one as A. Null when no two frames qualify.
+// A compatible pair (§3 of the workspace brief): two epochs at the same wavelength (sameWavelength: within half a
+// resolution element, as the backend's checks), the longest time baseline among them, the earlier one as A.
+// Null when no two frames qualify.
 export function compatiblePair(frames: Pick<Frame, 'epoch' | 'mjd' | 'wavelength_um' | 'detector'>[]): BlinkPair | null {
   let best: BlinkPair | null = null
   let span = -1

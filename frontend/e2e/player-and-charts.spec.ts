@@ -9,7 +9,7 @@ const frames = Array.from({ length: 8 }, (_, index) => ({
   detector: 6, wavelength_min_um: 4.41, wavelength_max_um: 5.01, coverage: 0.96,
   source_url: `https://example.test/fixture-${index}`, epoch: Math.floor(index / 2), n_combined: 1,
   date_end: null, masked_fraction: 0.01, wavelength_um: 4.6 + index * 0.01, bandwidth_um: 0.04,
-  release: index < 4 ? 'DR1' : 'QR3',
+  release: index < 2 ? 'DR1' : 'QR3',
 }))
 const manifest: FrameManifest = {
   collection: 'spherex_dr1,spherex_qr3', ra: 269.452, dec: 4.693, size_deg: 0.2, detector: 6,
