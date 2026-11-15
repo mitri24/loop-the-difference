@@ -39,6 +39,8 @@ interface Props {
   seek?: { index: number } | null
   // Sets A and/or B ("Choose a compatible pair" in the checks) and blinks the pair; a new object each time.
   pairRequest?: { pair: Partial<BlinkPair> } | null
+  // The pair to start with instead of the default one (a shared link's A and B).
+  initialPair?: BlinkPair | null
   // Above and below the A/B table beside the image: which images (exposures or stacks), and what the change finder
   // says about the pair.
   controls?: ReactNode
@@ -70,6 +72,7 @@ export function BlinkPlayer({
   showShare = true,
   seek = null,
   pairRequest = null,
+  initialPair = null,
   controls = null,
   changes = null,
   marks = [],
@@ -79,7 +82,8 @@ export function BlinkPlayer({
   candidate = null,
 }: Props) {
   const [reduced] = useState(prefersReducedMotion)
-  const [pair, setPair] = useState<BlinkPair | null>(() => defaultBlinkPair(frames))
+  const [pair, setPair] = useState<BlinkPair | null>(() => (initialPair && initialPair.a !== initialPair.b
+    && [initialPair.a, initialPair.b].every((i) => i >= 0 && i < frames.length) ? initialPair : defaultBlinkPair(frames)))
   // What Play plays: A and B, or every frame ("All" at the thumbnails).
   const [scope, setScope] = useState<'ab' | 'all'>(pair ? 'ab' : 'all')
   const [index, setIndex] = useState(pair?.a ?? 0)

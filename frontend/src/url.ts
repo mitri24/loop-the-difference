@@ -1,6 +1,7 @@
 // The target lives in the URL, so every view can be shared or embedded:
 // /?ra=08h55m10.831s&dec=-7d14m42.53s&fov=0.2&band=6 (&mode=stacks|difference; default exposures)
-// (&name=… when the target was found by name; &mark=<obs_id>:<ra>,<dec> per candidate mark, degrees)
+// (&name=… when the target was found by name; &mark=<obs_id>:<ra>,<dec> per candidate mark, degrees;
+// &a=<obs_id>&b=<obs_id> the blink pair, so a link opens on the same A and B)
 export const VIEW_MODES = ['exposures', 'stacks', 'difference'] as const
 export type ViewMode = (typeof VIEW_MODES)[number]
 
@@ -62,7 +63,20 @@ export function readMarks(search: string): LinkMark[] {
   }).slice(0, MAX_LINK_MARKS)
 }
 
-export function toSearch(query: TargetQuery, embed = false, marks: LinkMark[] = []): string {
+// The blink pair in a link: the frames' obs_ids (a stack is named by its first exposure).
+export interface LinkPair {
+  a: string
+  b: string
+}
+
+export function readPair(search: string): LinkPair | null {
+  const params = new URLSearchParams(search)
+  const a = params.get('a')?.trim()
+  const b = params.get('b')?.trim()
+  return a && b && a !== b ? { a, b } : null
+}
+
+export function toSearch(query: TargetQuery, embed = false, marks: LinkMark[] = [], pair: LinkPair | null = null): string {
   const params = new URLSearchParams({
     ra: query.ra,
     dec: query.dec,
@@ -73,6 +87,10 @@ export function toSearch(query: TargetQuery, embed = false, marks: LinkMark[] = 
   if (query.name) params.set('name', query.name)
   if (embed) params.set('embed', '1')
   for (const mark of marks.slice(0, MAX_LINK_MARKS)) params.append('mark', `${mark.obs_id}:${mark.ra.toFixed(6)},${mark.dec.toFixed(6)}`)
+  if (pair) {
+    params.set('a', pair.a)
+    params.set('b', pair.b)
+  }
   return `?${params}`
 }
 

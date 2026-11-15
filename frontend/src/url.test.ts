@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { POLARIS, readEmbed, readMarks, readQuery, toSearch } from './url'
+import { POLARIS, readEmbed, readMarks, readPair, readQuery, toSearch } from './url'
 
 describe('target in the URL', () => {
   it('needs both coordinates', () => {
@@ -86,5 +86,20 @@ describe('candidate marks in the URL', () => {
 
   it('stay out of a link without marks', () => {
     expect(toSearch(POLARIS)).not.toContain('mark')
+  })
+})
+
+describe('the blink pair in a link', () => {
+  it('reads A and B as obs_ids and writes them after the marks', () => {
+    expect(readPair('?ra=1&dec=2&a=obs-a&b=obs-b')).toEqual({ a: 'obs-a', b: 'obs-b' })
+    const search = toSearch({ ra: '1', dec: '2', fov: 0.2, band: 6, mode: 'exposures' }, false, [], { a: 'obs-a', b: 'obs-b' })
+    expect(search).toBe('?ra=1&dec=2&fov=0.2&band=6&a=obs-a&b=obs-b')
+    expect(readPair(search)).toEqual({ a: 'obs-a', b: 'obs-b' })
+  })
+
+  it('ignores a half pair or the same frame twice', () => {
+    expect(readPair('?ra=1&dec=2&a=obs-a')).toBeNull()
+    expect(readPair('?ra=1&dec=2&a=obs-a&b=obs-a')).toBeNull()
+    expect(readPair('?ra=1&dec=2&a=%20&b=obs-b')).toBeNull()
   })
 })
