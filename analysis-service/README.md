@@ -20,10 +20,12 @@ A single Uvicorn process owns the imported pipeline's in-memory jobs/frame regis
 - Select matched-wavelength visits, or explicitly use all varying-wavelength exposures.
 - Pairwise comparability checks, subpixel registration and photometric scaling.
 - A−B residual/significance maps, empirical noise rescaling, and |S|>5 local maxima.
-- Context checks against Gaia and AllWISE; optional JPL asteroid/comet job.
-- Aperture spectrum with variance errors and quality flags; no aperture correction.
+- Context checks against Gaia DR3 and CatWISE2020 (AllWISE when IRSA does not deliver it); optional
+  JPL asteroid/comet job.
+- PSF-matched significance (ZOGY) with the SPHEREx ePSF; without an ePSF, the direct A−B significance.
+- Aperture spectrum with variance errors and quality flags, corrected to total flux with the ePSF.
 - CADC context archive search and release discovery/refresh.
 
-Scientific routines and their tests were copied together. Do not confuse the original comparison's frames with this service's separately aligned sequence. Differences are candidates for verification; no PSF matching, no aperture correction, and local noise/significance systematics remain. Remote services can be slow or unavailable; their warnings remain visible.
+Scientific routines and their tests were copied together. Do not confuse the original comparison's frames with this service's separately aligned sequence. Differences are candidates for verification; ePSF model errors and local noise/significance systematics remain. Remote services can be slow or unavailable; their warnings remain visible.
 
 Python 3.12 is used so the frozen dependency lock includes Linux ARM wheels for photutils. `uv sync --frozen` installs the exact locked versions. See frontend/docs/menu-integration-ux.md for interaction QA and the feature mapping.

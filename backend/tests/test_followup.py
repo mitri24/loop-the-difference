@@ -55,8 +55,9 @@ def _sky(monkeypatch, settings, tmp_path, visits, flux=0.0, **options):
     (summed MJy/sr) where the 300 AU hypothesis puts the object at the visits in `present`.
 
     Searches away from the field find `elsewhere` (or get no answer when `silent`); cutouts of
-    visits in `missing` fail, of visits in `broken` arrive as an error page; returns the searched
-    positions and the files written.
+    visits in `missing` fail, of visits in `broken` arrive as an error page; with `epsf` they
+    carry the archive's EPSF table for that point source; returns the searched positions and the
+    files written.
     """
     elsewhere = options.get("elsewhere", [])
     everything = visits + elsewhere
@@ -104,6 +105,8 @@ def _sky(monkeypatch, settings, tmp_path, visits, flux=0.0, **options):
             fits.ImageHDU(image[:, :width], wcs.to_header(), name="IMAGE"),
             fits.ImageHDU(np.ones((size, width)), name="VARIANCE"),
         ]
+        if options.get("epsf"):
+            hdus.append(_epsf())
         if base in options.get("flagged", ()):
             hot = np.hypot(xx - (size - 1) / 2, yy - (size - 1) / 2) <= 3
             header = fits.Header({"MSKN0000": "HOT", "MSKM0000": 1})
@@ -115,6 +118,24 @@ def _sky(monkeypatch, settings, tmp_path, visits, flux=0.0, **options):
     monkeypatch.setattr(tasks, "search_observations", search)
     monkeypatch.setattr(tasks, "fetch_cutout", fetch)
     return searched, written
+
+
+def _epsf() -> fits.BinTableHDU:
+    """The archive's EPSF table with a single zone: the sky's Gaussian PSF, sampled 5× per pixel."""
+    d = (np.arange(33) - 16) / 5
+    g = np.exp(-(d**2) / (2 * PSF_SIGMA_PX**2))
+    hdu = fits.BinTableHDU.from_columns(
+        [
+            fits.Column("XCENTER", "E", array=[1019.5]),
+            fits.Column("YCENTER", "E", array=[1019.5]),
+            fits.Column(
+                "EPSF", "1089D", dim="(33,33)", array=[np.outer(g, g) / np.outer(g, g).sum()]
+            ),
+        ],
+        name="EPSF",
+    )
+    hdu.header["OVSMPX"] = hdu.header["OVSMPY"] = 5
+    return hdu
 
 
 def _run(**changes) -> dict:
@@ -164,6 +185,28 @@ def test_the_distance_of_the_object_stacks_to_the_highest_snr(monkeypatch, setti
     assert "distances reach S/N 5: visits close to the marks" in significance["detail"]
     assert "FOLLOWUP_GEOCENTRIC" in checks
     assert "FOLLOWUP_ONE_VISIT" not in checks
+
+
+def test_psf_photometry_raises_the_snr_along_the_track(monkeypatch, settings, tmp_path):
+    visits = [_visit(day) for day in (*FAR, *NEAR)]
+    results = {}
+    for epsf in (False, True):
+        folder = tmp_path / str(epsf)
+        folder.mkdir()
+        _sky(monkeypatch, settings, folder, visits, flux=16.0, epsf=epsf)
+        results[epsf] = _run()
+
+    aperture, psf = (results[epsf]["hypotheses"][TRUE] for epsf in (False, True))
+    assert (results[False]["psf_photometry"], results[True]["psf_photometry"]) == (False, True)
+    assert all(m["psf_snr"] is None for m in aperture["measurements"])
+    assert all(m["psf_snr"] is not None for m in psf["measurements"] if m["skipped"] is None)
+    # The same noisy pixels: weighting them by the PSF lifts the S/N of the stack.
+    assert psf["snr"] > 1.15 * aperture["snr"]
+    assert psf["visits"] == aperture["visits"]
+    method = _checks(results[True])["FOLLOWUP_QUICK_LOOK"]["detail"]
+    assert "PSF flux (the SPHEREx ePSF" in method
+    assert "uncertain by more than a pixel" in method
+    assert "Aperture flux" in _checks(results[False])["FOLLOWUP_QUICK_LOOK"]["detail"]
 
 
 def test_noise_alone_gives_no_significant_maximum(monkeypatch, settings, tmp_path):

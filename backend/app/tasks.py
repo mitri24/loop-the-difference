@@ -7,6 +7,7 @@ from pathlib import Path
 
 import httpx
 import numpy as np
+from astropy.stats import sigma_clipped_stats
 from rq import get_current_job
 
 from app import followup
@@ -26,12 +27,14 @@ from app.frames import (
     SPHEREX_PIXEL_SCALE_ARCSEC,
     TARGET_FLAG_RADIUS_PX,
     WAVELENGTH_MATCH_FRACTION,
+    Aligned,
     align,
     comparable_wavelengths,
     cutout_url,
     delta_lambda_pct,
     failure_reason,
     fetch_cutout,
+    for_display,
     read_image,
     render_diff,
     render_png,
@@ -40,7 +43,7 @@ from app.frames import (
     wavelength_at,
 )
 from app.models import Check, Difference, Frame, FrameManifest, Observation, Spectrum, SpectrumPoint
-from app.photometry import forced_photometry
+from app.photometry import aperture_correction, forced_photometry
 from app.sources import find_sources
 
 MIN_COVERAGE = 0.5
@@ -50,10 +53,17 @@ SPECTRUM_SIZE_DEG = 0.03
 # cache still finishes within the spectrum job timeout while IRSA is slow.
 MAX_SPECTRUM_POINTS = 100
 # Bump whenever the photometry changes: the spectrum job key changes, so results are rebuilt.
-SPECTRUM_VERSION = 4
+SPECTRUM_VERSION = 5
 # Bump whenever the rendered output changes: the job key changes, so cached results are rebuilt,
 # and `warm` removes frame folders whose manifest carries an older version.
-PIPELINE_VERSION = 11
+PIPELINE_VERSION = 12
+# Exposures of one epoch see a source at different wavelengths, so its brightness differs between
+# them: a value is left out of the stack only beyond CLIP_SIGMA × √(variance + (CLIP_AMPFRAC ×
+# median)²) from the median of the exposures, after SWarp's clipped mean (Gruen et al. 2014,
+# PASP 126, 158). 3 resampled σ are about SWarp's 4: resampling makes VARIANCE overstate a grid
+# pixel's noise, which scatters by 0.70-0.80 of √VARIANCE in real D6 frames.
+CLIP_SIGMA = 3.0
+CLIP_AMPFRAC = 0.3
 
 
 def manifest_path(cache_dir: Path, key: str) -> Path:
@@ -200,10 +210,11 @@ def _render_frames(
     preview=False,
 ) -> dict:
     target, shape = target_grid(ra, dec, size_deg)
-    kept, images = [], []
+    kept, exposures = [], []
     for obs, url, path in downloaded:
-        data, wcs, unusable = read_image(path)
-        image, coverage = align(data, wcs, target, shape)
+        data, variance, wcs, unusable = read_image(path)
+        exposure = align(data, variance, wcs, target, shape)
+        coverage = float(exposure.covered.mean())
         if coverage < MIN_COVERAGE:
             checks.append(
                 Check(
@@ -227,8 +238,8 @@ def _render_frames(
                 )
             )
         wavelength, bandwidth = wavelength_at(path, ra, dec)
-        kept.append((obs, url, coverage, wavelength, bandwidth, float(unusable.mean())))
-        images.append(image)
+        kept.append((obs, url, coverage, wavelength, bandwidth))
+        exposures.append(exposure)
 
     checks += release_checks([obs for obs, *_ in kept], failed)
     epochs = _epoch_groups(kept)
@@ -237,32 +248,39 @@ def _render_frames(
         members = list(enumerate(epochs))
     else:
         members = [(epoch, [i]) for epoch, group in enumerate(epochs) for i in group]
-    images = [stack_images([images[i] for i in group]) for _, group in members]
+    # One per frame: the epoch's stack, or the exposure itself without stacking.
+    stacks = [stack_images([exposures[i] for i in group]) for _, group in members]
 
     out_dir = manifest_path(settings.cache_dir, key).parent
     out_dir.mkdir(parents=True, exist_ok=True)
     names = (
-        render_png(images, out_dir, prefix=f"preview_{len(downloaded):03d}_" if preview else "")
-        if images
+        render_png(
+            [for_display(s) for s in stacks],
+            out_dir,
+            prefix=f"preview_{len(downloaded):03d}_" if preview else "",
+        )
+        if stacks
         else []
     )
     frames = [
-        _frame(index, f"/api/frames/{key}/{name}", epoch, [kept[i] for i in group])
-        for index, ((epoch, group), name) in enumerate(zip(members, names, strict=True))
+        _frame(index, f"/api/frames/{key}/{name}", epoch, [kept[i] for i in group], stacked)
+        for index, ((epoch, group), name, stacked) in enumerate(
+            zip(members, names, stacks, strict=True)
+        )
     ]
     checks += wavelength_checks([frame.wavelength_um for frame in frames], detector)
     if not preview:
         found, source_checks = find_sources(
-            images, [f.mjd for f in frames], target, shape, ra, dec, size_deg, settings.cache_dir
+            stacks, [f.mjd for f in frames], target, shape, ra, dec, size_deg, settings.cache_dir
         )
         for frame, sources in zip(frames, found, strict=True):
             frame.sources = sources
         checks += source_checks
     differences = []
     if stack:
-        for a, b in combinations(range(len(images)), 2):
+        for a, b in combinations(range(len(stacks)), 2):
             name = f"diff_{a:02d}_{b:02d}.png"
-            render_diff(images[a], images[b], out_dir, name)
+            render_diff(stacks[a].image, stacks[b].image, out_dir, name)
             wave_a, wave_b = frames[a].wavelength_um, frames[b].wavelength_um
             known = wave_a is not None and wave_b is not None
             differences.append(
@@ -340,15 +358,8 @@ def build_spectrum(ra: float, dec: float, collections: list[str] | None = None) 
     _report(0, len(selected))
     downloaded, checks = download_cutouts(selected, urls, settings)
     checks += release_checks([obs for obs, _, _ in downloaded], failed)
-    checks.append(
-        Check(
-            code="QUICK_LOOK_SPECTRUM",
-            severity="info",
-            message="Quick-look spectrum, not calibrated",
-            detail="Aperture flux (2 px radius) at the target without aperture correction: the PSF "
-            "changes between detectors, so the shape across detectors is approximate",
-        )
-    )
+    # The quick-look caveat comes first; it needs the fluxes, so it is added below.
+    quick_look = len(checks)
     if len(selected) < len(observations):
         checks.append(
             Check(
@@ -381,14 +392,36 @@ def build_spectrum(ra: float, dec: float, collections: list[str] | None = None) 
         )
     epoch_of = {o.obs_id: i for i, epoch in enumerate(group_epochs(selected)) for o in epoch}
 
-    points, skipped = [], Counter[str]()
+    measured, skipped = [], Counter[str]()
     for obs, url, path in downloaded:
         wavelength, bandwidth = wavelength_at(path, *position[obs.obs_id])
-        measured = forced_photometry(path, *position[obs.obs_id])
-        if isinstance(measured, str) or wavelength is None:
-            skipped[measured if isinstance(measured, str) else "no WCS-WAVE table"] += 1
+        result = forced_photometry(path, *position[obs.obs_id])
+        if isinstance(result, str) or wavelength is None:
+            skipped[result if isinstance(result, str) else "no WCS-WAVE table"] += 1
             continue
-        flux, error, flagged = measured
+        # Only a measured aperture lies inside the cutout, where a correction means something.
+        factor = aperture_correction(path, *position[obs.obs_id])
+        measured.append((obs, url, wavelength, bandwidth, result, factor))
+    factors = [factor for *_, factor in measured]
+    # Corrected and uncorrected fluxes are not comparable: all points or none.
+    corrected = bool(factors) and None not in factors
+    checks.insert(
+        quick_look,
+        Check(
+            code="QUICK_LOOK_SPECTRUM",
+            severity="info",
+            message="Quick-look spectrum, not calibrated",
+            detail="Aperture flux (2 px radius) at the target, corrected to total flux with the "
+            f"SPHEREx ePSF of each visit's detector zone (×{min(factors):.2f}–{max(factors):.2f}, "
+            "total within ±3.2 px)"
+            if corrected
+            else "Aperture flux (2 px radius) at the target without aperture correction: the PSF "
+            "changes between detectors, so the shape across detectors is approximate",
+        ),
+    )
+    points = []
+    for obs, url, wavelength, bandwidth, (flux, error, flagged), factor in measured:
+        scale = factor if corrected else 1.0
         points.append(
             SpectrumPoint(
                 obs_id=obs.obs_id,
@@ -398,8 +431,8 @@ def build_spectrum(ra: float, dec: float, collections: list[str] | None = None) 
                 epoch=epoch_of[obs.obs_id],
                 wavelength_um=round(wavelength, 4),
                 bandwidth_um=round(bandwidth, 4),
-                flux_ujy=round(flux, 2),
-                flux_err_ujy=round(error, 2),
+                flux_ujy=round(flux * scale, 2),
+                flux_err_ujy=round(error * scale, 2),
                 flagged=flagged,
                 source_url=url,
             )
@@ -513,18 +546,40 @@ def download_cutouts(
     return downloaded, checks
 
 
-def stack_images(images: list[np.ndarray]) -> np.ndarray:
-    """NaN-aware median of aligned exposures: noise averages out, cosmic rays vanish."""
-    if len(images) == 1:
-        return images[0]
+def stack_images(exposures: list[Aligned]) -> Aligned:
+    """Mean of aligned exposures, each weighted by the inverse of its sky variance.
+
+    A weight per pixel would favour the exposures in which a star looks fainter, since its own
+    photon noise is part of VARIANCE; the variance follows as Σw²V/(Σw)². Where three or more
+    exposures overlap, values far from their median are left out first, so cosmic rays vanish;
+    two values cannot tell which one is off.
+    """
+    if len(exposures) == 1:
+        return exposures[0]
+    image = np.stack([e.image for e in exposures])
+    variance = np.stack([e.variance for e in exposures])
+    usable = np.isfinite(image)
     with warnings.catch_warnings():
-        warnings.simplefilter("ignore", RuntimeWarning)  # all-NaN pixels outside the footprint
-        return np.nanmedian(np.stack(images), axis=0)
+        warnings.simplefilter("ignore", RuntimeWarning)  # all-NaN pixels and exposures
+        median = np.nanmedian(image, axis=0)
+        sky = [sigma_clipped_stats(e.variance[np.isfinite(e.image)])[1] for e in exposures]
+    limit = CLIP_SIGMA * np.sqrt(variance + (CLIP_AMPFRAC * median) ** 2)
+    keep = usable & ((usable.sum(axis=0) < 3) | (np.abs(image - median) <= limit))
+    weight = np.where(keep, 1 / np.array(sky)[:, None, None], 0.0)
+    total = weight.sum(axis=0)
+    with np.errstate(divide="ignore", invalid="ignore"):
+        mean = (weight * np.where(keep, image, 0.0)).sum(axis=0) / total
+        combined = (weight**2 * np.where(keep, variance, 0.0)).sum(axis=0) / total**2
+    has_data = total > 0
+    return Aligned(
+        np.where(has_data, mean, np.nan),
+        np.where(has_data, combined, np.nan),
+        np.any([e.covered for e in exposures], axis=0),
+    )
 
 
-# One usable exposure: observation, cutout URL, coverage, wavelength and bandwidth at the
-# target, share of unusable pixels.
-KeptFrame = tuple[Observation, str, float, float | None, float | None, float]
+# One usable exposure: observation, cutout URL, coverage, wavelength and bandwidth at the target.
+KeptFrame = tuple[Observation, str, float, float | None, float | None]
 
 
 def _epoch_groups(kept: list[KeptFrame]) -> list[list[int]]:
@@ -533,12 +588,12 @@ def _epoch_groups(kept: list[KeptFrame]) -> list[list[int]]:
     return [[position[obs.obs_id] for obs in epoch] for epoch in group_epochs([k[0] for k in kept])]
 
 
-def _frame(index: int, url: str, epoch: int, members: list[KeptFrame]) -> Frame:
+def _frame(index: int, url: str, epoch: int, members: list[KeptFrame], stacked: Aligned) -> Frame:
     """One frame from a single exposure or from all exposures of one epoch stacked together."""
     observations = [obs for obs, *_ in members]
     first, last = observations[0], observations[-1]
-    wavelengths = [w for *_, w, _, _ in members if w is not None]
-    bandwidths = [b for *_, b, _ in members if b is not None]
+    wavelengths = [w for *_, w, _ in members if w is not None]
+    bandwidths = [b for *_, b in members if b is not None]
     return Frame(
         index=index,
         url=url,
@@ -556,7 +611,7 @@ def _frame(index: int, url: str, epoch: int, members: list[KeptFrame]) -> Frame:
         date_end=last.date if len(members) > 1 else None,
         wavelength_um=round(float(np.median(wavelengths)), 4) if wavelengths else None,
         bandwidth_um=round(float(np.median(bandwidths)), 4) if bandwidths else None,
-        masked_fraction=round(float(np.mean([masked for *_, masked in members])), 3),
+        masked_fraction=round(float(np.isnan(stacked.image[stacked.covered]).mean()), 3),
         release=_releases(observations),
     )
 

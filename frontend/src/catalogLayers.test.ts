@@ -57,9 +57,9 @@ describe('catalogue URLs', () => {
     )
   })
 
-  it('asks SkyBoT at the frame epoch as Julian Date', () => {
+  it('asks SkyBoT at the frame epoch as Julian Date, for the Earth’s centre like the mark check', () => {
     expect(skybotUrl(1, -2, 0.5, 60858.5)).toBe(
-      'https://ssp.imcce.fr/webservices/skybot/api/conesearch.php?-ep=2460859&-ra=1&-dec=-2&-rd=0.5&-mime=votable&-output=object&-from=LoopTheDifference',
+      'https://ssp.imcce.fr/webservices/skybot/api/conesearch.php?-ep=2460859&-ra=1&-dec=-2&-rd=0.5&-mime=votable&-output=object&-observer=500&-from=LoopTheDifference',
     )
   })
 })

@@ -9,3 +9,4 @@ astropy>=7.0
 reproject>=0.14
 pillow>=11.0
 photutils>=3.0
+scipy>=1.15

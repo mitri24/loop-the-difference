@@ -11,7 +11,7 @@ from app import analysis, imaging, irsa, mcp_server, releases
 from app.config import settings
 
 from .conftest import star_field
-from .test_pipeline_offline import STARS, _stored
+from .test_pipeline_offline import STARS, _stored, no_wise
 
 FIELDS = [
     ("s_ra", "double"),
@@ -145,7 +145,7 @@ async def test_mcp_compare_refuses_then_flags_forced(monkeypatch):
         return []
 
     monkeypatch.setattr(analysis, "gaia_cone", none)
-    monkeypatch.setattr(analysis, "allwise_cone", none)
+    monkeypatch.setattr(analysis, "wise_cone", no_wise)
     fa, fb = _put_pair("c", lam_b=1.60)  # Δλ ≫ λ/R → not comparable
 
     refused = json.loads(

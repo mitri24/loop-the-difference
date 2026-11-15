@@ -1,4 +1,4 @@
-"""Name resolution (CDS Sesame), reference catalogues (Gaia DR3, AllWISE), known
+"""Name resolution (CDS Sesame), reference catalogues (Gaia DR3, CatWISE2020, AllWISE), known
 solar-system objects (JPL SBIdent) and other telescopes' images (CADC, Canada).
 
 Catalogue positions are returned at their native epoch AND can be propagated to the
@@ -13,12 +13,17 @@ import csv
 import io
 import math
 import re
+import warnings
 import xml.etree.ElementTree as ET
 from datetime import UTC, datetime
 from urllib.parse import quote, urlencode
 
 import httpx
+import numpy as np
+from astropy.io.votable.exceptions import VOWarning
+from astropy.table import Table
 
+from .astrometry import mjd_to_jyear
 from .config import settings
 from .schemas import (
     CadcCollection,
@@ -111,34 +116,66 @@ async def gaia_cone(
     return out
 
 
+_MOTION = ("pmra", "pmdec", "sigpmra", "sigpmdec")
+# Nearest rows per catalogue and field, as in backend/app/sources.py.
+IRSA_MAX_ROWS = 10000
+
+
+async def _irsa_cone(
+    table: str, columns: str, ra: float, dec: float, radius_deg: float, client: httpx.AsyncClient
+) -> list[dict[str, str]]:
+    """Rows of an IRSA catalogue table around (ra, dec), nearest first, from IRSA Gator as a
+    VOTable; values as text, empty when null. Gator reports a failure as a VOTable without a
+    table (or an HTML page): ValueError."""
+    r = await client.get(
+        settings.irsa_gator_url,
+        params={
+            "catalog": table,
+            "spatial": "cone",
+            "objstr": f"{ra:.7f} {dec:.7f}",
+            "radius": f"{radius_deg * 3600:.2f}",
+            "radunits": "arcsec",
+            "outfmt": 3,
+            "selcols": columns,
+            "outrows": IRSA_MAX_ROWS,
+        },
+        timeout=60,
+    )
+    r.raise_for_status()
+    try:
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore", VOWarning)
+            rows = Table.read(io.BytesIO(r.content), format="votable")
+    except VOWarning as exc:
+        raise ValueError(f"IRSA Gator answered no {table} table") from exc
+    return [
+        {name: "" if np.ma.is_masked(row[name]) else str(row[name]) for name in rows.colnames}
+        for row in rows
+    ]
+
+
+def _significant(
+    pmra: float | None, pmdec: float | None, sig_ra: float | None, sig_dec: float | None
+) -> tuple[float, float] | tuple[None, None]:
+    """The motion when a component exceeds 3σ, else none: WISE motions are noisy, and
+    propagating noise over a decade or more would move sources by many arcseconds."""
+    if pmra is None or pmdec is None:
+        return None, None
+    if abs(pmra) < 3 * (sig_ra or 0.0) and abs(pmdec) < 3 * (sig_dec or 0.0):
+        return None, None
+    return pmra, pmdec
+
+
 async def allwise_cone(
     ra: float, dec: float, radius_deg: float, client: httpx.AsyncClient
 ) -> list[CatalogSource]:
     key = _cache_key("allwise", ra, dec, radius_deg)
     if key in _CATALOG_CACHE:
         return _CATALOG_CACHE[key]
-    r = await client.get(
-        settings.irsa_scs_url,
-        params={
-            "table": "allwise_p3as_psd",
-            "RA": f"{ra:.7f}",
-            "DEC": f"{dec:.7f}",
-            "SR": f"{radius_deg:.5f}",
-            "format": "csv",
-        },
-        timeout=60,
-    )
-    r.raise_for_status()
     out = []
-    for row in csv.DictReader(io.StringIO(r.text)):
-        pmra = _float(row.get("pmra"))
-        pmdec = _float(row.get("pmdec"))
-        spra = _float(row.get("sigpmra")) or 0.0
-        spdec = _float(row.get("sigpmdec")) or 0.0
-        # AllWISE motions are noisy: keep them only when significant (> 3σ), otherwise
-        # propagating noise over ~16 years would move sources by many arcseconds.
-        if pmra is None or pmdec is None or (abs(pmra) < 3 * spra and abs(pmdec) < 3 * spdec):
-            pmra = pmdec = None
+    columns = "designation,ra,dec,w1mpro,pmra,pmdec,sigpmra,sigpmdec"
+    for row in await _irsa_cone("allwise_p3as_psd", columns, ra, dec, radius_deg, client):
+        pmra, pmdec = _significant(*(_float(row.get(column)) for column in _MOTION))
         out.append(
             CatalogSource(
                 catalog="AllWISE",
@@ -154,6 +191,60 @@ async def allwise_cone(
         )
     _CATALOG_CACHE[key] = out
     return out
+
+
+async def catwise_cone(
+    ra: float, dec: float, radius_deg: float, client: httpx.AsyncClient
+) -> list[CatalogSource]:
+    """CatWISE2020 (WISE/NEOWISE 2010–2018): motions ~12× more accurate than AllWISE's.
+
+    Its default ra/dec are the stationary fit (not ra_pm/dec_pm at MJD 57170). They lie
+    at each source's mean observation epoch: the CatWISE fragments of WISE 0855−0714 (8″/yr
+    west) lie the further west, the later their meanobsmjd. pmra is µα·cos δ like Gaia's, in
+    arcsec/yr: G 252-33 at Dec +73° has −0.96 (Gaia −0.91; dα/dt would be −3.1). The tile
+    offsets (≲40 mas/yr) stay below 1″ by 2026. A missing column raises: wise_cone falls back."""
+    key = _cache_key("catwise", ra, dec, radius_deg)
+    if key in _CATALOG_CACHE:
+        return _CATALOG_CACHE[key]
+    out = []
+    columns = "source_name,ra,dec,w1mpro,meanobsmjd,pmra,pmdec,sigpmra,sigpmdec"
+    for row in await _irsa_cone("catwise_2020", columns, ra, dec, radius_deg, client):
+        pmra, pmdec = _significant(*(_float(row[column]) for column in _MOTION))
+        out.append(
+            CatalogSource(
+                catalog="CatWISE2020",
+                id=f"CatWISE2020 {row['source_name']}",
+                ra=float(row["ra"]),
+                dec=float(row["dec"]),
+                mag=_float(row["w1mpro"]),
+                mag_band="W1",
+                pm_ra_mas_yr=None if pmra is None else pmra * 1000,
+                pm_dec_mas_yr=None if pmdec is None else pmdec * 1000,
+                epoch_jyear=mjd_to_jyear(float(row["meanobsmjd"])),
+            )
+        )
+    _CATALOG_CACHE[key] = out
+    return out
+
+
+async def wise_cone(
+    ra: float, dec: float, radius_deg: float, client: httpx.AsyncClient
+) -> tuple[list[CatalogSource], list[Check]]:
+    """CatWISE2020, else AllWISE with a warning; raises when IRSA delivers neither."""
+    try:
+        return await catwise_cone(ra, dec, radius_deg, client), []
+    except (httpx.HTTPError, KeyError, ValueError) as exc:
+        reason = type(exc).__name__
+    return await allwise_cone(ra, dec, radius_deg, client), [
+        Check(
+            code="catwise_unavailable",
+            severity="warn",
+            title="CatWISE2020 unavailable – AllWISE used",
+            detail=f"IRSA did not deliver CatWISE2020 ({reason}). Red sources are matched "
+            "against AllWISE: positions from 2010 and motions only above 3σ, so a fast "
+            "brown dwarf can lie outside the match radius or go unrecognised as moving.",
+        )
+    ]
 
 
 # ---------------------------------------------------------------- solar-system objects

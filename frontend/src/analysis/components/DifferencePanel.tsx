@@ -18,7 +18,7 @@ const KIND_LABEL: Record<ResidualKind, string> = {
   moving_star: "Known moving star",
   bright_star: "Bright-star artefact",
   known_source: "Known source",
-  red_source: "Red source (AllWISE only)",
+  red_source: "Red source (WISE only)",
   solar_system: "Known asteroid/comet",
   unknown: "Needs verification",
 };
@@ -122,7 +122,7 @@ export function DifferencePanel({ frames, grid, onResult, initialResult = null }
           <div className="seg" role="tablist" aria-label="Difference view">
             {(["diff", "sig", "blink"] as View[]).map((v) => (
               <button key={v} role="tab" aria-selected={view === v} className={`seg__btn ${view === v ? "is-active" : ""}`} onClick={() => setView(v)}>
-                {v === "diff" ? "A − B (MJy/sr)" : v === "sig" ? "Significance (σ)" : "Blink A ↔ B"}
+                {v === "diff" ? "A − B (MJy/sr)" : v === "sig" ? `Significance (${res.significance_method === "zogy" ? "ZOGY" : "σ"})` : "Blink A ↔ B"}
               </button>
             ))}
           </div>

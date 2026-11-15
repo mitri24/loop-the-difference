@@ -180,6 +180,8 @@ class DifferenceResult(BaseModel):
     delta_days: float
     delta_lambda_um: float
     solar_system: list[SolarSystemMarker] | None = None  # None = not checked yet
+    # "zogy": PSF-matched score S_corr; "direct": (A − sB) / noise without PSF matching.
+    significance_method: Literal["zogy", "direct"] = "direct"
 
 
 class SpectrumPoint(BaseModel):
@@ -201,6 +203,8 @@ class SpectrumResult(BaseModel):
     target_ra: float
     target_dec: float
     aperture_arcsec: float
+    # True: every flux is corrected to total flux with the SPHEREx ePSF; False: none is.
+    aperture_corrected: bool = False
     points: list[SpectrumPoint]
     checks: list[Check]
     failed: list[dict[str, str]]

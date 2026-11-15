@@ -78,6 +78,7 @@ class Frame(BaseModel):
     epoch: int = 0
     n_combined: int = 1
     date_end: str | None = None
+    # Share of the covered field without usable data (flagged pixels after resampling and stacking).
     masked_fraction: float | None = None
     wavelength_um: float | None = None
     bandwidth_um: float | None = None
@@ -150,7 +151,8 @@ class SpectrumPoint(BaseModel):
     epoch: int
     wavelength_um: float
     bandwidth_um: float
-    # Background-subtracted aperture flux at the target, no aperture correction (quick-look).
+    # Background-subtracted aperture flux at the target (quick-look), corrected to total flux with
+    # the ePSF when every cutout carries one (the QUICK_LOOK_SPECTRUM check says which).
     flux_ujy: float
     flux_err_ujy: float
     # Pixels the archive marks unusable lie in the aperture: the flux is unreliable.
@@ -190,9 +192,12 @@ class DetectedSource(BaseModel):
     # row (north is up). ra/dec are the reliable fields.
     x: float
     y: float
-    # Background-subtracted peak pixel, and that peak over the frame's noise.
+    # Height of the PSF fitted at the source above the sky (for a saturated core its brightest
+    # usable rim pixel, a lower limit), and its significance in the frame's S/N map.
     peak_mjy_sr: float
     snr: float
+    # Placed by the rim of a masked core too large for a PSF fit: good to about 2.5″ per axis.
+    saturated: bool = False
     match: Literal["gaia", "allwise", "none", "unknown"]
     catalog_id: str | None = None
     separation_arcsec: float | None = None
@@ -218,7 +223,7 @@ class SmallBodiesRequest(BaseModel):
 
 
 class SmallBody(BaseModel):
-    """Known asteroid or comet from NASA/JPL SBIdent, seen from the geocentre."""
+    """Known asteroid or comet from NASA/JPL SBIdent, seen from SPHEREx or else the geocentre."""
 
     name: str
     ra: float
@@ -236,7 +241,8 @@ class SmallBodyEpoch(BaseModel):
     date: str
     bodies: list[SmallBody] = []
     error: str | None = None
-    # The SBIdent request itself, so every listed body can be checked at the source.
+    # The SBIdent request itself, so every listed body can be checked at the source. Its observer
+    # is SPHEREx's position at `mjd` (xobs) or, without one, the geocentre (mpc-code=500).
     source_url: str
 
 
@@ -378,7 +384,7 @@ class FollowupRequest(BaseModel):
 
 
 class FollowupMeasurement(BaseModel):
-    """Forced aperture photometry at the predicted position in one visit (quick-look)."""
+    """Forced aperture and PSF photometry at the predicted position in one visit (quick-look)."""
 
     obs_id: str
     date: str
@@ -395,6 +401,11 @@ class FollowupMeasurement(BaseModel):
     flux_ujy: float | None = None
     flux_err_ujy: float | None = None
     snr: float | None = None
+    # Total flux from the SPHEREx ePSF fitted at the same position (photometry.psf_photometry);
+    # None without an ePSF or when skipped.
+    psf_flux_ujy: float | None = None
+    psf_flux_err_ujy: float | None = None
+    psf_snr: float | None = None
     # Pixels the archive marks unusable lie in the aperture: left out of the combination.
     flagged: bool = False
     # Why there is no flux, e.g. "target at the cutout edge".
@@ -407,7 +418,8 @@ class FollowupMeasurement(BaseModel):
 class FollowupHypothesis(BaseModel):
     # Assumed distance from Earth at the first mark; None for a straight line.
     distance_au: float | None = None
-    # Inverse-variance weighted mean of the usable (unflagged) fluxes and its 1σ error.
+    # Inverse-variance weighted mean of the usable (unflagged) fluxes and its 1σ error: PSF fluxes
+    # when Followup.psf_photometry, else aperture fluxes.
     flux_ujy: float | None = None
     flux_err_ujy: float | None = None
     snr: float | None = None
@@ -431,6 +443,8 @@ class Followup(BaseModel):
     significant: bool = False
     # Some measured visit sees the tested distances an aperture or more apart.
     distance_determined: bool = False
+    # Every measured flux has a PSF flux too, so the hypotheses combine those (totals, higher S/N).
+    psf_photometry: bool = False
     hypotheses: list[FollowupHypothesis] = []
     checks: list[Check] = []
 
