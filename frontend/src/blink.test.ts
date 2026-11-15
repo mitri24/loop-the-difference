@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { compatiblePair, defaultBlinkPair, frameRelease, lambdaText, letterOf, nextIndex, releaseLabel, stampText } from './blink'
 import type { Frame } from './types'
+import pairCases from '../../backend/tests/fixtures/blink_pair.json'
 
 const frame = (epoch: number, date = '2026-03-10T12:00:00Z'): Frame => ({
   index: 0,
@@ -74,4 +75,15 @@ describe('blink helpers', () => {
     expect(frameRelease({ release: 'QR3' }, 'spherex_dr1,spherex_qr3')).toBe('SPHEREx QR3')
     expect(frameRelease({}, 'spherex_dr1')).toBe('SPHEREx DR1 (spherex_dr1)')
   })
+})
+
+
+describe('default pair shared with backend', () => {
+  for (const testCase of pairCases) {
+    it(testCase.name, () => {
+      const frames = testCase.frames.map((f) => ({ ...frame(f.epoch), ...f }))
+      const pair = defaultBlinkPair(frames)
+      expect(pair ? [pair.a, pair.b] : null).toEqual(testCase.expected)
+    })
+  }
 })
