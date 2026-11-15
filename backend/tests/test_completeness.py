@@ -1,6 +1,7 @@
 """Measured detection limit: artificial stars set into synthetic frames of known noise (no network,
 no files but tmp_path)."""
 
+import json
 import math
 from pathlib import Path
 
@@ -71,9 +72,7 @@ def _theory_flux(share: float) -> float:
 
 @pytest.mark.parametrize("seed", [1, 2])
 def test_half_the_stars_are_found_where_the_5_sigma_threshold_expects_it(seed):
-    result = measure(
-        _noise(seed), np.empty((0, 2)), _gaussian_stars(GRID, SHAPE), np.random.default_rng(seed)
-    )
+    result = measure(_noise(seed), _gaussian_stars(GRID, SHAPE), np.random.default_rng(seed))
 
     limit = result.limit
     assert limit.injected == sum(result.injected) == len(LEVELS_SIGMA) * STARS_PER_LEVEL
@@ -267,7 +266,12 @@ def _measured(ab50: float | None, ab90: float | None) -> Measured:
         false_per_frame=0,
         offset_arcsec=1.2,
     )
-    return Measured(limit, [20] * 10, [0, 1, 6, 14, 17, 20, 20, 20, 20, 20])
+    return Measured(
+        limit,
+        [12.5 * level for level in LEVELS_SIGMA],
+        [20] * 10,
+        [0, 1, 6, 14, 17, 20, 20, 20, 20, 20],
+    )
 
 
 def test_the_check_says_how_many_stars_were_found_at_which_brightness():
@@ -281,13 +285,13 @@ def test_the_check_says_how_many_stars_were_found_at_which_brightness():
 
     assert (one.code, one.severity) == ("DETECTION_LIMIT", "info")
     assert one.message == (
-        "Detection limit measured by injecting 200 artificial stars: 50 % found at 18.7 AB "
-        "(D6), 90 % at 18.2 AB"
+        "Detection limit measured by injecting 200 artificial stars: 50 % found at 18.7 AB"
+        ", 90 % at 18.2 AB"
     )
     assert same.message.startswith("Detection limit measured by injecting 400 artificial stars")
-    assert "50 % found at 18.7 AB (D6), 90 % at 18.2 AB" in same.message
+    assert "50 % found at 18.7 AB, 90 % at 18.2 AB" in same.message
     assert two.message.endswith(
-        "50 % found at 18.7 AB in frame 1 and at 18.6 AB in frame 9 (D6), 90 % at 18.2 AB in "
+        "50 % found at 18.7 AB in frame 1 and at 18.6 AB in frame 9, 90 % at 18.2 AB in "
         "frame 1 and not reached in frame 9"
     )
     assert "Frame 9: 50 % at 129.4 µJy (18.62 AB), 90 % not reached within the steps" in two.detail
@@ -357,4 +361,42 @@ def test_the_final_a_and_b_carry_a_measured_limit_the_preview_none(monkeypatch, 
     (check,) = [c for c in final.checks if c.code == "DETECTION_LIMIT"]
     assert check.severity == "info"
     assert check.message.startswith("Detection limit measured by injecting 400 artificial stars")
-    assert "(D6)" in check.message
+    assert "(D6)" not in check.message
+
+
+@pytest.mark.parametrize(
+    "case",
+    json.loads((Path(__file__).parent / "fixtures/blink_pair.json").read_text()),
+    ids=lambda case: case["name"],
+)
+def test_default_pair_shared_with_frontend(case):
+    frames = [
+        _frame(i, f["epoch"], f["mjd"], f["wavelength_um"]) for i, f in enumerate(case["frames"])
+    ]
+    expected = tuple(case["expected"]) if case["expected"] is not None else None
+    assert default_pair(frames) == expected
+
+
+def test_detection_limit_below_faintest_step_is_not_reported_as_not_reached():
+    result = _measured(None, None)._replace(found=[20] * 10)
+    (check,) = completeness_checks([(_frame(0, 0, 61000), result)])
+    assert "fainter than" in check.message
+    assert "not reached" not in check.message
+
+
+def test_uncapped_detection_keeps_faint_sources_in_crowded_fields():
+    grid, shape = target_grid(RA, DEC, 0.4)
+    rng = np.random.default_rng(123)
+    ys, xs = np.mgrid[10 : shape[0] - 10 : 10, 10 : shape[1] - 10 : 10]
+    xs, ys = xs.ravel().astype(float), ys.ravel().astype(float)
+    assert len(xs) > sources.MAX_SOURCES
+    draw = _gaussian_stars(grid, shape)
+    fluxes = np.linspace(100, 300, len(xs)) * UJY
+    image = rng.normal(0, 1, shape) + draw(xs, ys, fluxes)
+    frame = Aligned(image, np.ones(shape), np.ones(shape, bool))
+    no_fits = np.zeros(shape, bool)
+    capped, was_capped = detect(frame, fit=no_fits)
+    all_sources, was_capped_all = detect(frame, fit=no_fits, cap=False)
+    assert was_capped and len(capped) == sources.MAX_SOURCES
+    assert not was_capped_all and len(all_sources) > sources.MAX_SOURCES
+    assert min(d.peak for d in all_sources) < min(d.peak for d in capped)

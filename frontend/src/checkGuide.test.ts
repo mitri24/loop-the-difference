@@ -90,3 +90,11 @@ describe('passedChecks', () => {
     expect(passedChecks(manifest({ frames: [] }), [])).toEqual([])
   })
 })
+
+
+it('keeps the injection measurement details under technical details', () => {
+  const [group] = explainChecks([check('DETECTION_LIMIT', 'info', '200 stars in ten flux steps')])
+  expect(group.items[0].text).toContain('Artificial stars')
+  expect(group.items[0].text).not.toContain('ten flux steps')
+  expect(group.items[0].details).toEqual(['200 stars in ten flux steps'])
+})

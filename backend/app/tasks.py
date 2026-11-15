@@ -279,8 +279,8 @@ def _render_frames(
         checks += source_checks
         # The A and B the blink opens with get a detection limit measured with artificial stars.
         path_of = {obs.obs_id: path for obs, _, path in downloaded}
-        cutouts = [path_of[kept[group[0]][0].obs_id] for _, group in members]
-        checks += measure_completeness(key, frames, stacks, cutouts, target)
+        epsf_cutouts = [path_of[kept[group[0]][0].obs_id] for _, group in members]
+        checks += measure_completeness(key, frames, stacks, epsf_cutouts, target)
     differences = []
     if stack:
         for a, b in combinations(range(len(stacks)), 2):

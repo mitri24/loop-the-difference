@@ -1,0 +1,193 @@
+[
+  {
+    "name": "empty",
+    "frames": [],
+    "expected": null
+  },
+  {
+    "name": "single",
+    "frames": [
+      {
+        "epoch": 0,
+        "mjd": 0,
+        "wavelength_um": null,
+        "detector": 3
+      }
+    ],
+    "expected": null
+  },
+  {
+    "name": "fallback",
+    "frames": [
+      {
+        "epoch": 0,
+        "mjd": 0,
+        "wavelength_um": null,
+        "detector": 3
+      },
+      {
+        "epoch": 0,
+        "mjd": 1,
+        "wavelength_um": null,
+        "detector": 3
+      },
+      {
+        "epoch": 1,
+        "mjd": 180,
+        "wavelength_um": null,
+        "detector": 3
+      },
+      {
+        "epoch": 2,
+        "mjd": 360,
+        "wavelength_um": null,
+        "detector": 3
+      },
+      {
+        "epoch": 2,
+        "mjd": 361,
+        "wavelength_um": null,
+        "detector": 3
+      }
+    ],
+    "expected": [
+      0,
+      3
+    ]
+  },
+  {
+    "name": "one epoch",
+    "frames": [
+      {
+        "epoch": 0,
+        "mjd": 0,
+        "wavelength_um": 1.65,
+        "detector": 3
+      },
+      {
+        "epoch": 0,
+        "mjd": 1,
+        "wavelength_um": 1.65,
+        "detector": 3
+      },
+      {
+        "epoch": 0,
+        "mjd": 2,
+        "wavelength_um": 1.65,
+        "detector": 3
+      }
+    ],
+    "expected": [
+      0,
+      2
+    ]
+  },
+  {
+    "name": "matched baseline",
+    "frames": [
+      {
+        "epoch": 0,
+        "mjd": 0,
+        "wavelength_um": 1.65,
+        "detector": 3
+      },
+      {
+        "epoch": 0,
+        "mjd": 1,
+        "wavelength_um": 1.7,
+        "detector": 3
+      },
+      {
+        "epoch": 1,
+        "mjd": 180,
+        "wavelength_um": 1.7,
+        "detector": 3
+      },
+      {
+        "epoch": 2,
+        "mjd": 360,
+        "wavelength_um": 1.66,
+        "detector": 3
+      },
+      {
+        "epoch": 2,
+        "mjd": 361,
+        "wavelength_um": 1.8,
+        "detector": 3
+      }
+    ],
+    "expected": [
+      0,
+      3
+    ]
+  },
+  {
+    "name": "reverse",
+    "frames": [
+      {
+        "epoch": 2,
+        "mjd": 360,
+        "wavelength_um": 1.65,
+        "detector": 3
+      },
+      {
+        "epoch": 0,
+        "mjd": 0,
+        "wavelength_um": 1.65,
+        "detector": 3
+      }
+    ],
+    "expected": [
+      1,
+      0
+    ]
+  },
+  {
+    "name": "tie",
+    "frames": [
+      {
+        "epoch": 0,
+        "mjd": 0,
+        "wavelength_um": 1.65,
+        "detector": 3
+      },
+      {
+        "epoch": 1,
+        "mjd": 0,
+        "wavelength_um": 1.65,
+        "detector": 3
+      },
+      {
+        "epoch": 2,
+        "mjd": 0,
+        "wavelength_um": 1.65,
+        "detector": 3
+      }
+    ],
+    "expected": [
+      0,
+      2
+    ]
+  },
+  {
+    "name": "incompatible fallback",
+    "frames": [
+      {
+        "epoch": 0,
+        "mjd": 0,
+        "wavelength_um": 1.65,
+        "detector": 3
+      },
+      {
+        "epoch": 1,
+        "mjd": 180,
+        "wavelength_um": 1.8,
+        "detector": 3
+      }
+    ],
+    "expected": [
+      0,
+      1
+    ]
+  }
+]

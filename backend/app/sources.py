@@ -85,7 +85,9 @@ class CatalogStar(NamedTuple):
     motion: ProperMotion | None = None
 
 
-def detect(frame: Aligned, fit: np.ndarray | None = None) -> tuple[list[Detection], bool]:
+def detect(
+    frame: Aligned, fit: np.ndarray | None = None, cap: bool = True
+) -> tuple[list[Detection], bool]:
     """Point sources at least THRESHOLD_SIGMA above the noise, highest peak first; True if capped.
 
     The local sky goes first. Then at every pixel the PSF is fitted to the usable pixels around
@@ -97,6 +99,8 @@ def detect(frame: Aligned, fit: np.ndarray | None = None) -> tuple[list[Detectio
     With `fit`, a boolean mask of the grid, only the peaks on its pixels get a centroid fit (the
     others keep their peak pixel): the injection test (app/completeness.py) needs positions only
     where it set stars, and the fits take nearly all the time. Which sources are found is the same.
+    With cap=False every source is kept, not only the MAX_SOURCES highest: the injection test must
+    find its faint stars in a crowded field too.
     """
     usable = np.isfinite(frame.image)
     if not usable.any():
@@ -123,9 +127,10 @@ def detect(frame: Aligned, fit: np.ndarray | None = None) -> tuple[list[Detectio
     peaks = sorted((p for p in peaks if not near_gap[p[1], p[0]]), key=lambda p: -peak[p[1], p[0]])
     # A saturated core is placed by its rim's own light: the local sky would take the halo's share.
     saturated = _saturated(frame, gaps, large, snr)
-    found = saturated + _centroids(local, peaks[:MAX_SOURCES], peak, snr, fit)
+    limit = MAX_SOURCES if cap else len(saturated) + len(peaks)
+    found = saturated + _centroids(local, peaks[:limit], peak, snr, fit)
     found.sort(key=lambda d: d.peak, reverse=True)
-    return found[:MAX_SOURCES], len(saturated) + len(peaks) > MAX_SOURCES
+    return found[:limit], len(saturated) + len(peaks) > limit
 
 
 def _local_sky(frame: Aligned) -> np.ndarray:

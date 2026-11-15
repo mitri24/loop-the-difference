@@ -34,7 +34,15 @@ from app.frames import (
 )
 from app.models import Check, Completeness, Frame
 from app.psf import cutout_epsf, pixel_psf
-from app.sources import FWHM_PX, SKY_BOX_PX, THRESHOLD_SIGMA, Detection, _local_sky, detect
+from app.sources import (
+    FWHM_PX,
+    MAX_SOURCES,
+    SKY_BOX_PX,
+    THRESHOLD_SIGMA,
+    Detection,
+    _local_sky,
+    detect,
+)
 
 # Total flux steps in units of the frame's 1σ point-source noise (the scatter of a PSF fit), from
 # 3σ to 30σ around the 5σ detection threshold. Measured on synthetic and real frames, the share
@@ -64,7 +72,8 @@ Draw = Callable[[np.ndarray, np.ndarray, np.ndarray], np.ndarray]
 
 class Measured(NamedTuple):
     limit: Completeness
-    # Per flux step (LEVELS_SIGMA): stars set and stars found again.
+    # Per flux step (LEVELS_SIGMA): total flux (µJy), stars set and stars found again.
+    fluxes: list[float]
     injected: list[int]
     found: list[int]
 
@@ -75,20 +84,15 @@ def measure_completeness(
     """Measure the detection limit of the frames the blink opens with as A and B (or of a lone
     frame) and set their `completeness`; returns the check that reports it.
 
-    `stacks` are the frames' data, `cutouts` each frame's first cutout (for its ePSF), and the
-    frames' `sources` the detections the stars keep clear of. The seed comes from the job `key`:
-    a rebuilt job sets the same stars."""
+    `stacks` are the frames' data and `cutouts` each frame's first cutout (for its ePSF). The seed
+    comes from the job `key`: a rebuilt job sets the same stars."""
     seed = int.from_bytes(hashlib.sha256(key.encode()).digest()[:8], "big")
     measured = []
     for index in default_pair(frames) or range(len(frames)):
         frame, stack = frames[index], stacks[index]
-        rows = stack.image.shape[0]
-        # DetectedSource y counts from the PNG's top row; the grid's row 0 is south.
-        existing = np.array([(s.x, rows - 1 - s.y) for s in frame.sources]).reshape(-1, 2)
         draw = _epsf_stars(cutouts[index], grid, stack.image.shape)
         result = measure(
             stack,
-            existing,
             draw or _gaussian_stars(grid, stack.image.shape),
             np.random.default_rng([seed, index]),
             psf="epsf" if draw else "gaussian",
@@ -128,15 +132,20 @@ def default_pair(frames: list[Frame]) -> tuple[int, int] | None:
 
 def measure(
     frame: Aligned,
-    existing: np.ndarray,
     draw: Draw,
     rng: np.random.Generator,
     psf: Literal["epsf", "gaussian"] = "gaussian",
 ) -> Measured | None:
     """Detection limit of one frame from STARS_PER_LEVEL artificial stars per flux step, drawn by
-    `draw` at random allowed positions; `existing` holds the (x, y) grid pixels of the sources
-    detected in it. None where the frame has no room for a star or no measurable noise."""
-    allowed = _allowed(frame, existing)
+    `draw` at random places clear of its sources. None where the frame has no room for a star or
+    no measurable noise.
+
+    No detection here stops at sources.MAX_SOURCES, which only keeps the manifest small: in a
+    crowded field the faintest stars would drop out of the list, not out of reach."""
+    no_fits = np.zeros(frame.image.shape, dtype=bool)
+    # Every source, by its peak pixel: enough to keep the stars clear of them.
+    sources, _ = detect(frame, fit=no_fits, cap=False)
+    allowed = _allowed(frame, np.array([(d.x, d.y) for d in sources]).reshape(-1, 2))
     if not allowed.any():
         return None
     noise = _point_noise(frame, draw, allowed)
@@ -156,15 +165,18 @@ def measure(
         detections, _ = detect(
             frame._replace(image=frame.image + draw(xs, ys, fluxes[steps])),
             fit=_near(xs, ys, frame.image.shape),
+            cap=False,
         )
         distance = _nearest(xs, ys, detections)
         hit = distance <= MATCH_RADIUS_PX
         np.add.at(injected, steps, 1)
         np.add.at(found, steps[hit], 1)
         offsets += zip(steps[hit].tolist(), distance[hit].tolist(), strict=True)
-    # Noise peaks pass the threshold as often in the negated frame as in the frame itself, but
-    # no source can make them there.
-    false, _ = detect(frame._replace(image=-frame.image))
+    # Noise peaks pass the threshold as often in the negated frame as in the frame itself, but no
+    # source can make them there. Only where stars were set: next to a bright star the median sky
+    # leaves a dark ring, which the negated frame turns into peaks.
+    negated, _ = detect(frame._replace(image=-frame.image), fit=no_fits, cap=False)
+    false = [d for d in negated if allowed[int(d.y), int(d.x)]]
     share = _monotonic(found / np.maximum(injected, 1), injected)
     flux50, flux90 = (_flux_at(share, fluxes, target) for target in (0.5, 0.9))
     # Position accuracy near the limit: the stars of the steps not yet found nine times in ten.
@@ -182,7 +194,7 @@ def measure(
         if near_limit
         else None,
     )
-    return Measured(limit, injected.tolist(), found.tolist())
+    return Measured(limit, fluxes.tolist(), injected.tolist(), found.tolist())
 
 
 def ab_mag(flux_ujy: float) -> float:
@@ -198,9 +210,9 @@ def _allowed(frame: Aligned, existing: np.ndarray) -> np.ndarray:
     inner = np.zeros_like(allowed)
     inner[EDGE_PX:-EDGE_PX, EDGE_PX:-EDGE_PX] = True
     allowed &= inner
-    rows, cols = np.indices(allowed.shape)
     for x, y in existing:
-        allowed &= np.hypot(cols - x, rows - y) > CLEARANCE_PX
+        window, disc = _disc(x, y, CLEARANCE_PX, allowed.shape)
+        allowed[window] &= ~disc
     return allowed
 
 
@@ -241,11 +253,23 @@ def _positions(
 def _near(xs: np.ndarray, ys: np.ndarray, shape: tuple[int, int]) -> np.ndarray:
     """Pixels whose peak could be a found star: a centroid fit moves a peak by at most one pixel
     per axis, so peaks beyond MATCH_RADIUS_PX + √2 never match and need no fit."""
-    rows, cols = np.indices(shape)
     near = np.zeros(shape, dtype=bool)
     for x, y in zip(xs, ys, strict=True):
-        near |= np.hypot(cols - x, rows - y) <= MATCH_RADIUS_PX + math.sqrt(2)
+        window, disc = _disc(x, y, MATCH_RADIUS_PX + math.sqrt(2), shape)
+        near[window] |= disc
     return near
+
+
+def _disc(
+    x: float, y: float, radius: float, shape: tuple[int, int]
+) -> tuple[tuple[slice, slice], np.ndarray]:
+    """The grid window around (x, y) and which of its pixels lie within `radius` of it."""
+    reach = math.ceil(radius)
+    y0, x0 = max(0, math.floor(y) - reach), max(0, math.floor(x) - reach)
+    y1 = min(shape[0], math.floor(y) + reach + 2)
+    x1 = min(shape[1], math.floor(x) + reach + 2)
+    rows, cols = np.ogrid[y0:y1, x0:x1]
+    return (slice(y0, y1), slice(x0, x1)), np.hypot(cols - x, rows - y) <= radius
 
 
 def _nearest(xs: np.ndarray, ys: np.ndarray, detections: list[Detection]) -> np.ndarray:
@@ -329,13 +353,13 @@ def completeness_checks(measured: list[tuple[Frame, Measured]]) -> list[Check]:
     """One info check with the measured limits of A and B; none when no frame was measured."""
     if not measured:
         return []
-    frames = [frame for frame, _ in measured]
-    limits = [result.limit for _, result in measured]
-    numbers = [frame.index + 1 for frame in frames]
+    numbers = [frame.index + 1 for frame, _ in measured]
+    texts = {target: [_limit(result, target) for _, result in measured] for target in (0.5, 0.9)}
     message = (
-        f"Detection limit measured by injecting {sum(limit.injected for limit in limits)} "
-        f"artificial stars: 50 % {_at([limit.ab50 for limit in limits], numbers, 'found')} "
-        f"(D{frames[0].detector}), 90 % {_at([limit.ab90 for limit in limits], numbers)}"
+        "Detection limit measured by injecting "
+        f"{sum(result.limit.injected for _, result in measured)} artificial stars: 50 % "
+        f"{_per_frame([short for short, _ in texts[0.5]], numbers, 'found')}, 90 % "
+        f"{_per_frame([short for short, _ in texts[0.9]], numbers)}"
     )
     drawn = {
         "epsf": "drawn with the SPHEREx ePSF of the frame's first exposure on its pixels and "
@@ -344,19 +368,21 @@ def completeness_checks(measured: list[tuple[Frame, Measured]]) -> list[Check]:
         "(the cutout carries no ePSF)",
     }
     detail = " ".join(
-        f"Frame {number}: 50 % {_flux(limit.flux50_ujy)}, 90 % {_flux(limit.flux90_ujy)}; "
-        f"1σ {limit.noise_ujy:g} µJy; found {', '.join(map(str, result.found))} of "
-        f"{', '.join(map(str, result.injected))} stars in steps of "
-        f"{', '.join(f'{level:g}' for level in LEVELS_SIGMA)}σ; {limit.false_per_frame} "
-        "detections in the negated frame (noise peaks above the threshold)"
+        f"Frame {number}: 50 % {fifty}, 90 % {ninety}; 1σ {result.limit.noise_ujy:g} µJy; found "
+        f"{', '.join(map(str, result.found))} of {', '.join(map(str, result.injected))} stars in "
+        f"steps of {', '.join(f'{level:g}' for level in LEVELS_SIGMA)}σ; "
+        f"{result.limit.false_per_frame} detections in the negated frame where stars were set "
+        "(noise peaks above the threshold)"
         + (
-            f"; stars near the limit found {limit.offset_arcsec:g}″ (median) from where they "
-            "were set"
-            if limit.offset_arcsec is not None
+            f"; stars near the limit found {result.limit.offset_arcsec:g}″ (median) from where "
+            "they were set"
+            if result.limit.offset_arcsec is not None
             else ""
         )
-        + f"; stars {drawn[limit.psf]}."
-        for number, limit, (_, result) in zip(numbers, limits, measured, strict=True)
+        + f"; stars {drawn[result.limit.psf]}."
+        for number, (_, result), (_, fifty), (_, ninety) in zip(
+            numbers, measured, texts[0.5], texts[0.9], strict=True
+        )
     )
     return [
         Check(
@@ -368,28 +394,40 @@ def completeness_checks(measured: list[tuple[Frame, Measured]]) -> list[Check]:
             f"stars) at least {EDGE_PX} px from the grid edge, "
             f"{CLEARANCE_PX} px from every detected source and {SEPARATION_PX} px from each "
             f"other, then searched for with the same ≥{THRESHOLD_SIGMA:g}σ detection as every "
-            f"source; found means a detection within {MATCH_RADIUS_PX:g} px "
-            f"({MATCH_RADIUS_PX * SPHEREX_PIXEL_SCALE_ARCSEC:.1f}″). Only the A and B the blink "
-            "opens with are measured, which keeps the job quick. The limits hold for point "
-            "sources: a moving or extended object spreads its light and must be brighter.",
+            f"source, without its cap of {MAX_SOURCES} per frame; found means a detection within "
+            f"{MATCH_RADIUS_PX:g} px ({MATCH_RADIUS_PX * SPHEREX_PIXEL_SCALE_ARCSEC:.1f}″). Only "
+            "the A and B the blink opens with are measured, which keeps the job quick. The limits "
+            "hold for point sources: a moving or extended object spreads its light and must be "
+            "brighter.",
         )
     ]
 
 
-def _at(values: list[float | None], numbers: list[int], verb: str = "") -> str:
+def _limit(result: Measured, target: float) -> tuple[str, str]:
+    """The flux at which `target` of the stars are found, short ('at 16.7 AB') and long ('at 732
+    µJy (16.74 AB)'); 'fainter than' the faintest step when that one reaches it already."""
+    flux = result.limit.flux50_ujy if target == 0.5 else result.limit.flux90_ujy
+    if flux is not None:
+        return f"at {ab_mag(flux):.1f} AB", f"at {flux:g} µJy ({ab_mag(flux):.2f} AB)"
+    share = _monotonic(
+        np.array(result.found) / np.maximum(result.injected, 1), np.array(result.injected)
+    )
+    if share[0] >= target:
+        faintest = result.fluxes[0]
+        return (
+            f"fainter than {ab_mag(faintest):.1f} AB",
+            f"fainter than {faintest:.4g} µJy ({ab_mag(faintest):.2f} AB), the faintest step",
+        )
+    return "not reached", "not reached within the steps"
+
+
+def _per_frame(texts: list[str], numbers: list[int], verb: str = "") -> str:
     """'found at 16.7 AB' when every frame agrees, else per frame: 'found at 16.7 AB in frame 1
-    and at 16.6 AB in frame 9'; 'not reached' where a frame has no value."""
-    texts = ["not reached" if v is None else f"at {v:.1f} AB" for v in values]
+    and at 16.6 AB in frame 9'."""
     parts = (
         texts[:1]
         if len(set(texts)) == 1
         else [f"{text} in frame {n}" for text, n in zip(texts, numbers, strict=True)]
     )
-    head = f"{verb} " if verb and values[0] is not None else ""
+    head = f"{verb} " if verb and texts[0] != "not reached" else ""
     return head + " and ".join(parts)
-
-
-def _flux(flux_ujy: float | None) -> str:
-    if flux_ujy is None:
-        return "not reached within the steps"
-    return f"at {flux_ujy:g} µJy ({ab_mag(flux_ujy):.2f} AB)"
