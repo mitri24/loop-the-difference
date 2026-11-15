@@ -41,7 +41,7 @@ def test_registration_recovers_known_shift():
     dx, dy, _, n = analysis.measure_offset(a, b)
     assert n >= 5
     assert dx == pytest.approx(0.30, abs=0.06) and dy == pytest.approx(-0.20, abs=0.06)
-    b2, check = analysis.register(a, b)
+    b2, check, _ = analysis.register(a, b)
     dx2, dy2, _, _ = analysis.measure_offset(a, b2)
     assert abs(dx2) < 0.08 and abs(dy2) < 0.08
     assert check.code == "registration"

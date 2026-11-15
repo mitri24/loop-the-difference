@@ -151,7 +151,8 @@ class SpectrumPoint(BaseModel):
     epoch: int
     wavelength_um: float
     bandwidth_um: float
-    # Background-subtracted aperture flux at the target, no aperture correction (quick-look).
+    # Background-subtracted aperture flux at the target (quick-look), corrected to total flux with
+    # the ePSF when every cutout carries one (the QUICK_LOOK_SPECTRUM check says which).
     flux_ujy: float
     flux_err_ujy: float
     # Pixels the archive marks unusable lie in the aperture: the flux is unreliable.
@@ -382,7 +383,7 @@ class FollowupRequest(BaseModel):
 
 
 class FollowupMeasurement(BaseModel):
-    """Forced aperture photometry at the predicted position in one visit (quick-look)."""
+    """Forced aperture and PSF photometry at the predicted position in one visit (quick-look)."""
 
     obs_id: str
     date: str
@@ -399,6 +400,11 @@ class FollowupMeasurement(BaseModel):
     flux_ujy: float | None = None
     flux_err_ujy: float | None = None
     snr: float | None = None
+    # Total flux from the SPHEREx ePSF fitted at the same position (photometry.psf_photometry);
+    # None without an ePSF or when skipped.
+    psf_flux_ujy: float | None = None
+    psf_flux_err_ujy: float | None = None
+    psf_snr: float | None = None
     # Pixels the archive marks unusable lie in the aperture: left out of the combination.
     flagged: bool = False
     # Why there is no flux, e.g. "target at the cutout edge".
@@ -411,7 +417,8 @@ class FollowupMeasurement(BaseModel):
 class FollowupHypothesis(BaseModel):
     # Assumed distance from Earth at the first mark; None for a straight line.
     distance_au: float | None = None
-    # Inverse-variance weighted mean of the usable (unflagged) fluxes and its 1σ error.
+    # Inverse-variance weighted mean of the usable (unflagged) fluxes and its 1σ error: PSF fluxes
+    # when Followup.psf_photometry, else aperture fluxes.
     flux_ujy: float | None = None
     flux_err_ujy: float | None = None
     snr: float | None = None
@@ -435,6 +442,8 @@ class Followup(BaseModel):
     significant: bool = False
     # Some measured visit sees the tested distances an aperture or more apart.
     distance_determined: bool = False
+    # Every measured flux has a PSF flux too, so the hypotheses combine those (totals, higher S/N).
+    psf_photometry: bool = False
     hypotheses: list[FollowupHypothesis] = []
     checks: list[Check] = []
 

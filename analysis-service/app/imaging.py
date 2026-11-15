@@ -20,6 +20,7 @@ from reproject import reproject_interp
 
 from .config import settings
 from .cutouts import HARD_FLAGS, Cutout
+from .psf import pixel_psf
 
 # Colours shared with frontend/src/styles/tokens.css (see design-system.md).
 NO_DATA_RGB = (58, 28, 66)  # --img-nodata
@@ -105,6 +106,36 @@ def align(cutout: Cutout, grid: Grid) -> Aligned:
     a_img = np.where(valid, a_img - bkg, np.nan)
     a_var = np.where(valid, a_var, np.nan)
     return Aligned(a_img, a_var, ~valid, flags, coverage, bkg, noise)
+
+
+def grid_psf(cutout: Cutout, grid: Grid, size: int = 11, spacing: int = 12) -> np.ndarray | None:
+    """PSF of the aligned frame: a size × size stamp with sum 1, centred on its middle pixel.
+
+    Unit point sources at grid pixel centres across the field are drawn on the cutout's pixels
+    with its ePSF and resampled like align, then averaged. So the stamp holds the detector's
+    rotation and the smoothing of the bilinear interpolation at this field's own sub-pixel
+    phases (none where the pixel grids coincide). None without an ePSF."""
+    if cutout.psf is None:
+        return None
+    half = size // 2
+    centres = np.arange(half + 1, grid.npix - half - 1, spacing)
+    gx, gy = (c.ravel() for c in np.meshgrid(centres, centres))
+    cx, cy = cutout.wcs.world_to_pixel_values(*grid.wcs.pixel_to_world_values(gx, gy))
+    image = np.zeros(cutout.image.shape)
+    for x, y in zip(cx, cy, strict=True):
+        image += pixel_psf(cutout.psf, float(x), float(y), image.shape)
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")
+        shape = (grid.npix, grid.npix)
+        drawn, _ = reproject_interp((image, cutout.wcs), grid.wcs, shape, order="bilinear")
+    stamps = [
+        drawn[y - half : y + half + 1, x - half : x + half + 1] for x, y in zip(gx, gy, strict=True)
+    ]
+    stamps = [st for st in stamps if np.isfinite(st).all() and st.sum() > 0.9]
+    if not stamps:
+        return None
+    stamp = np.mean(stamps, axis=0)
+    return stamp / stamp.sum()
 
 
 def background_stats(img: np.ndarray, valid: np.ndarray) -> tuple[float, float]:

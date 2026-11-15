@@ -23,6 +23,22 @@ jobs:
       - run: ruff format --check .
       - run: pytest
 
+  analysis-service:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: analysis-service
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      # The locked versions of its Docker image, with the dev group (pytest, pytest-asyncio, ruff).
+      - run: pip install uv==0.5.11 && uv sync --frozen --no-install-project
+      - run: uv run --no-sync ruff check .
+      - run: uv run --no-sync ruff format --check .
+      - run: uv run --no-sync pytest -q -m "not network"
+
   frontend:
     runs-on: ubuntu-latest
     defaults:

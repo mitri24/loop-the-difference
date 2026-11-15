@@ -168,6 +168,8 @@ export interface DifferenceResult {
   delta_lambda_um: number;
   /** null until the JPL known asteroid/comet check has run */
   solar_system: SolarSystemMarker[] | null;
+  /** "zogy": PSF-matched score S_corr; "direct": (A − sB) / noise without PSF matching */
+  significance_method: "zogy" | "direct";
 }
 
 export interface SpectrumPoint {
@@ -189,6 +191,8 @@ export interface SpectrumResult {
   target_ra: number;
   target_dec: number;
   aperture_arcsec: number;
+  /** every flux corrected to total flux with the SPHEREx ePSF (or none) */
+  aperture_corrected: boolean;
   points: SpectrumPoint[];
   checks: Check[];
   failed: Record<string, string>[];

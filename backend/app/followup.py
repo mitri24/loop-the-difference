@@ -28,11 +28,17 @@ from app.models import (
     FollowupMeasurement,
     Observation,
 )
-from app.photometry import APERTURE_RADIUS_PX, SKIP_EDGE, SKIP_VARIANCE, forced_photometry
+from app.photometry import (
+    APERTURE_RADIUS_PX,
+    SKIP_EDGE,
+    SKIP_VARIANCE,
+    forced_photometry,
+    psf_photometry,
+)
 from app.tracks import ARCSEC_PER_RAD, ECCENTRICITY, MODEL, model_error, predict, unit
 
 # Bump whenever the measurement changes: the job key changes, so results are rebuilt.
-VERSION = 1
+VERSION = 2
 # Every cutout is one IRSA request that opens a whole SPHEREx image.
 MAX_CUTOUTS = 48
 # Around each prediction: the aperture and its sky ring with a margin, as for a spectrum.
@@ -58,6 +64,8 @@ _NUMBER = re.compile(r"^[-+]?(\d+\.?\d*|\.\d+)([eE][-+]?\d+)?$")
 
 # Usable flux of one hypothesis at one visit: obs_id, flux and 1σ error (µJy), unit vector.
 Usable = tuple[str, float, float, np.ndarray]
+# One measurement with its usable aperture and PSF fluxes (None where not combinable).
+Row = tuple[FollowupMeasurement, Usable | None, Usable | None]
 Search = Callable[[float, float], tuple[list[Observation], list[str]]]
 
 
@@ -423,7 +431,7 @@ def evaluate(
 ) -> Followup:
     """Measure every planned prediction and combine each hypothesis over its usable visits."""
     paths = {url: path for _, url, path in downloaded}
-    rows: dict[int, list[tuple[FollowupMeasurement, Usable | None]]] = {h: [] for h in plan.kept}
+    rows: dict[int, list[Row]] = {h: [] for h in plan.kept}
     unreadable = []
     for cutout in plan.cutouts:
         path, missing = paths.get(cutout.url), MISSING
@@ -434,12 +442,16 @@ def evaluate(
             path, missing = None, UNREADABLE
         for h in cutout.members:
             rows[h].append(_measure(plan, cutout, h, path, missing))
+    # PSF fluxes are totals, aperture fluxes the core (~5 % less): one kind for every hypothesis,
+    # so that their S/N compare.
+    combinable = [row for h in plan.kept for row in rows[h] if row[1] is not None]
+    psf = bool(combinable) and all(row[2] is not None for row in combinable)
     hypotheses, usable = [], []
     for h in plan.kept:
-        pairs = sorted(rows[h], key=lambda pair: pair[0].mjd)
-        good = [raw for _, raw in pairs if raw is not None]
+        ordered = sorted(rows[h], key=lambda row: row[0].mjd)
+        good = [row[2] if psf else row[1] for row in ordered if row[1] is not None]
         hypothesis = FollowupHypothesis(
-            distance_au=plan.distances[h], visits=len(good), measurements=[m for m, _ in pairs]
+            distance_au=plan.distances[h], visits=len(good), measurements=[m for m, *_ in ordered]
         )
         if good:
             flux, error, snr = _stack(good)
@@ -472,10 +484,11 @@ def evaluate(
         best=best,
         significant=best is not None and _stack(usable[best])[2] >= SIGNIFICANT_SNR,
         distance_determined=determined,
+        psf_photometry=psf,
         hypotheses=hypotheses,
         checks=plan.checks
         + checks
-        + _checks(hypotheses, usable, best, detector, trials, determined, plan.model == MODEL),
+        + _checks(hypotheses, usable, best, detector, trials, determined, plan.model == MODEL, psf),
     )
 
 
@@ -488,10 +501,9 @@ def _readable(path: Path) -> bool:
         return False
 
 
-def _measure(
-    plan: Plan, cutout: Cutout, h: int, path: Path | None, missing: str = MISSING
-) -> tuple[FollowupMeasurement, Usable | None]:
-    """Forced photometry at one prediction; the raw flux and error when they can be combined."""
+def _measure(plan: Plan, cutout: Cutout, h: int, path: Path | None, missing: str = MISSING) -> Row:
+    """Forced photometry at one prediction; the raw aperture and PSF fluxes when they can be
+    combined."""
     v, obs = cutout.column, cutout.visit
     ra, dec = float(plan.ra[h, v]), float(plan.dec[h, v])
     measured = forced_photometry(path, ra, dec) if path else missing
@@ -513,11 +525,19 @@ def _measure(
     )
     if isinstance(measured, str):
         point.skipped = measured
-        return point, None
+        return point, None, None
     flux, error, point.flagged = measured
     point.flux_ujy, point.flux_err_ujy = round(flux, 2), round(error, 2)
     point.snr = round(flux / error, 2)
-    return point, None if point.flagged else (obs.obs_id, flux, error, unit(ra, dec))
+    total = psf_photometry(path, ra, dec)
+    if isinstance(total, tuple):
+        point.psf_flux_ujy, point.psf_flux_err_ujy = round(total[0], 2), round(total[1], 2)
+        point.psf_snr = round(total[0] / total[1], 2)
+    if point.flagged:
+        return point, None, None
+    here = unit(ra, dec)
+    fitted = (obs.obs_id, total[0], total[1], here) if isinstance(total, tuple) else None
+    return point, (obs.obs_id, flux, error, here), fitted
 
 
 def _stack(good: list[Usable]) -> tuple[float, float, float]:
@@ -553,6 +573,7 @@ def _checks(
     trials: int,
     determined: bool,
     distances: bool,
+    psf: bool,
 ) -> list[Check]:
     measurements = [m for hypothesis in hypotheses for m in hypothesis.measurements]
     with_flux = [m for m in measurements if m.skipped is None]
@@ -615,15 +636,32 @@ def _checks(
             if wavelengths
             else "unknown without a WCS-WAVE table"
         )
+        method = (
+            "PSF flux (the SPHEREx ePSF of the visit's detector zone fitted at each predicted "
+            "position, total flux) combined over the visits; the aperture flux "
+            f"({APERTURE_RADIUS_PX:g} px radius, no aperture correction) is listed beside it"
+            if psf
+            else f"Aperture flux ({APERTURE_RADIUS_PX:g} px radius) at each predicted position "
+            "without aperture correction, combined over the visits: not every cutout carries an "
+            "ePSF for PSF photometry"
+        )
+        off = sum(
+            m.radius_arcsec + m.model_error_arcsec > SPHEREX_PIXEL_SCALE_ARCSEC for m in with_flux
+        )
+        if psf and off:
+            method += (
+                f". The fit assumes the predicted position: {off} of {len(with_flux)} are "
+                "uncertain by more than a pixel, where it can keep about half of the flux (the "
+                "aperture most of it), which lowers the S/N of a real track and adds none"
+            )
         checks.append(
             Check(
                 code="FOLLOWUP_QUICK_LOOK",
                 severity="info",
                 message="Quick-look photometry, not calibrated",
-                detail=f"Aperture flux ({APERTURE_RADIUS_PX:g} px radius) at each predicted "
-                f"position without aperture correction. The visits see the object at different "
-                f"wavelengths of detector {detector} ({band}), so the combination tests for flux "
-                "along the track; it is no brightness",
+                detail=f"{method}. The visits see the object at different wavelengths of "
+                f"detector {detector} ({band}), so the combination tests for flux along the "
+                "track; it is no brightness",
             )
         )
     if best is not None and distances and not determined:

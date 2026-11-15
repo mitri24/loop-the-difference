@@ -43,7 +43,7 @@ from app.frames import (
     wavelength_at,
 )
 from app.models import Check, Difference, Frame, FrameManifest, Observation, Spectrum, SpectrumPoint
-from app.photometry import forced_photometry
+from app.photometry import aperture_correction, forced_photometry
 from app.sources import find_sources
 
 MIN_COVERAGE = 0.5
@@ -53,7 +53,7 @@ SPECTRUM_SIZE_DEG = 0.03
 # cache still finishes within the spectrum job timeout while IRSA is slow.
 MAX_SPECTRUM_POINTS = 100
 # Bump whenever the photometry changes: the spectrum job key changes, so results are rebuilt.
-SPECTRUM_VERSION = 4
+SPECTRUM_VERSION = 5
 # Bump whenever the rendered output changes: the job key changes, so cached results are rebuilt,
 # and `warm` removes frame folders whose manifest carries an older version.
 PIPELINE_VERSION = 12
@@ -358,15 +358,8 @@ def build_spectrum(ra: float, dec: float, collections: list[str] | None = None) 
     _report(0, len(selected))
     downloaded, checks = download_cutouts(selected, urls, settings)
     checks += release_checks([obs for obs, _, _ in downloaded], failed)
-    checks.append(
-        Check(
-            code="QUICK_LOOK_SPECTRUM",
-            severity="info",
-            message="Quick-look spectrum, not calibrated",
-            detail="Aperture flux (2 px radius) at the target without aperture correction: the PSF "
-            "changes between detectors, so the shape across detectors is approximate",
-        )
-    )
+    # The quick-look caveat comes first; it needs the fluxes, so it is added below.
+    quick_look = len(checks)
     if len(selected) < len(observations):
         checks.append(
             Check(
@@ -399,14 +392,36 @@ def build_spectrum(ra: float, dec: float, collections: list[str] | None = None) 
         )
     epoch_of = {o.obs_id: i for i, epoch in enumerate(group_epochs(selected)) for o in epoch}
 
-    points, skipped = [], Counter[str]()
+    measured, skipped = [], Counter[str]()
     for obs, url, path in downloaded:
         wavelength, bandwidth = wavelength_at(path, *position[obs.obs_id])
-        measured = forced_photometry(path, *position[obs.obs_id])
-        if isinstance(measured, str) or wavelength is None:
-            skipped[measured if isinstance(measured, str) else "no WCS-WAVE table"] += 1
+        result = forced_photometry(path, *position[obs.obs_id])
+        if isinstance(result, str) or wavelength is None:
+            skipped[result if isinstance(result, str) else "no WCS-WAVE table"] += 1
             continue
-        flux, error, flagged = measured
+        # Only a measured aperture lies inside the cutout, where a correction means something.
+        factor = aperture_correction(path, *position[obs.obs_id])
+        measured.append((obs, url, wavelength, bandwidth, result, factor))
+    factors = [factor for *_, factor in measured]
+    # Corrected and uncorrected fluxes are not comparable: all points or none.
+    corrected = bool(factors) and None not in factors
+    checks.insert(
+        quick_look,
+        Check(
+            code="QUICK_LOOK_SPECTRUM",
+            severity="info",
+            message="Quick-look spectrum, not calibrated",
+            detail="Aperture flux (2 px radius) at the target, corrected to total flux with the "
+            f"SPHEREx ePSF of each visit's detector zone (×{min(factors):.2f}–{max(factors):.2f}, "
+            "total within ±3.2 px)"
+            if corrected
+            else "Aperture flux (2 px radius) at the target without aperture correction: the PSF "
+            "changes between detectors, so the shape across detectors is approximate",
+        ),
+    )
+    points = []
+    for obs, url, wavelength, bandwidth, (flux, error, flagged), factor in measured:
+        scale = factor if corrected else 1.0
         points.append(
             SpectrumPoint(
                 obs_id=obs.obs_id,
@@ -416,8 +431,8 @@ def build_spectrum(ra: float, dec: float, collections: list[str] | None = None) 
                 epoch=epoch_of[obs.obs_id],
                 wavelength_um=round(wavelength, 4),
                 bandwidth_um=round(bandwidth, 4),
-                flux_ujy=round(flux, 2),
-                flux_err_ujy=round(error, 2),
+                flux_ujy=round(flux * scale, 2),
+                flux_err_ujy=round(error * scale, 2),
                 flagged=flagged,
                 source_url=url,
             )

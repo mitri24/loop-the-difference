@@ -7,7 +7,7 @@ from app import sources, tasks
 from app.catalogs import position_at
 from app.frames import Aligned, target_grid
 from app.models import Observation, ProperMotion
-from app.photometry import SKIP_NAN
+from app.photometry import SKIP_EDGE, SKIP_NAN
 from app.tasks import build_frames, build_spectrum, epoch_checks, stack_images, wavelength_checks
 
 RA, DEC, SIZE_DEG = 133.795, -7.245, 0.1
@@ -130,6 +130,8 @@ def _offline_archive(monkeypatch, settings, tmp_path, observations, flagged_targ
         return data, np.where(unusable, np.nan, 1.0), target, unusable
 
     monkeypatch.setattr(tasks, "read_image", read_image)
+    # The synthetic cutouts carry no ePSF table.
+    monkeypatch.setattr(tasks, "aperture_correction", lambda path, ra, dec: None)
     # Each visit sees the target through another part of the filter: λ grows with the MJD.
     monkeypatch.setattr(
         tasks, "wavelength_at", lambda path, ra, dec: (4.5 + int(path.stem) / 1000, 0.035)
@@ -271,6 +273,48 @@ def test_spectrum_has_one_point_per_visit_of_every_detector(monkeypatch, setting
     assert spectrum["checks"][-1]["detail"] == (
         f"2 visits skipped: 1 {SKIP_NAN}, 1 no WCS-WAVE table"
     )
+
+
+@pytest.mark.parametrize(
+    ("factors", "fluxes"),
+    [
+        ({"100": 1.25, "290": 1.5}, [(62.5, 2.5), (60.0, 4.5)]),
+        ({"100": 1.25}, [(50.0, 2.0), (40.0, 3.0)]),
+    ],
+)
+def test_spectrum_is_corrected_to_total_flux_only_when_every_visit_has_an_epsf(
+    monkeypatch, settings, tmp_path, factors, fluxes
+):
+    _offline_archive(monkeypatch, settings, tmp_path, [_observation(100), _observation(290)])
+    measured = {"100": (50.0, 2.0, False), "290": (40.0, 3.0, False)}
+    monkeypatch.setattr(tasks, "forced_photometry", lambda path, ra, dec: measured[path.stem])
+    monkeypatch.setattr(tasks, "aperture_correction", lambda path, ra, dec: factors.get(path.stem))
+    monkeypatch.setattr(tasks, "find_proper_motion", lambda ra, dec, strict: None)
+
+    spectrum = build_spectrum(RA, DEC)
+
+    assert [(p["flux_ujy"], p["flux_err_ujy"]) for p in spectrum["points"]] == fluxes
+    (method,) = [c for c in spectrum["checks"] if c["code"] == "QUICK_LOOK_SPECTRUM"]
+    assert ("corrected to total flux" in method["detail"]) is (len(factors) == 2)
+
+
+def test_only_measured_points_are_corrected(monkeypatch, settings, tmp_path):
+    _offline_archive(monkeypatch, settings, tmp_path, [_observation(100), _observation(290)])
+    measured = {"100": (50.0, 2.0, False), "290": SKIP_EDGE}
+    monkeypatch.setattr(tasks, "forced_photometry", lambda path, ra, dec: measured[path.stem])
+
+    def correction(path, ra, dec):
+        assert path.stem == "100", "a target off the cutout has no aperture to correct"
+        return 1.25
+
+    monkeypatch.setattr(tasks, "aperture_correction", correction)
+    monkeypatch.setattr(tasks, "find_proper_motion", lambda ra, dec, strict: None)
+
+    spectrum = build_spectrum(RA, DEC)
+
+    assert [(p["flux_ujy"], p["flux_err_ujy"]) for p in spectrum["points"]] == [(62.5, 2.5)]
+    assert spectrum["checks"][0]["code"] == "QUICK_LOOK_SPECTRUM"
+    assert "(×1.25–1.25, total within ±3.2 px)" in spectrum["checks"][0]["detail"]
 
 
 def test_spectrum_follows_a_star_with_proper_motion_to_each_visit(monkeypatch, settings, tmp_path):

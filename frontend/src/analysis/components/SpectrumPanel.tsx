@@ -82,7 +82,7 @@ export function SpectrumPanel(p: Props) {
           </details>
           <p className="muted">
             Filled = clean pixels · hollow = saturated target (flux from pre-saturation samples) · cross = unusable pixels.
-            Aperture {p.result.aperture_arcsec.toFixed(1)}″, no aperture correction: compare visits at the same wavelength.
+            Aperture {p.result.aperture_arcsec.toFixed(1)}″, {p.result.aperture_corrected ? "corrected to total flux with the SPHEREx ePSF" : "no aperture correction: compare visits at the same wavelength"}.
           </p>
         </>
       )}

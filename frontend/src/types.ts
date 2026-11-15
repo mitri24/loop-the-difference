@@ -302,6 +302,10 @@ export interface FollowupMeasurement {
   flux_ujy: number | null
   flux_err_ujy: number | null
   snr: number | null
+  // Total flux from the SPHEREx ePSF fitted at the same position; null without an ePSF or when skipped.
+  psf_flux_ujy: number | null
+  psf_flux_err_ujy: number | null
+  psf_snr: number | null
   flagged: boolean // unusable pixels in the aperture: left out of the combination
   skipped: string | null // why there is no flux
   wavelength_um: number | null
@@ -311,7 +315,7 @@ export interface FollowupMeasurement {
 
 export interface FollowupHypothesis {
   distance_au: number | null // null for a straight line
-  // Inverse-variance weighted mean of the usable (unflagged) fluxes.
+  // Inverse-variance weighted mean of the usable (unflagged) fluxes: PSF fluxes when psf_photometry.
   flux_ujy: number | null
   flux_err_ujy: number | null
   snr: number | null
@@ -330,6 +334,7 @@ export interface Followup {
   best: number | null // index into hypotheses: highest S/N over at least two visits
   significant: boolean // the best S/N reaches 5
   distance_determined: boolean // false: do not name a distance, the visits cannot tell them apart
+  psf_photometry: boolean // the hypotheses combine PSF fluxes (every measured flux has one)
   hypotheses: FollowupHypothesis[]
   checks: Check[]
 }
