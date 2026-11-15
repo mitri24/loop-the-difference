@@ -69,7 +69,7 @@
 @media (width > 700px) and (max-width:1023px) {
   .shell:has(> .stage.investigate) { grid-template-columns:minmax(0,1fr) auto; grid-template-areas:'hud map' 'main map' 'bar map'; }
   /* The map column is narrow here: the inspector's panel gives its content the width. */
-  .inspector-panel { padding-inline:var(--space-2); }
+  .inspector .inspector-panel { padding-inline:var(--space-2); }
 }
 .sky-area.overview { position:relative; inset:auto; align-self:start; margin:var(--space-3) var(--space-3) var(--space-3) 0; z-index:var(--z-chrome); width:var(--map-w); max-width:calc(100% - 24px); height:calc(var(--map-w) * .75 + 36px); max-height:calc(100% - 24px); overflow:visible; background:var(--surface-1); border:1px solid var(--border-strong); border-radius:var(--radius-md); }
 .sky-area.overview .sky-stage { top:36px; overflow:hidden; border-radius:0 0 var(--radius-md) var(--radius-md); }
@@ -99,13 +99,14 @@
    (--reserve); the viewer body is the size container. */
 .viewer .player {
   --rail:64px; --gap:var(--space-3); --head:48px; --bar:44px; --reserve:0px;
-  --img:clamp(160px, min(100cqw - var(--rail) - var(--gap), 100cqh - var(--reserve) - var(--head) - var(--bar) - 3 * var(--gap)), 1100px);
+  --img:clamp(120px, min(100cqw - var(--rail) - var(--gap), 100cqh - var(--reserve) - var(--head) - var(--bar) - 3 * var(--gap)), 1100px);
   display:grid; grid-template-columns:var(--rail) var(--img); grid-template-rows:var(--head) var(--img) auto auto;
   grid-template-areas:'head head' 'rail view' 'bar bar' 'note note'; gap:var(--gap); justify-content:center; align-items:start;
 }
 .viewer-body:has(> .notice) > .player { --reserve:calc(56px + var(--space-3)); }
-/* Below about 480 px of player the bar wraps into two rows: reserve them, so nothing is pushed off screen. */
-@container (max-width:499px) or (max-height:539px) {
+/* The pair and the bar may be wider than a small image (at least 560 px where the viewer has them), so the dates
+   and the controls never squeeze; below about 480 px of viewer the bar wraps into two rows: reserve them. */
+@container (max-width:499px) {
   .viewer .player { --bar:88px; }
 }
 /* One frame: no thumbnails, no pair. */
@@ -116,6 +117,7 @@
 .viewer .observation-strip { position:absolute; inset:0; flex-direction:column; overflow-x:hidden; overflow-y:auto; }
 .viewer .observation-card { flex:none; width:100%; }
 .viewer .player > .pair-head { grid-area:head; height:var(--head); }
+.viewer .player > .pair-head,.viewer .player > .controls { justify-self:center; width:min(100cqw, max(100%, 560px)); }
 .viewer .player > .viewport,.viewer .player > .diff-blocker { grid-area:view; width:var(--img); }
 .viewer .player > .controls { grid-area:bar; min-width:0; }
 .viewer .player > .notice { grid-area:note; }
@@ -147,7 +149,7 @@
 /* The inspector (components/Inspector.tsx): one menu for everything about the comparison – a tab per kind, one
    bounded panel; only the panel scrolls, switching never resizes the viewer or the map. From 701 px it hangs under
    the overview map, as wide as the map, down to the window's bottom; on phones it is a bottom sheet. */
-.inspector { display:flex; flex-direction:column; min-height:0; background:var(--surface-1); border:1px solid var(--border-strong); border-radius:var(--radius-md); }
+.inspector { container:inspector / inline-size; display:flex; flex-direction:column; min-height:0; background:var(--surface-1); border:1px solid var(--border-strong); border-radius:var(--radius-md); }
 .inspector[hidden] { display:none; }
 .inspector-head { flex:none; display:flex; align-items:flex-start; gap:var(--space-1); padding:var(--space-1); border-bottom:1px solid var(--border); }
 .inspector-tabs { flex:1; display:flex; flex-wrap:wrap; gap:2px; min-width:0; }
@@ -168,11 +170,17 @@
 .player-skeleton .pair-head > .skeleton-lines { gap:var(--space-2); padding-block:var(--space-1); }
 .player-skeleton .transport { padding-block:var(--space-3); }
 .inspect-toggle { display:none; }
+/* A narrow inspector (the map column on tablets, a short landscape phone): the tabs in one row that scrolls sideways,
+   so the panel keeps its height. */
+@container inspector (max-width:259px) {
+  .inspector-tabs { flex-wrap:nowrap; overflow-x:auto; scrollbar-width:none; }
+  .inspector-tabs [role='tab'] { flex:none; }
+}
 @media (width > 700px) {
   /* A grid item in the map column, as wide as the column (the map card sets it: the inspector's own content never
      widens it), under the card (its height measured by App) down to the window's bottom. */
   .stage.investigate > .inspector { grid-area:map; align-self:end; justify-self:stretch; position:relative; z-index:var(--z-chrome);
-    contain:inline-size; height:calc(100% - var(--hud-pad-y) - var(--map-card-h, 0px) - 2 * var(--space-3)); margin:0 var(--space-3) var(--space-3) 0; }
+    height:calc(100% - var(--hud-pad-y) - var(--map-card-h, 0px) - 2 * var(--space-3)); margin:0 var(--space-3) var(--space-3) 0; }
   /* Minimized, the card keeps the map's width, so the inspector keeps its width and only moves up. */
   .stage.investigate:has(> .inspector:not([hidden])) > .sky-area.overview.collapsed { width:var(--map-w); }
   /* Expand: wider over the images, from the right edge, at the same height; nothing beside it moves. */
@@ -278,10 +286,18 @@
   /* The inspector: opened with Inspect in the viewer head, it takes the lower half of the stage; the images shrink
      above it instead of being covered, so the player stays usable while inspecting. */
   .inspect-toggle { display:inline-flex; margin-left:auto; }
+  /* The viewer keeps at least its head (the viewer body is a size container: its own minimum is its padding). */
   .stage.investigate > .viewer { min-height:min-content; }
   /* The overview map's bar spans the width under the images. */
   .stage.investigate > .sky-area.overview { align-self:stretch; }
-  .stage.investigate > .inspector { position:relative; z-index:var(--z-chrome); flex:0 1 50%; min-height:160px; border-width:1px 0 0; border-radius:0; }
+  .stage.investigate > .inspector { position:relative; z-index:var(--z-chrome); flex:0 1 40%; min-height:160px; border-width:1px 0 0; border-radius:0; }
+  /* While inspecting, the image gives up its 280 px floor, so the pair, the image and the bar stay in view. */
+  .stage.investigate:has(> .inspector.open) .viewer .player {
+    --img:clamp(120px, min(100cqw - var(--rail) - var(--gap), 100cqh - var(--reserve) - var(--head) - var(--bar) - 3 * var(--gap)), 1100px);
+  }
+  /* The viewer head in two rows: Back and Inspect, then the modes. */
+  .viewer-head > .inspect-toggle { order:1; }
+  .viewer-head > .mode-switch { order:2; flex:1 1 100%; max-width:none; }
   .stage.investigate > .inspector:not(.open) { display:none; }
   .shell:has(> .fpanel:not([hidden])) .stage.investigate > .inspector { display:none; }
   .inspector-close { display:inline-flex; }

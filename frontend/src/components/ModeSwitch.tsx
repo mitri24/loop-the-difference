@@ -12,13 +12,16 @@ interface Props {
   onChange: (mode: ViewMode) => void
   // Why the difference mode cannot be chosen right now; undefined means it can.
   differenceBlocked?: string
-  // What resolves it, when something can (e.g. choose a compatible pair, retry).
+  // What resolves it, when something can (retry, choose another region).
   blockedAction?: { label: string; onClick: () => void }
+  // The reason in words beside the modes (when Difference is the mode asked for); otherwise it is the disabled
+  // tab's title, and the checks explain it.
+  showReason?: boolean
   // While a target name is being resolved, a mode change would restart the previous target.
   disabled?: boolean
 }
 
-export function ModeSwitch({ value, onChange, differenceBlocked, blockedAction, disabled = false }: Props) {
+export function ModeSwitch({ value, onChange, differenceBlocked, blockedAction, showReason = true, disabled = false }: Props) {
   const enabled = (mode: ViewMode) => mode !== 'difference' || !differenceBlocked
   // A link may open a mode that is disabled here; the group must still be reachable by Tab.
   const focusable = enabled(value) ? value : VIEW_MODES.find(enabled)
@@ -46,7 +49,7 @@ export function ModeSwitch({ value, onChange, differenceBlocked, blockedAction, 
             role="radio"
             aria-checked={mode === value}
             tabIndex={mode === focusable ? 0 : -1}
-            title={LABELS[mode].hint}
+            title={mode === 'difference' && differenceBlocked ? `${LABELS[mode].hint}. Unavailable: ${differenceBlocked}` : LABELS[mode].hint}
             disabled={disabled || !enabled(mode)}
             onClick={() => onChange(mode)}
           >
@@ -54,7 +57,7 @@ export function ModeSwitch({ value, onChange, differenceBlocked, blockedAction, 
           </button>
         ))}
       </div>
-      {differenceBlocked && <span className="mode-blocked">
+      {differenceBlocked && showReason && <span className="mode-blocked">
         <span className="muted">{differenceBlocked}</span>
         {blockedAction && <button type="button" className="mode-blocked-action" onClick={blockedAction.onClick}>{blockedAction.label}</button>}
       </span>}

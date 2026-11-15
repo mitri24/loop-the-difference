@@ -26,29 +26,30 @@ export function Inspector<T extends string>({ id, tabs, active, onSelect, hidden
   onExpand?: (expanded: boolean) => void
 }) {
   const list = useRef<HTMLDivElement>(null)
+  // Manual activation: arrows, Home and End move the focus between tabs; Enter or Space opens one (some tabs start
+  // archive lookups, so passing over them must not).
   const onKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {
+    const buttons = [...(list.current?.querySelectorAll<HTMLButtonElement>('[role="tab"]') ?? [])]
+    const i = buttons.indexOf(document.activeElement as HTMLButtonElement)
     const step = ({ ArrowRight: 1, ArrowDown: 1, ArrowLeft: -1, ArrowUp: -1 } as Record<string, number>)[event.key]
-    const i = tabs.findIndex((tab) => tab.id === active)
-    const next = step ? (i + step + tabs.length) % tabs.length : event.key === 'Home' ? 0 : event.key === 'End' ? tabs.length - 1 : -1
+    const next = i < 0 ? -1 : step ? (i + step + buttons.length) % buttons.length
+      : event.key === 'Home' ? 0 : event.key === 'End' ? buttons.length - 1 : -1
     if (next < 0) return
-    // Arrows step frames in the player; inside the menu they only move between tabs.
     event.preventDefault()
     event.stopPropagation()
-    onSelect(tabs[next].id)
-    list.current?.querySelector<HTMLButtonElement>(`#inspect-tab-${tabs[next].id}`)?.focus()
+    buttons[next].focus()
   }
   return (
     <section id={id} className={`inspector${open ? ' open' : ''}${expanded ? ' expanded' : ''}`} aria-label="Inspect" hidden={hidden}>
       <div className="inspector-head">
-        <div ref={list} role="tablist" aria-label="Inspect" className="inspector-tabs" onKeyDown={onKeyDown}>
+        <div ref={list} role="tablist" aria-label="Inspector tabs" className="inspector-tabs" onKeyDown={onKeyDown}>
           {tabs.map((tab) => (
             <button key={tab.id} id={`inspect-tab-${tab.id}`} type="button" role="tab" data-testid={`inspect-${tab.id}`}
               aria-selected={tab.id === active} aria-controls={`inspect-panel-${tab.id}`} tabIndex={tab.id === active ? 0 : -1}
               onClick={() => onSelect(tab.id)}>
               {tab.label}
               {tab.count != null && tab.count > 0 && (
-                <span className={tab.alert ? 'tab-count alert' : 'tab-count'}
-                  aria-label={tab.alert ? `${tab.count}, blocking check` : `${tab.count}`}>{tab.count}</span>
+                <span className={tab.alert ? 'tab-count alert' : 'tab-count'}>{tab.count}{tab.alert && <span className="sr-only"> (blocking)</span>}</span>
               )}
             </button>
           ))}

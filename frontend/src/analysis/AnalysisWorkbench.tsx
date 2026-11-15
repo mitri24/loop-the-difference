@@ -144,7 +144,7 @@ const caveat = <p className="small muted">Changes and residuals need verificatio
 // only say they wait for it.
 function Waiting({ wb, what }: { wb: Workbench; what: string }) {
   if (wb.search) return null
-  return <p className="small muted">{wb.error ? `${what} needs the archive search, which failed: retry it in the Coverage tab.` : `${what} starts after the archive search (Coverage tab) finishes.`}</p>
+  return <p className="small muted">{wb.error ? `${what} needs the archive search, which failed: retry it in the Coverage tab under Wavelength coverage & other archives.` : `${what} starts after the archive search finishes.`}</p>
 }
 
 export function AnalysisPartView({ wb, part }: { wb: Workbench; part: AnalysisPart }) {

@@ -98,10 +98,12 @@ test('the inspector: a tab per kind, arrow keys between tabs, the image never mo
     await expect(page.locator(`#inspect-panel-${id}`)).toBeVisible()
     expect(await page.locator('.viewer .viewport').boundingBox(), id).toEqual(image)
   }
-  // Arrows move between tabs (not between frames), Home and End jump.
+  // Arrows move the focus between tabs (not between frames), Home and End jump; Enter opens the focused tab.
   await page.getByTestId('inspect-frame').click()
   await page.keyboard.press('ArrowRight')
   await expect(page.getByTestId('inspect-quality')).toBeFocused()
+  await expect(page.getByTestId('inspect-frame')).toHaveAttribute('aria-selected', 'true')
+  await page.keyboard.press('Enter')
   await expect(page.getByTestId('inspect-quality')).toHaveAttribute('aria-selected', 'true')
   await page.keyboard.press('End')
   await expect(page.getByTestId('inspect-data')).toBeFocused()

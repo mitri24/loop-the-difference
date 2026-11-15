@@ -139,7 +139,7 @@ test('analysis service error offers retry under Coverage; the other parts wait a
   const coverage=await openTab(page,'coverage')
   await coverage.locator('summary',{hasText:'Wavelength coverage & other archives'}).click()
   await expect(coverage.locator('.reference-analysis [role=alert]')).toContainText('Archive unavailable')
-  await expect(page.locator('#inspect-panel-analysis')).toContainText('needs the archive search, which failed: retry it in the Coverage tab')
+  await expect(page.locator('#inspect-panel-analysis')).toContainText('needs the archive search, which failed: retry it in the Coverage tab under Wavelength coverage & other archives')
   await coverage.getByRole('button',{name:'Retry observation search'}).click()
   await expect(coverage.locator('.reference-analysis [role=status]')).toContainText('archive search is incomplete')
   await coverage.getByRole('button',{name:'Retry archive search'}).click()
@@ -155,14 +155,14 @@ test('the analysis searches the exact selected coordinates and draws its graphs 
   await page.setViewportSize({width:1440,height:900})
   await page.goto('/?ra=269.640817&dec=4.910194&fov=0.2&band=6')
   await expect(page.locator('.viewer')).toBeVisible()
-  // The archive search starts once a tab that needs it opens.
-  const request = page.waitForRequest('**/analysis/api/observations?**')
+  // The archive search starts once its results are asked for: here the folded coverage part, opened.
   const coverage=await openTab(page,'coverage')
+  const request = page.waitForRequest('**/analysis/api/observations?**')
+  await coverage.locator('summary',{hasText:'Wavelength coverage & other archives'}).click()
   const params = new URL((await request).url()).searchParams
   expect(params.get('ra')).toBe('269.640817')
   expect(params.get('dec')).toBe('4.910194')
   expect(params.get('fov')).toBe('12')
-  await coverage.locator('summary',{hasText:'Wavelength coverage & other archives'}).click()
   const graph=coverage.getByRole('img',{name:'SPHEREx exposures covering the target: date versus wavelength'})
   await expect(graph).toBeVisible()
   const panel=(await coverage.boundingBox())!

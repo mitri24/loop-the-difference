@@ -20,11 +20,21 @@ describe('Inspector', () => {
     expect(html).toContain('<div id="inspect-panel-frame" role="tabpanel" aria-labelledby="inspect-tab-frame" class="inspector-panel" hidden="" tabindex="0"><p>frame panel</p>')
   })
 
-  it('counts once beside the label, a blocking check by name, no badge for nothing', () => {
+  it('counts once beside the label, a blocking check in words, no badge for nothing', () => {
     const html = renderToStaticMarkup(<Inspector tabs={tabs} active="frame" onSelect={() => undefined} />)
-    expect(html).toContain('class="tab-count alert" aria-label="2, blocking check">2</span>')
-    expect(html).toContain('class="tab-count" aria-label="258">258</span>')
+    expect(html).toContain('<span class="tab-count alert">2<span class="sr-only"> (blocking)</span></span>')
+    expect(html).toContain('<span class="tab-count">258</span>')
     expect(html).toContain('data-testid="inspect-data" aria-selected="false" aria-controls="inspect-panel-data" tabindex="-1">Data</button>')
+    // The region is "Inspect"; its tab list has its own name.
+    expect(html).toContain('role="tablist" aria-label="Inspector tabs"')
+  })
+
+  it('offers Expand for wide content and names Dock when expanded', () => {
+    const docked = renderToStaticMarkup(<Inspector tabs={tabs} active="frame" onSelect={() => undefined} onExpand={() => undefined} />)
+    expect(docked).toContain('aria-label="Expand inspector"')
+    const wide = renderToStaticMarkup(<Inspector tabs={tabs} active="frame" onSelect={() => undefined} expanded onExpand={() => undefined} />)
+    expect(wide).toContain('class="inspector expanded"')
+    expect(wide).toContain('aria-label="Dock inspector"')
   })
 
   it('is a sheet with a close button where one is asked for (phones), and can be hidden as a whole', () => {

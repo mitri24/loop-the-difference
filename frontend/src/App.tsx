@@ -5,7 +5,7 @@ import type { AladinInstance } from 'aladin-lite'
 import { createFrames, getFrameJob, getObservations, resolveName } from './api'
 import { AboutPanel } from './components/AboutPanel'
 import { compatiblePair, stampText, type BlinkLetter, type BlinkPair } from './blink'
-import { blockedReason, type CheckActionId } from './checkGuide'
+import { blockedReason, CANDIDATE_CAVEAT, type CheckActionId } from './checkGuide'
 import { BlinkPlayer } from './components/BlinkPlayer'
 import { CandidatePanel } from './components/CandidatePanel'
 import { TrackCheck } from './components/TrackCheck'
@@ -43,6 +43,7 @@ import { countSources, useSourceLayer } from './sourceLayer'
 import { targetText } from './targets'
 import type { FrameJob, ObservationSummary, ProperMotion } from './types'
 import { POLARIS, readEmbed, readQuery, toSearch, type TargetQuery, type ViewMode } from './url'
+import { PHONE, useMedia } from './useMedia'
 
 const INITIAL = readQuery(window.location.search)
 const EMBED = readEmbed(window.location.search)
@@ -53,8 +54,6 @@ const usesStacks = (mode: ViewMode) => mode !== 'exposures'
 // kind, one bounded panel). Only controls open on demand, as a sheet: target & options, sky layers, about.
 type Panel = 'target' | 'layers' | 'about'
 type InspectId = 'frame' | 'quality' | 'candidate' | 'measure' | 'coverage' | 'analysis' | 'data'
-// Tabs whose content starts slow or external lookups once opened.
-const ANALYSIS_TABS: InspectId[] = ['measure', 'coverage', 'analysis']
 const PANELS: { id: Panel; title: string; label: string }[] = [
   { id: 'target', title: 'Target & options', label: 'Options' },
   { id: 'layers', title: 'Sky layers', label: 'Layers' },
@@ -106,6 +105,11 @@ export default function App() {
   const [inspect, setInspect] = useState<InspectId>('frame')
   const [inspectOpen, setInspectOpen] = useState(false)
   const [inspectWide, setInspectWide] = useState(false)
+  const inspectToggle = useRef<HTMLButtonElement>(null)
+  const phone = useMedia(PHONE)
+  // The analysis service's archive search starts once its results are asked for: the Analysis tab, or one of its
+  // folded parts (Measure, Coverage) opened, or the sky layers.
+  const [analysisWanted, setAnalysisWanted] = useState(false)
   const controller = useRef<AbortController | null>(null)
   const shellRef = useRef<HTMLDivElement>(null)
   const lastRequest = useRef<{ query: TargetQuery; name?: string }>({ query: INITIAL ?? POLARIS })
@@ -134,18 +138,24 @@ export default function App() {
     else document.getElementById('sky-map')?.focus()
   }, [panel])
 
+  // Phones: the inspector under the images closes; the focus it held goes back to Inspect.
+  const closeInspect = useCallback(() => {
+    setInspectOpen(false)
+    if (document.activeElement?.closest('.inspector')) inspectToggle.current?.focus()
+  }, [])
+
   useEffect(() => {
     const onKey = (event: KeyboardEvent) => {
       if (event.key === 'Escape' &&
           !event.defaultPrevented && !(event.target instanceof HTMLSelectElement)) {
         if (panel) closePanel()
-        else if (inspectWide) setInspectWide(false)
-        else setInspectOpen(false)
+        else if (inspectWide && !phone) setInspectWide(false)
+        else if (inspectOpen && phone) closeInspect()
       }
     }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
-  }, [closePanel, panel, inspectWide])
+  }, [closePanel, panel, inspectWide, inspectOpen, phone, closeInspect])
 
   // The inspector hangs under the overview map card: the card's height as a CSS variable on the shell
   // (styles/shell.css). An expanded map has no card box (0 × 0): the last height stays for when it docks again.
@@ -189,6 +199,7 @@ export default function App() {
     setPick(null)
     // A new comparison starts with its own lookups: only the tab on screen counts as opened.
     setOpened(new Set())
+    setAnalysisWanted(false)
     // The images show the result; the target panel would cover them on small screens.
     setPanel((open) => (open === 'target' ? null : open))
     setName(targetName ?? targetText(requested))
@@ -368,11 +379,13 @@ export default function App() {
       return
     }
     const next = manifest && compatiblePair(manifest.frames)
-    if (next) setPairRequest({ pair: next })
-    else setShareStatus('No two images of this comparison share a wavelength across epochs. Choose another region or detector.')
+    if (!next) return setShareStatus('No two images of this comparison share a wavelength across epochs. Choose another region or detector.')
+    const same = pair?.a === next.a && pair?.b === next.b
+    setPairRequest({ pair: next })
+    setShareStatus(same ? 'A and B already share a wavelength: blinking them.' : 'A and B now share a wavelength: blinking them.')
   }
   const quick = useQuickSpectrum(manifest ? `${manifest.ra}` : null, manifest ? `${manifest.dec}` : null)
-  const tabsSeen = new Set([...opened, inspect])
+  const tabsSeen = new Set<InspectId>([...opened, ...(stage === 'investigate' && (!phone || inspectOpen) ? [inspect] : [])])
 
   const statusBlock = (
     <>
@@ -407,8 +420,12 @@ export default function App() {
       <p>{job ? 'Try another detector or sky region. Repeat coverage varies by position.' : 'Choose a target or use the map center to load real SPHEREx observations.'}</p>
       {!EMBED && <button type="button" onClick={useMapCenter} disabled={skyUnavailable || !sky}>Compare map center</button>}
     </div>)
+  // Only an action that lifts the block stands beside the reason: a compatible blink pair does not make the server's
+  // difference comparable, and an embed has no region to choose.
+  const liftAction = differenceReason?.action && differenceReason.action.id !== 'choose-compatible-pair'
+    && !(EMBED && differenceReason.action.id === 'choose-region') ? differenceReason.action : undefined
   const modeSwitch = <ModeSwitch value={query.mode} onChange={selectMode} differenceBlocked={differenceBlocked} disabled={busy && !job}
-    blockedAction={differenceReason?.action && { label: differenceReason.action.label, onClick: () => onCheckAction(differenceReason.action!.id) }} />
+    showReason={query.mode === 'difference'} blockedAction={liftAction && { label: liftAction.label, onClick: () => onCheckAction(liftAction.id) }} />
   const viewer = manifest && hasFrames && (
     <>
       {query.mode === 'difference' && differenceBlocked && <p className="notice">Difference unavailable: showing epoch stacks.</p>}
@@ -431,6 +448,7 @@ export default function App() {
   } : null, [summary, query.name, motion])
 
   if (EMBED) return <main className="embed-workspace">{modeSwitch}<LoadProgress busy={busy} job={job} />{statusBlock}{emptyState}{viewer}{frameDetails}
+    {hasFrames && <p className="caveat"><strong>{CANDIDATE_CAVEAT.title}.</strong> {CANDIDATE_CAVEAT.text}</p>}
     {evidence && <details className="disclosure" open={!!differenceBlocked}><summary>Quality checks · {checks.length}</summary>{evidence}</details>}
     <p className="muted">SPHEREx · {manifest?.collection ?? summary?.collection ?? 'IRSA archive'}</p></main>
 
@@ -470,7 +488,7 @@ export default function App() {
     { id: 'measure', label: 'Measure', content: <>
       {manifest ? <SpectrumChart quick={quick} centerUm={(frame ?? manifest.frames[0])?.wavelength_um} detector={manifest.detector} />
         : pending('chart', 'Loading the comparison…')}
-      {analysisTarget && <details className="disclosure">
+      {analysisTarget && <details className="disclosure" onToggle={(event) => { if (event.currentTarget.open) setAnalysisWanted(true) }}>
         <summary>Second method: aligned aperture spectrum</summary>
         <div ref={setSpectrumSlot} />
       </details>}
@@ -487,14 +505,17 @@ export default function App() {
         : job && !busy ? <div className="tab-loading" aria-busy="true"><p className="sr-only">Loading the observation history…</p>
           <Skeleton variant="chart" /><Skeleton variant="line" lines={2} /></div>
         : pending('chart', 'Loading the observation history…')}
-      {analysisTarget && <details className="disclosure">
+      {analysisTarget && <details className="disclosure" onToggle={(event) => { if (event.currentTarget.open) setAnalysisWanted(true) }}>
         <summary>Wavelength coverage & other archives</summary>
         <div ref={setCoverageSlot} />
       </details>}
     </> },
     { id: 'analysis', label: 'Analysis', content: <>
       <p className="muted">Blink and difference on one sky grid, from their own aligned sequence.</p>
-      {analysisTarget ? <div ref={setAlignedSlot} /> : loadFirst}
+      {analysisTarget ? <div ref={setAlignedSlot} />
+        : summaryFailed || (error && !busy) ? <p className="muted">The aligned analysis needs the observation history, which could not be loaded for this position.</p>
+        : job && !busy ? <div className="tab-loading" aria-busy="true"><p className="sr-only">Loading the observation history…</p><Skeleton variant="line" lines={3} /></div>
+        : pending('lines', 'Loading the comparison…')}
     </> },
     { id: 'data', label: 'Data', content: <>
       {manifest && hasFrames && <DataLinks manifest={manifest} frame={showDifference ? null : frame} />}
@@ -520,10 +541,10 @@ export default function App() {
             {modeSwitch}
             <LoadProgress busy={busy} job={job} />
             {/* Phones: the inspector is a bottom sheet opened from here. */}
-            <button type="button" className="inspect-toggle" aria-expanded={inspectOpen} aria-controls="inspector"
-              onClick={() => setInspectOpen((open) => !open)}>Inspect</button>
+            <button ref={inspectToggle} type="button" className="inspect-toggle" aria-expanded={inspectOpen} aria-controls="inspector"
+              onClick={() => (inspectOpen ? closeInspect() : setInspectOpen(true))}>Inspect</button>
           </div>
-          <div className="viewer-body" aria-busy={busy && !hasFrames}>
+          <div className="viewer-body">
             {statusBlock}
             {job && emptyState}
             {loadingViewer}
@@ -533,7 +554,7 @@ export default function App() {
         {/* Under the overview map and as wide as it (desktop), under the images when opened (phones): styles/shell.css.
             Kept mounted in Explore, so its charts, jobs and analysis parts keep their state. */}
         <Inspector id="inspector" tabs={tabs} active={inspect} onSelect={selectInspect} hidden={stage !== 'investigate'}
-          open={inspectOpen} onClose={() => setInspectOpen(false)} expanded={inspectWide} onExpand={setInspectWide} />
+          open={inspectOpen} onClose={closeInspect} expanded={inspectWide} onExpand={setInspectWide} />
         <SkyFrame overview={stage === 'investigate'}>
           <main id="sky-map" className="sky-stage" tabIndex={0} aria-label="Interactive sky map. Arrow keys pan; plus and minus zoom." onKeyDown={(event) => {
             if (event.target !== event.currentTarget || !sky) return
@@ -622,7 +643,7 @@ export default function App() {
       </FloatingPanel>
       {analysisTarget && <AnalysisHost key={`${analysisTarget.ra}:${analysisTarget.dec}:${query.band}:${query.fov}`}
         target={analysisTarget} detector={query.band} fovDegrees={query.fov} onPage={stage === 'investigate'}
-        active={(stage === 'investigate' && ANALYSIS_TABS.some((id) => tabsSeen.has(id))) || panel === 'layers'}
+        active={(stage === 'investigate' && (analysisWanted || tabsSeen.has('analysis'))) || panel === 'layers'}
         sky={sky} onSkyCaption={setAnalysisSkyCaption}
         slots={{ coverage: coverageSlot, aligned: alignedSlot, spectrum: spectrumSlot, footprints: footprintsSlot }} />}
 

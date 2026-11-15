@@ -632,9 +632,10 @@ test('fixture: the target, detector and blocked difference are named once', asyn
   const head = page.locator('.viewer-head')
   await expect(head).not.toContainText('37.954542')
   await expect(head).not.toContainText('D6')
-  // A blocked difference: the greyed tab and its reason, without "Difference unavailable" again.
+  // A blocked difference: the greyed tab carries its reason; the head stays quiet while Difference is not asked for.
   await expect(page.getByRole('radio', { name: 'Difference' })).toBeDisabled()
-  await expect(head).toContainText('Difference needs observations from at least two epochs.')
+  await expect(page.getByRole('radio', { name: 'Difference' })).toHaveAttribute('title', /Difference needs observations from at least two epochs\./)
+  await expect(head).not.toContainText('Difference needs')
   await expect(head).not.toContainText('unavailable')
   // One way into the observation history; its count stands on the tab, not again in the panel.
   const trigger = page.getByTestId('inspect-coverage')
@@ -792,6 +793,8 @@ test('fixture: the overview map expands over the page without moving anything, d
     const frame = await box('.sky-area.overview')
     const viewer = await box('.viewer')
     await expand.click()
+    // The expanded map measures the viewer head (its top edge) one render later.
+    await page.evaluate(() => new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve))))
     const large = (await canvas.boundingBox())!
     expect(large.width, `${width}px`).toBeGreaterThan(docked.width * 1.5)
     // Nothing moves, the bar keeps the map's corner, and the map starts under the viewer head (mode switch, sections).
