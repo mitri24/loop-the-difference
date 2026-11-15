@@ -210,18 +210,23 @@ export function BlinkPlayer({
             show(next)
             buttons[next]?.focus()
           }}>
-            {frames.map((f, i) => (
-              <article className={`observation-card${i === index ? ' current' : ''}`} key={`${f.url}-${i}`}>
-                <button type="button" className="observation-preview" aria-pressed={i === index}
-                  aria-label={`Show observation ${i + 1}, ${utcMinute(f.date)}`}
-                  title={`${utcMinute(f.date)} · D${f.detector} · ${lambdaText(f)}`}
-                  onClick={() => show(i)}>
-                  <LazyThumbnail src={f.url} alt={`SPHEREx observation ${i + 1}`} />
-                  <i className="thumbnail-centre" aria-hidden="true" />
-                  <span>{i + 1}{pair?.a === i ? ' · A' : ''}{pair?.b === i ? ' · B' : ''}</span>
-                </button>
-              </article>
-            ))}
+            {frames.map((f, i) => {
+              // A and B wear their letter as a badge and a frame in their colour, as in the table and on the image.
+              const role = pair?.a === i ? 'A' : pair?.b === i ? 'B' : null
+              return (
+                <article className={`observation-card${i === index ? ' current' : ''}${role ? ` is-${role.toLowerCase()}` : ''}`} key={`${f.url}-${i}`}>
+                  <button type="button" className="observation-preview" aria-pressed={i === index}
+                    aria-label={`Show observation ${i + 1}, ${utcMinute(f.date)}${role ? `, ${role}` : ''}`}
+                    title={`${role ? `${role} · ` : ''}${utcMinute(f.date)} · D${f.detector} · ${lambdaText(f)}`}
+                    onClick={() => show(i)}>
+                    <LazyThumbnail src={f.url} alt={`SPHEREx observation ${i + 1}`} />
+                    <i className="thumbnail-centre" aria-hidden="true" />
+                    {role && <b className={`ab-badge ${role.toLowerCase()}`} aria-hidden="true">{role}</b>}
+                    <span>{i + 1}</span>
+                  </button>
+                </article>
+              )
+            })}
           </div>
         </section>
       )}
@@ -254,7 +259,8 @@ export function BlinkPlayer({
             title={`Possible track, search area ${SEARCH_AREA_LABEL}`}
           />
         )}
-        <span className="stamp">{stampText(frame, letter)}</span>
+        {/* The letter in its colour, as on the thumbnails and in the table; the text reads "A · date". */}
+        <span className="stamp">{letter ? <><b className={`stamp-letter ${letter.toLowerCase()}`}>{letter}</b> · {utcMinute(frame.date)}</> : stampText(frame, null)}</span>
         <CheckBadge checks={checksForFrame(checks, frame)} />
       </div>
 
