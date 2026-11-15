@@ -438,3 +438,33 @@ def test_a_moving_allwise_source_matches_where_it_is_at_the_frame_date():
 
     assert label(detections, grid, shape, MJD, [], moved)[0].catalog_id == "AllWISE J1"
     assert label(detections, grid, shape, MJD, [], [star])[0].match == "none"
+
+
+@pytest.mark.parametrize("catwise_fails", [False, True])
+def test_field_catalogs_applies_catwise_motion_and_preserves_allwise_on_failure(
+    monkeypatch, tmp_path, catwise_fails
+):
+    monkeypatch.setattr(sources, "query_gaia", lambda *_: GAIA)
+    monkeypatch.setattr(sources, "query_allwise", lambda *_: ALLWISE)
+
+    def query(*_):
+        if catwise_fails:
+            raise ValueError("malformed catalogue response")
+        return CATWISE
+
+    monkeypatch.setattr(sources, "query_catwise", query)
+    gaia, allwise = field_catalogs(RA, DEC, SIZE_DEG, tmp_path)
+    assert gaia == GAIA
+    star = next(s for s in allwise if s.catalog_id == "AllWISE J085510.74-071442.5")
+    assert (star.motion is None) == catwise_fails
+    assert len(allwise) == len(ALLWISE)
+
+
+@pytest.mark.parametrize(
+    "column,value",
+    [("pmra", np.nan), ("pmdec", np.inf), ("sigpmra", 0), ("sigpmdec", -1), ("ra", np.nan)],
+)
+def test_catwise_ignores_invalid_motion_rows(column, value):
+    table = Table.read(FIXTURES / "catwise_wise0855_cone.xml", format="votable")
+    table[column] = np.full(len(table), float(value))
+    assert catwise_stars(table) == []

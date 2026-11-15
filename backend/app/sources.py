@@ -252,7 +252,13 @@ def catwise_stars(table: Table) -> list[CatalogStar]:
         if any(np.ma.is_masked(value) for value in values):
             continue
         pmra, pmdec, sig_ra, sig_dec, mjd = (float(value) for value in values)
-        if abs(pmra) < 3 * sig_ra and abs(pmdec) < 3 * sig_dec:
+        if (
+            not all(math.isfinite(value) for value in (pmra, pmdec, sig_ra, sig_dec, mjd))
+            or sig_ra <= 0
+            or sig_dec <= 0
+            or not (math.isfinite(float(row["ra"])) and math.isfinite(float(row["dec"])))
+            or (abs(pmra) < 3 * sig_ra and abs(pmdec) < 3 * sig_dec)
+        ):
             continue
         motion = ProperMotion(
             source_id=str(row["source_name"]),
