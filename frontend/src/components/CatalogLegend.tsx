@@ -16,7 +16,7 @@ const LABELS: Record<LayerKey, { name: string; shape: string; what: string }> = 
   gaia: { name: 'Gaia DR3', shape: '○', what: 'stars' },
   wise: { name: 'AllWISE', shape: '□', what: 'red sources' },
   simbad: { name: 'SIMBAD', shape: '△', what: 'objects' },
-  skybot: { name: 'SkyBoT', shape: '◇', what: 'asteroids' },
+  skybot: { name: 'SkyBoT', shape: '◇', what: 'asteroids, seen from the Earth’s centre' },
 }
 const KEYS = Object.keys(LABELS) as LayerKey[]
 

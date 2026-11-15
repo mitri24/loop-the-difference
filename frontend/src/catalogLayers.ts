@@ -29,9 +29,10 @@ export const simbadUrl = (ra: number, dec: number, rDeg: number) =>
     `SELECT TOP ${MAX_SOURCES} main_id, ra, dec, otype, pmra, pmdec FROM basic LEFT JOIN allfluxes ON basic.oid = allfluxes.oidref WHERE CONTAINS(POINT('ICRS', ra, dec), CIRCLE('ICRS', ${ra}, ${dec}, ${rDeg})) = 1 ORDER BY V, G`,
   )}`
 
-// Asteroids move: the epoch is the shown frame's time, passed as Julian Date.
+// Asteroids move: the epoch is the shown frame's time, passed as Julian Date. SkyBoT has no
+// SPHEREx observer: like the mark check (knownObjects.ts) it answers for the Earth's centre.
 export const skybotUrl = (ra: number, dec: number, rDeg: number, mjd: number) =>
-  `https://ssp.imcce.fr/webservices/skybot/api/conesearch.php?-ep=${mjd + 2400000.5}&-ra=${ra}&-dec=${dec}&-rd=${rDeg}&-mime=votable&-output=object&-from=LoopTheDifference`
+  `https://ssp.imcce.fr/webservices/skybot/api/conesearch.php?-ep=${mjd + 2400000.5}&-ra=${ra}&-dec=${dec}&-rd=${rDeg}&-mime=votable&-output=object&-observer=500&-from=LoopTheDifference`
 
 /** Query radius in degrees: a bit wider than the view, never smaller than the frames, at most 1°. */
 export const catalogRadius = (fovDeg: number, sizeDeg: number) =>

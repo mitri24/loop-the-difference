@@ -1,10 +1,13 @@
 """Science pipeline on synthetic data (no network)."""
 
+from pathlib import Path
+
+import httpx
 import numpy as np
 import pytest
 
-from app import analysis, imaging
-from app.schemas import Observation, SolarSystemObject, Target
+from app import analysis, catalogs, imaging
+from app.schemas import Check, Observation, SolarSystemObject, Target
 
 from .conftest import make_frame, star_field
 
@@ -32,6 +35,10 @@ STARS = [
     (52, 20, 3.5),
     (18, 24, 2.5),
 ]
+
+
+async def no_wise(*args, **kw):
+    return [], []
 
 
 def test_registration_recovers_known_shift():
@@ -71,7 +78,7 @@ async def test_difference_finds_a_mover_and_blocks_mismatch(monkeypatch):
         return []
 
     monkeypatch.setattr(analysis, "gaia_cone", no_sources)
-    monkeypatch.setattr(analysis, "allwise_cone", no_sources)
+    monkeypatch.setattr(analysis, "wise_cone", no_wise)
     res = await analysis.difference(a.meta.id, b.meta.id, force=False)
     assert res.comparable
     pos = [r for r in res.residuals if r.significance > 0]
@@ -146,11 +153,61 @@ async def test_failed_catalogue_degrades_with_warning(monkeypatch):
         return []
 
     monkeypatch.setattr(analysis, "gaia_cone", boom)
-    monkeypatch.setattr(analysis, "allwise_cone", none)
+    monkeypatch.setattr(analysis, "wise_cone", no_wise)
     res = await analysis.difference(a.meta.id, b.meta.id, force=False)
     assert any(c.code == "gaia_unavailable" and c.severity == "warn" for c in res.checks)
     assert res.residuals and res.residuals[0].kind == "unknown"
     assert "asteroid/comet check" in res.residuals[0].explanation
+
+
+@pytest.mark.asyncio
+async def test_catwise_sources_without_gaia_are_moving_or_red_at_the_frame_epoch():
+    """Recorded CatWISE2020 rows around WISE 0855−0714 (8″/yr, no Gaia counterpart)."""
+    votable = (Path(__file__).parent / "data" / "catwise_wise0855_sample.xml").read_bytes()
+    catalogs._CATALOG_CACHE.clear()
+    transport = httpx.MockTransport(lambda request: httpx.Response(200, content=votable))
+    async with httpx.AsyncClient(transport=transport) as client:
+        wise = await catalogs.catwise_cone(133.786, -7.2453, 0.01, client)
+    grid = imaging.make_grid(133.762, -7.242, 4.0)
+    a = _stored(np.zeros((grid.npix, grid.npix)), grid, mjd=60800.0)
+    b = _stored(np.zeros((grid.npix, grid.npix)), grid, mjd=61164.0)
+    # J085507.96−071439.3 moved to frame A's epoch, and a source without significant motion.
+    mover = grid.wcs.world_to_pixel_values(133.76189, -7.24153)
+    still = grid.wcs.world_to_pixel_values(133.7894629, -7.2508305)
+    peaks = [(float(mover[0]), float(mover[1]), 9.0), (float(still[0]), float(still[1]), -7.0)]
+    refs = analysis.References(gaia=[], wise=wise, sso_a=None, sso_b=None)
+
+    moving, red = analysis._vet_residuals(peaks, a, b, refs)
+
+    assert moving.kind == "moving_star" and moving.known_source.startswith("CatWISE2020 J08550")
+    assert "expected to move 1.3 px between the frames" in moving.explanation
+    assert red.kind == "red_source" and red.known_source == "CatWISE2020 J085509.47-071502.9"
+    assert "CatWISE2020 sees move less than half a pixel" in red.explanation
+
+
+@pytest.mark.asyncio
+async def test_the_wise_fallback_and_failure_reach_the_difference_checks(monkeypatch):
+    grid = imaging.make_grid(10.0, 10.0, 6.0)
+    fallback = Check(code="catwise_unavailable", severity="warn", title="t", detail="d")
+
+    async def none(*args, **kw):
+        return []
+
+    async def allwise_only(*args, **kw):
+        return [], [fallback]
+
+    async def down(*args, **kw):
+        raise httpx.ConnectError("down")
+
+    monkeypatch.setattr(analysis, "gaia_cone", none)
+    monkeypatch.setattr(analysis, "wise_cone", allwise_only)
+    refs, checks = await analysis._fetch_static_references(grid)
+    assert checks == [fallback] and refs.wise == []
+
+    monkeypatch.setattr(analysis, "wise_cone", down)
+    refs, checks = await analysis._fetch_static_references(grid)
+    assert [(c.code, c.severity) for c in checks] == [("wise_unavailable", "warn")]
+    assert "ConnectError" in checks[0].detail and refs.wise == []
 
 
 @pytest.mark.asyncio
@@ -167,7 +224,7 @@ async def test_solar_system_check_explains_residual(monkeypatch):
         return []
 
     monkeypatch.setattr(analysis, "gaia_cone", none)
-    monkeypatch.setattr(analysis, "allwise_cone", none)
+    monkeypatch.setattr(analysis, "wise_cone", no_wise)
     res = await analysis.difference(a.meta.id, b.meta.id, force=False)
     ra, dec = (float(v) for v in grid.wcs.pixel_to_world_values(30, 30))
 

@@ -29,7 +29,8 @@ class Settings(BaseSettings):
     # --- External services ---------------------------------------------------------
     irsa_sia_url: str = "https://irsa.ipac.caltech.edu/SIA"
     irsa_base_url: str = "https://irsa.ipac.caltech.edu"
-    irsa_scs_url: str = "https://irsa.ipac.caltech.edu/SCS"
+    # Gator, like backend/app/sources.py: IRSA's cone search (SCS) answered 502 for hours.
+    irsa_gator_url: str = "https://irsa.ipac.caltech.edu/cgi-bin/Gator/nph-query"
     gaia_tap_url: str = "https://gea.esac.esa.int/tap-server/tap/sync"
     sesame_url: str = "https://cds.unistra.fr/cgi-bin/nph-sesame/-oxp/SNV"
     # Canadian Astronomy Data Centre (NRC Canada): CAOM-2 TAP, file locator, DataLink.

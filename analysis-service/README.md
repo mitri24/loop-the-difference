@@ -20,7 +20,8 @@ A single Uvicorn process owns the imported pipeline's in-memory jobs/frame regis
 - Select matched-wavelength visits, or explicitly use all varying-wavelength exposures.
 - Pairwise comparability checks, subpixel registration and photometric scaling.
 - A−B residual/significance maps, empirical noise rescaling, and |S|>5 local maxima.
-- Context checks against Gaia and AllWISE; optional JPL asteroid/comet job.
+- Context checks against Gaia DR3 and CatWISE2020 (AllWISE when IRSA does not deliver it); optional
+  JPL asteroid/comet job.
 - PSF-matched significance (ZOGY) with the SPHEREx ePSF; without an ePSF, the direct A−B significance.
 - Aperture spectrum with variance errors and quality flags, corrected to total flux with the ePSF.
 - CADC context archive search and release discovery/refresh.

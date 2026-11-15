@@ -3,12 +3,17 @@
 Second pass only: the first (two-body) pass answers in about 20 s but lists coarse candidates
 with position errors of degrees (none of 3338 lay in a 0.2° field); the numerically integrated
 second pass took 60–110 s per epoch when measured and lists positions to 0.1″.
-Observer = geocentre (MPC code 500), an approximation: SPHEREx orbits about 700 km up, 7,000 km
-from the geocentre, which shifts main-belt asteroids by 5–10″ (1–2 SPHEREx pixels) and close
-near-Earth objects by arcminutes.
+Observer = SPHEREx: JPL Horizons gives its geocentric position at the epoch's time (2.5 km from
+the X_SC/Y_SC/Z_SC of the frame's FITS header when compared), passed to SBIdent as `xobs`. Its
+velocity stays zero, so JPL's rates remain the geocentric ones the markers move along for hours;
+SPHEREx's own 7.5 km/s would add up to ~25″/h for main-belt asteroids, reversing every 49 min.
+Without that position an epoch is looked up for the geocentre (MPC code 500), as its source_url
+shows: SPHEREx is 7,000 km from it, which shifts main-belt asteroids typically by a few ″, up to
+~10″, and close near-Earth objects by arcminutes.
 """
 
 import hashlib
+import json
 import math
 import re
 from concurrent.futures import ThreadPoolExecutor, as_completed
@@ -35,9 +40,13 @@ from app.models import SmallBodiesJob, SmallBodiesRequest, SmallBody, SmallBodyE
 from app.tasks import _report
 
 SBIDENT_URL = "https://ssd-api.jpl.nasa.gov/sb_ident.api"
+HORIZONS_URL = "https://ssd.jpl.nasa.gov/api/horizons.api"
+# "SPHEREx (spacecraft)" in JPL Horizons; its ephemeris starts at launch (2025-03-12).
+SPHEREX_HORIZONS_ID = "-163182"
 # Bump whenever the parsing changes: job ids and cache entries change with it.
-VERSION = 1
+VERSION = 2
 TIMEOUT = httpx.Timeout(180.0, connect=10.0)
+HORIZONS_TIMEOUT = httpx.Timeout(60.0, connect=10.0)
 # JPL answered three parallel second passes without trouble (66–113 s).
 PARALLEL_EPOCHS = 3
 JOB_TIMEOUT_S = 900
@@ -51,6 +60,8 @@ COLUMNS = (
     'Dec rate ("/h)',
 )
 _JOB_ID = re.compile(r"^[0-9a-f]{16}$")
+# Geocentric ICRF position in km.
+Position = tuple[float, float, float]
 
 router = APIRouter()
 SettingsDep = Annotated[Settings, Depends(get_settings)]
@@ -67,14 +78,21 @@ def job_id_for(ra: float, dec: float, size_deg: float, mjds: list[float]) -> str
     return hashlib.sha256(key.encode()).hexdigest()[:16]
 
 
-def query_params(ra: float, dec: float, size_deg: float, mjd: float) -> dict[str, str]:
+def query_params(
+    ra: float, dec: float, size_deg: float, mjd: float, spherex: Position | None = None
+) -> dict[str, str]:
     """An RA/Dec box around the frame; `parse_sbident` keeps what lies on the frame itself."""
     half = size_deg / 2 * 1.01
     # RA widths are coordinate degrees; the square is widest at its edge nearest the pole.
     ra_half = min(180.0, half / math.cos(math.radians(min(abs(dec) + half, 90.0))))
     dec_text = Angle(dec, u.deg).to_string(unit=u.deg, sep="-", precision=1, pad=True)
+    observer = (
+        {"xobs": ",".join(f"{km:.3f}" for km in spherex) + ",0,0,0"}
+        if spherex
+        else {"mpc-code": "500"}
+    )
     return {
-        "mpc-code": "500",
+        **observer,
         "obs-time": f"{mjd + 2400000.5:.5f}",
         "fov-ra-center": Angle(ra, u.deg).to_string(unit=u.hour, sep="-", precision=2, pad=True),
         # SBIdent wants M instead of a minus sign.
@@ -138,11 +156,73 @@ def cache_path(cache_dir: Path, source_url: str) -> Path:
     return cache_dir / "smallbodies" / f"{key}.json"
 
 
+def _write(path: Path, text: str) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    partial = path.with_suffix(".tmp")
+    partial.write_text(text)
+    partial.replace(path)
+
+
+def horizons_params(mjds: list[float]) -> dict[str, str]:
+    """SPHEREx's geometric geocentric ICRF position (km) at the epoch times (UTC), as CSV."""
+    return {
+        "format": "json",
+        "COMMAND": f"'{SPHEREX_HORIZONS_ID}'",
+        "OBJ_DATA": "'NO'",
+        "MAKE_EPHEM": "'YES'",
+        "EPHEM_TYPE": "'VECTORS'",
+        "CENTER": "'500@399'",
+        "REF_PLANE": "'FRAME'",
+        "REF_SYSTEM": "'ICRF'",
+        "OUT_UNITS": "'KM-S'",
+        "VEC_TABLE": "'1'",
+        "VEC_CORR": "'NONE'",
+        "CSV_FORMAT": "'YES'",
+        "TIME_TYPE": "'UT'",
+        "TLIST_TYPE": "'MJD'",
+        "TLIST": " ".join(f"'{mjd:.5f}'" for mjd in mjds),
+    }
+
+
+def parse_horizons(payload: dict) -> dict[float, Position]:
+    """Position per epoch time (MJD to 1e-5 d); Horizons answers a failure in `error`."""
+    if "error" in payload:
+        raise ValueError(payload["error"])
+    table = payload["result"].split("$$SOE", 1)[1].split("$$EOE", 1)[0]
+    positions = {}
+    for line in table.strip().splitlines():
+        jd, _, x, y, z = (cell.strip() for cell in line.split(",")[:5])
+        positions[round(float(jd) - 2400000.5, 5)] = (float(x), float(y), float(z))
+    return positions
+
+
+def spherex_positions(mjds: list[float], cache_dir: Path) -> dict[float, Position]:
+    """SPHEREx's positions, cached once JPL Horizons answered (the SBIdent cache keys contain
+    them); an epoch time without one is looked up for the geocentre."""
+    params = horizons_params(mjds)
+    cached = cache_path(cache_dir, f"{HORIZONS_URL}?{urlencode(params)}")
+    if cached.is_file():
+        return {mjd: tuple(km) for mjd, km in json.loads(cached.read_text())}
+    try:
+        response = httpx.get(HORIZONS_URL, params=params, timeout=HORIZONS_TIMEOUT)
+        response.raise_for_status()
+        positions = parse_horizons(response.json())
+    except (httpx.HTTPError, ValueError, KeyError, IndexError):
+        return {}
+    _write(cached, json.dumps(list(positions.items())))
+    return positions
+
+
 def epoch_bodies(
-    ra: float, dec: float, size_deg: float, mjd: float, cache_dir: Path
+    ra: float,
+    dec: float,
+    size_deg: float,
+    mjd: float,
+    cache_dir: Path,
+    spherex: Position | None = None,
 ) -> SmallBodyEpoch:
     """One SBIdent query, cached on disk once it succeeded; a failure becomes the epoch's error."""
-    params = query_params(ra, dec, size_deg, mjd)
+    params = query_params(ra, dec, size_deg, mjd, spherex)
     source_url = f"{SBIDENT_URL}?{urlencode(params)}"
     cached = cache_path(cache_dir, source_url)
     if cached.is_file():
@@ -166,10 +246,7 @@ def epoch_bodies(
     except (ValueError, KeyError, IndexError):
         epoch.error = "JPL SBIdent answered in an unexpected format"
         return epoch
-    cached.parent.mkdir(parents=True, exist_ok=True)
-    partial = cached.with_suffix(".tmp")
-    partial.write_text(epoch.model_dump_json())
-    partial.replace(cached)
+    _write(cached, epoch.model_dump_json())
     return epoch
 
 
@@ -177,8 +254,12 @@ def find_small_bodies(ra: float, dec: float, size_deg: float, mjds: list[float])
     """Worker job: every epoch's known small bodies; epochs run in parallel, in time order."""
     cache_dir = get_settings().cache_dir
     _report(0, len(mjds))
+    positions = spherex_positions(mjds, cache_dir)
     with ThreadPoolExecutor(max_workers=PARALLEL_EPOCHS) as pool:
-        futures = [pool.submit(epoch_bodies, ra, dec, size_deg, mjd, cache_dir) for mjd in mjds]
+        futures = [
+            pool.submit(epoch_bodies, ra, dec, size_deg, mjd, cache_dir, positions.get(mjd))
+            for mjd in mjds
+        ]
         for done, _ in enumerate(as_completed(futures), start=1):
             _report(done, len(mjds))
     return {"epochs": [future.result().model_dump() for future in futures]}
@@ -187,12 +268,15 @@ def find_small_bodies(ra: float, dec: float, size_deg: float, mjds: list[float])
 def submit(
     redis: Redis, settings: Settings, ra: float, dec: float, size_deg: float, mjds: list[float]
 ) -> SmallBodiesJob:
-    """Like jobs.submit_spectrum: a finished lookup is reused unless an epoch failed."""
+    """Like jobs.submit_spectrum: a finished lookup is reused unless an epoch failed or had to
+    fall back to the geocentre."""
     job_id = job_id_for(ra, dec, size_deg, mjds)
     current = status(redis, job_id)
     if current.status in ("queued", "started"):
         return current
-    if current.status == "finished" and all(e.error is None for e in current.epochs):
+    if current.status == "finished" and all(
+        e.error is None and re.search(r"[?&]xobs=", e.source_url) for e in current.epochs
+    ):
         return current
     queue = Queue(jobs.SLOW_QUEUE, connection=redis)
     if queue.count > settings.max_queued:

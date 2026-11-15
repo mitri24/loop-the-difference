@@ -21,7 +21,7 @@ from app.schemas import Observation, Target
 from app.spectral import WaveTable
 
 from .conftest import make_frame, star_field, tan_wcs
-from .test_pipeline_offline import STARS, _stored
+from .test_pipeline_offline import STARS, _stored, no_wise
 
 RA, DEC = 133.795, -7.245
 WAVE = WaveTable(
@@ -298,7 +298,7 @@ FLUX = [(x, y, 10 * a) for x, y, a in STARS]
 @pytest.mark.asyncio
 async def test_zogy_finds_a_transient_between_frames_with_different_psfs(monkeypatch):
     monkeypatch.setattr(analysis, "gaia_cone", _no_sources)
-    monkeypatch.setattr(analysis, "allwise_cone", _no_sources)
+    monkeypatch.setattr(analysis, "wise_cone", no_wise)
     grid = imaging.make_grid(10.0, 10.0, 6.0)
     a = _frame(_field(grid, [*FLUX, (30, 40, 1.0)], 1.6, 11), grid, 1.6, id="j" * 20)
     b = _frame(_field(grid, FLUX, 2.4, 12), grid, 2.4, id="k" * 20, mjd=61270.0, visit=1)
@@ -321,7 +321,7 @@ async def test_a_star_whose_psf_changed_leaves_no_residual_with_zogy_but_with_th
     monkeypatch,
 ):
     monkeypatch.setattr(analysis, "gaia_cone", _no_sources)
-    monkeypatch.setattr(analysis, "allwise_cone", _no_sources)
+    monkeypatch.setattr(analysis, "wise_cone", no_wise)
     grid = imaging.make_grid(10.0, 10.0, 6.0)
     image_a, image_b = _field(grid, FLUX, 1.6, 13), _field(grid, FLUX, 2.4, 14)
     a = _frame(image_a, grid, 1.6, id="l" * 20)
@@ -396,7 +396,7 @@ async def test_after_alignment_zogy_cancels_stars_at_any_rotation_and_finds_the_
     monkeypatch, rotations, seed
 ):
     monkeypatch.setattr(analysis, "gaia_cone", _no_sources)
-    monkeypatch.setattr(analysis, "allwise_cone", _no_sources)
+    monkeypatch.setattr(analysis, "wise_cone", no_wise)
     a, b, stars = _aligned_pair(rotations, seed, transient=1.0)
     plain = [
         dataclasses.replace(f, psf=None, meta=f.meta.model_copy(update={"id": f"{f.meta.id}d"}))
