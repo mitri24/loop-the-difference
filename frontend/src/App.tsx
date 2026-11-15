@@ -36,7 +36,7 @@ import { sliceForDetector } from './sky'
 import { sliceText, useCubeWavelengths, useSkySlice } from './skyCube'
 import { useSmallBodyLayer } from './smallBodyLayer'
 import { countSources, useSourceLayer } from './sourceLayer'
-import { CHALLENGE_TARGETS } from './targets'
+import { targetText } from './targets'
 import type { FrameJob, ObservationSummary, ProperMotion } from './types'
 import { POLARIS, readEmbed, readQuery, toSearch, type TargetQuery, type ViewMode } from './url'
 
@@ -95,17 +95,22 @@ export default function App() {
   const [stage, setStage] = useState<'explore' | 'investigate'>(INITIAL ? 'investigate' : 'explore')
   const [pick, setPick] = useState<{ ra: number; dec: number } | null>(null)
   const [name, setName] = useState('')
-  const [targetLabel, setTargetLabel] = useState(INITIAL ? INITIAL.name ?? 'Linked sky region' : 'Polaris')
   const [shareStatus, setShareStatus] = useState('')
   const controller = useRef<AbortController | null>(null)
   const lastRequest = useRef<{ query: TargetQuery; name?: string }>({ query: INITIAL ?? POLARIS })
+  // The search text that stands for the comparison on screen; null once the field is edited or a new run starts.
+  const searchShows = useRef<string | null>(null)
   const panelHeading = useRef<HTMLHeadingElement>(null)
   const panelTrigger = useRef<HTMLButtonElement | null>(null)
 
   const closePanel = useCallback(() => {
+    if (!panel) return
     setPanel(null)
-    panelTrigger.current?.focus()
-  }, [])
+    const trigger = panelTrigger.current
+    // A trigger in the hidden viewer (Explore) cannot take the focus back; the sky map can.
+    if (trigger && trigger.offsetParent !== null) trigger.focus()
+    else document.getElementById('sky-map')?.focus()
+  }, [panel])
 
   useEffect(() => {
     const onKey = (event: KeyboardEvent) => {
@@ -133,6 +138,7 @@ export default function App() {
     const signal = current.signal
     const stale = () => signal.aborted || controller.current !== current
     lastRequest.current = { query: requested, name: targetName }
+    searchShows.current = null
     setBusy(true)
     setCancelled(false)
     setError(null)
@@ -145,7 +151,7 @@ export default function App() {
     setPick(null)
     // The images show the result; the target panel would cover them on small screens.
     setPanel((open) => (open === 'target' ? null : open))
-    setName(targetName ?? requested.name ?? '')
+    setName(targetName ?? targetText(requested))
     setStatus(targetName ? `Finding ${targetName}…` : 'Searching SPHEREx observations…')
     try {
       let next = requested
@@ -157,9 +163,9 @@ export default function App() {
       }
       if (stale()) return
       setQuery(next)
+      searchShows.current = targetText(next)
       setDraft(next)
       setMotion(nextMotion)
-      setTargetLabel(next.name ?? CHALLENGE_TARGETS.find((t) => 'ra' in t && t.ra === next.ra && t.dec === next.dec)?.label ?? 'Selected sky region')
       window.history.replaceState(null, '', toSearch(next, EMBED))
       // A name in a shared link only adds the Gaia proper motion; the frames follow the coordinates.
       if (!targetName && next.name && !knownMotion) {
@@ -230,7 +236,12 @@ export default function App() {
     const same = next.ra === query.ra && next.dec === query.dec
     void run(same ? next : { ...next, name: undefined }, undefined, same ? motion ?? undefined : undefined)
   }, [run, query, motion])
-  const find = useCallback((target: string, base: TargetQuery) => void run(base, target), [run])
+  // An unedited search field stands for the comparison on screen, also when it shows a label or coordinates:
+  // compare that position again (e.g. with the detector chosen next to it) instead of resolving the text as a name.
+  const find = useCallback((target: string, base: TargetQuery) => {
+    if (target === searchShows.current) show({ ...base, ra: query.ra, dec: query.dec })
+    else void run(base, target)
+  }, [run, query, show])
   const cancel = () => {
     controller.current?.abort()
     setBusy(false)
@@ -278,7 +289,7 @@ export default function App() {
   const manifest = job?.manifest
   const checks = manifest ? manifestChecks(manifest) : []
   const differenceBlocked = manifest && (manifest.epochs < 2 || hasBlocker(checks, 'difference'))
-    ? manifest.epochs < 2 ? 'At least two epochs are needed.' : 'Difference unavailable. See quality checks.'
+    ? manifest.epochs < 2 ? 'At least two epochs are needed.' : 'Blocked by a quality check.'
     : undefined
   const showDifference = query.mode === 'difference' && !differenceBlocked && (manifest?.differences.length ?? 0) > 0
   const hasFrames = (manifest?.frames.length ?? 0) > 0
@@ -344,7 +355,7 @@ export default function App() {
   const modeSwitch = <ModeSwitch value={query.mode} onChange={selectMode} differenceBlocked={differenceBlocked} disabled={busy && !job} />
   const viewer = manifest && hasFrames && (
     <>
-      {query.mode === 'difference' && differenceBlocked && <p className="notice">Difference unavailable. Showing epoch stacks. Open Evidence & checks for the reason.</p>}
+      {query.mode === 'difference' && differenceBlocked && <p className="notice">Difference unavailable: showing epoch stacks.</p>}
       {query.mode === 'difference' && !differenceBlocked && !showDifference && <p className="notice">No difference image is available yet. Epoch stacks are shown below.</p>}
       {showDifference ? <DifferenceView key={job.job_id} manifest={manifest} />
         : <BlinkPlayer key={`${job.job_id}-${manifest.preview ? manifest.frames[0]?.url : 'final'}`} frames={manifest.frames} checks={checks} grid={manifest} motion={motion} predictions={predictions}
@@ -366,7 +377,8 @@ export default function App() {
   if (EMBED) return <main className="embed-workspace">{modeSwitch}{statusBlock}{emptyState}{viewer}{qualityChecks}{scienceNote}<p className="muted">SPHEREx · {manifest?.collection ?? summary?.collection ?? 'IRSA archive'}</p></main>
 
   const loadFirst = <p className="muted">Load a comparison first: choose a target in the search bar.</p>
-  const dockItems = PANELS.map((item) => ({ ...item,
+  // Observation history opens from the viewer head, next to the images it describes; the dock does not repeat it.
+  const dockItems = PANELS.filter((item) => item.id !== 'timeline').map((item) => ({ ...item,
     count: item.id === 'candidate' ? candidate.marks.length : item.id === 'evidence' ? checks.length : undefined,
     alert: item.id === 'evidence' && checks.some((check) => check.severity === 'blocker' || check.severity === 'error') }))
   const current = PANELS.find((item) => item.id === panel)
@@ -375,13 +387,12 @@ export default function App() {
   return (
     <div className="shell" data-testid="planet-x-shell">
       <a className="skip-link" href="#sky-map">Skip to the sky map</a>
-      <SearchBar onDraftChange={setDraft} value={name} onChange={setName} draft={draft} busy={busy} onShow={show} onFind={find} onShare={() => void share()} />
+      <SearchBar onDraftChange={setDraft} value={name} onChange={(value) => { searchShows.current = null; setName(value) }} draft={draft} busy={busy} onShow={show} onFind={find} onShare={() => void share()} />
 
       <div className={`stage ${stage}`}>
         <section className="viewer" aria-label="SPHEREx images of the region" hidden={stage !== 'investigate'}>
           <div className="viewer-head">
             <button type="button" className="back-button" onClick={() => setStage('explore')}><span aria-hidden="true">←</span> Back to sky</button>
-            <div className="target-summary"><strong>{targetLabel}</strong><span>D{query.band} · {query.fov}° region</span></div>
             {modeSwitch}
             {summary && <button type="button" className="history-trigger" aria-expanded={panel === 'timeline'}
               aria-controls="floating-panel" onClick={(event) => togglePanel('timeline', event.currentTarget)}>
@@ -440,7 +451,7 @@ export default function App() {
             <button type="button" className="primary" onClick={() => show({ ...draft, ra: pick.ra.toFixed(6), dec: pick.dec.toFixed(6) })}>Compare here</button>
             <button type="button" aria-label="Clear the selected position" onClick={() => setPick(null)}>✕</button>
           </div>}
-          {job && <button type="button" onClick={() => setStage('investigate')}>Back to {targetLabel} <span aria-hidden="true">→</span></button>}
+          {job && <button type="button" onClick={() => setStage('investigate')}>Back to images <span aria-hidden="true">→</span></button>}
         </div>}
       </div>
 
@@ -453,11 +464,9 @@ export default function App() {
         </>}>
         <section id="timeline-panel" hidden={panel !== 'timeline'}>
           {summary ? <>
-            <p className="history-context">Coverage at {targetLabel} · UTC</p>
             <div className="history-summary">
-              <span><strong>{summary.count}</strong> observations</span>
               <span><strong>{summary.epochs.length}</strong> epochs</span>
-              <span><strong>D{manifest?.detector ?? query.band}</strong> selected detector</span>
+              <span><strong>{summary.detectors[String(manifest?.detector ?? query.band)] ?? 0}</strong> in D{manifest?.detector ?? query.band}</span>
             </div>
             <ObservationTimeline observations={summary.observations} frames={manifest?.frames}
               currentIndex={showDifference ? undefined : frameIndex} detector={manifest?.detector ?? query.band} />
@@ -471,7 +480,7 @@ export default function App() {
         </section>
         <section id="candidate-panel" hidden={panel !== 'candidate'}>
           {manifest && hasFrames ? <CandidatePanel candidate={candidate} blocked={markBlocked} track={possible && { ...possible, predictions }}
-            known={{ epochs: smallBodies.epochs, motion, detector: manifest.detector, target: targetLabel }}
+            known={{ epochs: smallBodies.epochs, motion, detector: manifest.detector, target: targetText(query) }}
             visits={summary && { observations: summary.observations, inBlink: [...manifest.frames.map((f) => f.obs_id),
               ...manifest.differences.flatMap((d) => [...d.obs_ids_a, ...d.obs_ids_b])] }}>
             {possible && predictions.length > 0 && <TrackCheck checks={checkFrames({ ...possible, predictions }, manifest.frames, candidate.marks, manifest)}
@@ -497,7 +506,7 @@ export default function App() {
         <section id="data-panel" hidden={panel !== 'data'}>
           {manifest && hasFrames && <details className="disclosure" open><summary>Data & cross-check links</summary>
             <DataLinks manifest={manifest} frame={showDifference ? null : frame} /></details>}
-          <DataPanel query={query} targetLabel={targetLabel} summary={summary} manifest={manifest} checks={checks}
+          <DataPanel query={query} summary={summary} manifest={manifest}
             open={panel === 'data'} onAbout={() => setPanel('about')} />
         </section>
         <section id="layers-panel" hidden={panel !== 'layers'}>

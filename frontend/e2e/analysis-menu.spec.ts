@@ -37,7 +37,8 @@ async function fixtures(page:Page) {
     return route.fulfill({json:{job_id:'primary',status:'finished',progress:0,total:0,manifest:null,error:null}})
   })
 }
-const ids = ['target','blink','analysis-difference','timeline','candidate','evidence','spectrum','data','layers','about']
+// Observation history opens from the viewer head (see workspace.spec.ts), not from the dock.
+const ids = ['target','blink','analysis-difference','candidate','evidence','spectrum','data','layers','about']
 
 test('integrated menu keeps every original action, centres on desktop and fits narrow screens', async ({page},info) => {
   test.setTimeout(180_000)
@@ -83,7 +84,7 @@ test('additional algorithms use current target, share their sequence, and preser
   await expect(page.getByRole('tab',{name:'Significance (σ)'})).toBeVisible()
   await page.getByRole('tab',{name:'Significance (σ)'}).click()
   await expect(page.locator('.diff__main img')).toHaveAttribute('src','/analysis/api/frames/sig.png')
-  await page.getByTestId('dock-timeline').click()
+  await page.getByRole('button',{name:'Observation history'}).click()
   await expect(page.getByRole('img',{name:'SPHEREx exposures covering the target: date versus wavelength'})).toBeVisible()
   await expect(page.getByRole('button',{name:'Search the CADC archive (2–20 s)'})).toBeVisible()
   await page.getByTestId('dock-spectrum').click()
@@ -129,7 +130,7 @@ test('reference graphs lead the menu for the exact selected coordinates', async 
   await page.setViewportSize({width:1440,height:900})
   await page.goto('/?ra=269.640817&dec=4.910194&fov=0.2&band=6')
   const request = page.waitForRequest('**/analysis/api/observations?**')
-  await page.getByTestId('dock-timeline').click()
+  await page.getByRole('button',{name:'Observation history'}).click()
   const params = new URL((await request).url()).searchParams
   expect(params.get('ra')).toBe('269.640817')
   expect(params.get('dec')).toBe('4.910194')
