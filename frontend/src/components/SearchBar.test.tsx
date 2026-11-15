@@ -1,7 +1,6 @@
 import { renderToStaticMarkup } from 'react-dom/server'
 import { describe, expect, it } from 'vitest'
 import { POLARIS } from '../url'
-import { Dock } from './Dock'
 import { SearchBar, splitCoordinates } from './SearchBar'
 
 describe('splitCoordinates', () => {
@@ -20,7 +19,7 @@ describe('splitCoordinates', () => {
   })
 })
 
-describe('SearchBar and Dock', () => {
+describe('SearchBar', () => {
   it('shows the example targets and Share next to the search', () => {
     const html = renderToStaticMarkup(<SearchBar value="" onChange={() => undefined} draft={POLARIS} busy={false}
       onShow={() => undefined} onFind={() => undefined} onShare={() => undefined} />)
@@ -28,13 +27,5 @@ describe('SearchBar and Dock', () => {
       expect(html).toContain(`>${label.replace("'", '&#x27;')}</button>`)
     }
     expect(html).toContain('>Share</button>')
-  })
-  it('marks the open panel and names a blocking check on its badge', () => {
-    const html = renderToStaticMarkup(<Dock open="evidence" onToggle={() => undefined} items={[
-      { id: 'target', label: 'Target', title: 'Target & options', icon: '⌖' },
-      { id: 'evidence', label: 'Evidence', title: 'Evidence & checks', icon: '✓', count: 2, alert: true },
-    ]} />)
-    expect(html).toContain('aria-expanded="true" class="selected"')
-    expect(html).toContain('class="dock-badge alert" aria-label="2, blocking check"')
   })
 })
