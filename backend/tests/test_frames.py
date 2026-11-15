@@ -9,8 +9,10 @@ from PIL import Image
 
 from app import frames
 from app.frames import (
+    Aligned,
     align,
     comparable_wavelengths,
+    for_display,
     read_image,
     render_diff,
     render_png,
@@ -45,10 +47,11 @@ def test_alignment_puts_the_target_in_the_centre_for_any_rotation():
     centre = (shape[0] - 1) / 2
 
     for rotation in (0, 30, 135):
-        image, coverage = align(*_rotated_image_with_star(rotation), target, shape)
+        data, wcs = _rotated_image_with_star(rotation)
+        aligned = align(data, np.ones(data.shape), wcs, target, shape)
 
-        assert coverage == 1.0
-        peak = np.unravel_index(np.nanargmax(image), image.shape)
+        assert aligned.covered.all()
+        peak = np.unravel_index(np.nanargmax(aligned.image), shape)
         assert abs(peak[0] - centre) <= 1
         assert abs(peak[1] - centre) <= 1
 
@@ -57,10 +60,42 @@ def test_partial_overlap_reports_coverage_and_masks_the_rest():
     data, wcs = _rotated_image_with_star(0, size=40)
     target, shape = target_grid(RA + 0.05, DEC, 0.1)
 
-    image, coverage = align(data, wcs, target, shape)
+    aligned = align(data, np.ones(data.shape), wcs, target, shape)
 
-    assert 0 < coverage < 1
-    assert np.isnan(image).sum() == round((1 - coverage) * image.size)
+    assert 0 < aligned.covered.mean() < 1
+    assert (np.isnan(aligned.image) == ~aligned.covered).all()
+    assert (np.isnan(aligned.variance) == ~aligned.covered).all()
+
+
+def test_alignment_carries_the_variance_and_keeps_masked_pixels_nan():
+    data, wcs = _rotated_image_with_star(30)
+    variance = np.full(data.shape, 0.01)
+    data[50, 60] = variance[50, 60] = np.nan  # masked by read_image
+    target, shape = target_grid(RA, DEC, 0.1)
+
+    aligned = align(data, variance, wcs, target, shape)
+
+    assert aligned.covered.all()
+    holes = np.argwhere(np.isnan(aligned.image))
+    assert len(holes) >= 1
+    assert (np.isnan(aligned.variance) == np.isnan(aligned.image)).all()
+    assert np.nanmax(np.abs(aligned.variance - 0.01)) < 1e-9
+    # Bilinear: the masked pixel blanks only the grid pixels whose interpolation it enters.
+    x, y = target.world_to_pixel_values(*wcs.pixel_to_world_values(60, 50))
+    assert np.hypot(holes[:, 1] - x, holes[:, 0] - y).max() <= np.sqrt(2)
+
+
+def test_stars_do_not_lift_the_sky_level():
+    target, shape = target_grid(RA, DEC, 0.1)
+    rng = np.random.default_rng(4)
+    data = 5.0 + rng.normal(0.0, 1.0, shape)
+    stars = rng.random(shape) < 0.1
+    data[stars] += 100.0
+
+    aligned = align(data, np.ones(shape), target, target, shape)
+
+    # A plain median would sit 0.14σ high with 10 % star pixels; the clipped one stays on the sky.
+    assert abs(np.median(aligned.image[~stars])) < 0.04
 
 
 def test_frames_share_one_stretch(tmp_path):
@@ -158,12 +193,13 @@ def test_missing_file_is_not_retried(tmp_path, monkeypatch):
 
 
 def _cutout(path, flags: np.ndarray | None, data: np.ndarray | None = None) -> None:
-    """Minimal SPHEREx-like cutout: IMAGE plus an optional FLAGS plane with named mask bits."""
+    """Minimal SPHEREx-like cutout: IMAGE, VARIANCE and an optional FLAGS plane with mask bits."""
     _, wcs = _rotated_image_with_star(0, size=8)
     if data is None:
         data = np.ones((8, 8))
     hdus = [fits.PrimaryHDU(), fits.ImageHDU(data.astype(np.float32), wcs.to_header())]
     hdus[1].name = "IMAGE"
+    hdus.append(fits.ImageHDU(np.full((8, 8), 0.25, dtype=np.float32), name="VARIANCE"))
     if flags is not None:
         header = fits.Header()
         for plane, name in ((0, "TRANSIENT"), (10, "HOT"), (21, "SOURCE")):
@@ -173,7 +209,7 @@ def _cutout(path, flags: np.ndarray | None, data: np.ndarray | None = None) -> N
     fits.HDUList(hdus).writeto(path)
 
 
-def test_unusable_flagged_pixels_take_the_median_of_their_neighbours(tmp_path):
+def test_unusable_flagged_pixels_stay_nan_in_image_and_variance(tmp_path):
     data = np.ones((8, 8))
     flags = np.zeros((8, 8), dtype=np.int32)
     for row, col, flag in ((1, 2, 1 << 0), (5, 5, 1 << 10), (6, 1, (1 << 21) | (1 << 0))):
@@ -182,32 +218,38 @@ def test_unusable_flagged_pixels_take_the_median_of_their_neighbours(tmp_path):
     data[3, 3], flags[3, 3] = 100.0, 1 << 21  # SOURCE: informative, stays
     _cutout(tmp_path / "cutout.fits", flags, data)
 
-    image, _, unusable = read_image(tmp_path / "cutout.fits")
+    image, variance, _, unusable = read_image(tmp_path / "cutout.fits")
 
     assert np.argwhere(unusable).tolist() == [[1, 2], [5, 5], [6, 1]]
-    assert image[1, 2] == image[5, 5] == image[6, 1] == 1.0
+    assert (np.isnan(image) == unusable).all()
+    assert (np.isnan(variance) == unusable).all()
     assert image[3, 3] == 100.0
-    assert not np.isnan(image).any()
+    assert variance[3, 3] == 0.25
 
 
-def test_pixel_without_usable_neighbours_stays_nan(tmp_path):
-    flags = np.zeros((8, 8), dtype=np.int32)
-    flags[1:6, 1:6] = 1 << 10
-    _cutout(tmp_path / "cutout.fits", flags)
+def test_only_the_blink_fills_masked_pixels_from_their_neighbours():
+    image = np.ones((8, 8))
+    image[1:6, 1:6] = np.nan  # masked inside the footprint
+    image[:, 7] = np.nan  # outside the footprint
+    covered = np.ones((8, 8), dtype=bool)
+    covered[:, 7] = False
+    frame = Aligned(image, np.where(np.isnan(image), np.nan, 0.25), covered)
 
-    image, _, unusable = read_image(tmp_path / "cutout.fits")
+    shown = for_display(frame)
 
-    assert np.isnan(image[3, 3])
-    assert np.isnan(image).sum() == 1
-    assert unusable.sum() == 25
+    assert np.isnan(shown[3, 3])  # its whole neighbourhood is masked: renders black
+    assert (shown[1:6, 1:6][~np.isnan(shown[1:6, 1:6])] == 1.0).all()
+    assert np.isnan(shown[:, 7]).all()
+    assert np.isnan(frame.image[1:6, 1:6]).all()  # the measured frame stays untouched
 
 
 def test_cutout_without_flags_is_left_untouched(tmp_path):
     _cutout(tmp_path / "cutout.fits", None)
 
-    image, _, unusable = read_image(tmp_path / "cutout.fits")
+    image, variance, _, unusable = read_image(tmp_path / "cutout.fits")
 
     assert (image == 1.0).all()
+    assert (variance == 0.25).all()
     assert not unusable.any()
 
 

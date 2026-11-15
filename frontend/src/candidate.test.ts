@@ -24,7 +24,7 @@ describe('snapMark', () => {
   it('takes the nearest detection within two pixels with its σ', () => {
     const m = snapMark(frame('f1', 61000, [far, near]), 10, dec, SCALE)
     expect(m.source).toBe(near)
-    expect([m.ra, m.dec, m.sigma_arcsec]).toEqual([near.ra, dec, 1])
+    expect([m.ra, m.dec, m.sigma_arcsec]).toEqual([near.ra, dec, 0.6])
   })
 
   it('keeps the click with σ 3″ when nothing lies within 12.3″', () => {
@@ -43,12 +43,18 @@ describe('snapMark', () => {
   it('writes the evidence of a snapped mark', () => {
     const m = snapMark(frame('f1', 61000, [source(308.52331, -22.89019, 122)]), 308.5233, -22.8902, SCALE)
     expect(markText(m, 'A')).toBe(
-      'A · 2026-04-25 21:55 UTC · RA 308.52331° Dec −22.89019° ± 1.0″ · × No catalogue match – needs verification (S/N 122)')
+      'A · 2026-04-25 21:55 UTC · RA 308.52331° Dec −22.89019° ± 0.6″ · × No catalogue match – needs verification (S/N 122)')
   })
 })
 
-it('σ per axis follows S/N', () => {
-  expect([null, 5, 19.9, 20, 299, 300].map(sigmaFor)).toEqual([3, 1.5, 1.5, 1, 1, 6])
+it('σ per axis follows S/N, and a saturated core placed by its rim scatters more', () => {
+  expect([null, 5, 9.9, 10, 300].map((snr) => sigmaFor(snr))).toEqual([3, 1.2, 1.2, 0.6, 0.6])
+  expect([sigmaFor(8, true), sigmaFor(300, true), sigmaFor(null, true)]).toEqual([2.5, 2.5, 3])
+})
+
+it('a mark on a saturated detection takes its larger σ', () => {
+  const star = { ...source(308.52331, -22.89019, 8), saturated: true }
+  expect(snapMark(frame('f1', 61000, [star]), 308.5233, -22.8902, SCALE).sigma_arcsec).toBe(2.5)
 })
 
 it('insideFrame accepts the corners and refuses just outside', () => {

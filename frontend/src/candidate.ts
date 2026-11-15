@@ -23,17 +23,22 @@ const SNAP_PIXELS = 2
 const MIN_GAP_S = 60
 export const OUTSIDE_FRAME = 'Click inside the SPHEREx frame (blue outline)'
 
-/** Position error per axis from the Gaia-matched offsets; saturated cores scatter far more. */
-export function sigmaFor(snr: number | null): number {
+/**
+ * Position error per axis (1σ) as the rms offset to Gaia DR3 in real SPHEREx frames (pipeline 12):
+ * 1.2″ below S/N 10 (22 matches), 0.6″ at S/N 10–20 (39), kept for the 2 brighter ones (WISE 0855,
+ * D6); a saturated core placed by its rim 2.5″ and 1.9″, at most 7.9″ apart (Barnard's Star,
+ * D1–D3, 281 exposures); cores cut by the grid edge are skipped. A click without a detection: 3″.
+ */
+export function sigmaFor(snr: number | null, saturated = false): number {
   if (snr == null) return 3
-  if (snr < 20) return 1.5
-  if (snr < 300) return 1
-  return 6
+  if (saturated) return 2.5
+  return snr < 10 ? 1.2 : 0.6
 }
 
 export function markFromSource(frame: Frame, source: DetectedSource): Mark {
   const { obs_id, mjd, date } = frame
-  return { obs_id, mjd, date, ra: source.ra, dec: source.dec, sigma_arcsec: sigmaFor(source.snr), source }
+  const sigma_arcsec = sigmaFor(source.snr, source.saturated)
+  return { obs_id, mjd, date, ra: source.ra, dec: source.dec, sigma_arcsec, source }
 }
 
 /** Small-angle separation in arcsec, RA wrapped at 0/360. */

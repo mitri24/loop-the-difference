@@ -59,7 +59,7 @@ export interface Frame {
   epoch: number
   n_combined: number
   date_end: string | null
-  masked_fraction: number | null
+  masked_fraction: number | null // share of the covered field without usable data
   wavelength_um: number | null
   bandwidth_um: number | null
   sources?: DetectedSource[]
@@ -169,8 +169,10 @@ export interface DetectedSource {
   // 0-based pixel centre in the frame PNG: x to the right, y down from the top row (north).
   x: number
   y: number
+  // Fitted PSF height above the sky (saturated core: brightest usable rim pixel), and its S/N.
   peak_mjy_sr: number
   snr: number
+  saturated?: boolean // placed by the rim of its masked core; absent before pipeline 12
   match: SourceMatch
   catalog_id: string | null
   separation_arcsec: number | null
