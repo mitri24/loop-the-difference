@@ -92,6 +92,10 @@ const GUIDE: Record<string, Guide> = {
     kind: 'limit', title: () => 'Mixed calibration releases',
     text: 'The images come from releases with different calibration, so small brightness steps between them can be calibration, not change. Treat such steps with care.',
   },
+  DETECTION_LIMIT: {
+    kind: 'info', title: () => 'Detection limit measured',
+    text: 'Artificial stars of known brightness were added to copies of A and B and searched for to measure which point sources these images can reveal.',
+  },
   SOURCES: {
     kind: 'info', title: () => 'Sources matched with catalogues',
     text: 'Sources were detected in every image and compared with Gaia DR3 and AllWISE; unmatched ones need verification.',

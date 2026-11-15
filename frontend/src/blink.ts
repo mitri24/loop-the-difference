@@ -32,7 +32,8 @@ export function compatiblePair(frames: Pick<Frame, 'epoch' | 'mjd' | 'wavelength
 }
 
 // The pair the player opens with: a compatible pair when there is one, else the first frame of the earliest
-// epoch against the first of the latest (one epoch: the last frame), as before.
+// epoch against the first of the latest (one epoch: the last frame), as before. backend/app/completeness.py
+// default_pair picks the same two to measure their detection limit: change both together.
 export function defaultBlinkPair(frames: Frame[]): BlinkPair | null {
   const compatible = frames.length >= 2 ? compatiblePair(frames) : null
   if (compatible) return compatible

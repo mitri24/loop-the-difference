@@ -3,7 +3,7 @@ import numpy as np
 import pytest
 from PIL import Image
 
-from app import sources, tasks
+from app import completeness, sources, tasks
 from app.catalogs import gaia_cache_path, position_at
 from app.frames import Aligned, aligned_path, load_aligned, target_grid
 from app.models import Observation, ProperMotion
@@ -132,6 +132,7 @@ def _offline_archive(monkeypatch, settings, tmp_path, observations, flagged_targ
     monkeypatch.setattr(tasks, "read_image", read_image)
     # The synthetic cutouts carry no ePSF table.
     monkeypatch.setattr(tasks, "aperture_correction", lambda path, ra, dec: None)
+    monkeypatch.setattr(completeness, "cutout_epsf", lambda path, ra, dec: None)
     # Each visit sees the target through another part of the filter: λ grows with the MJD.
     monkeypatch.setattr(
         tasks, "wavelength_at", lambda path, ra, dec: (4.5 + int(path.stem) / 1000, 0.035)

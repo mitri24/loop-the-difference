@@ -75,6 +75,18 @@ describe('PairTable', () => {
     expect(table(frames, 0, 'A')).not.toContain('Use as A')
   })
 
+  it('shows the measured detection limit of A and B among the essentials, a dash for a frame without one', () => {
+    const limit = { psf: 'epsf' as const, injected: 200, noise_ujy: 41.1, flux50_ujy: 117.5, flux90_ujy: 160.3,
+      ab50: 18.725, ab90: 18.39, false_per_frame: 0, offset_arcsec: 0.9 }
+    const html = table([frame(0, '2026-02-10T12:00:00Z', 4.61, { completeness: limit }), frame(1, '2026-05-11T12:00:00Z', 4.612)])
+    const row = html.indexOf('>Detection limit</th>')
+    expect(row).toBeGreaterThan(html.indexOf('>Sources</th>'))
+    expect(row).toBeLessThan(html.indexOf('<summary>All metadata</summary>'))
+    expect(html.slice(row)).toMatch(/^>Detection limit<\/th><td>50 % at 18\.7 AB<\/td><td><span class="muted">–<\/span><\/td>/)
+    // A comparison from before the measurement: no row at all.
+    expect(table([frame(0, '2026-02-10T12:00:00Z', 4.61), frame(1, '2026-05-11T12:00:00Z', 4.612)])).not.toContain('Detection limit')
+  })
+
   it('writes long baselines in years', () => {
     expect(baselineText(30)).toBe('30.0 d')
     expect(baselineText(730.5)).toBe('2.00 yr')

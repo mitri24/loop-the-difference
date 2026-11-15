@@ -21,6 +21,7 @@ from app.archive import (
     spherex_collections,
 )
 from app.catalogs import find_proper_motion, position_at
+from app.completeness import measure_completeness
 from app.config import Settings, get_settings
 from app.frames import (
     R_BY_DETECTOR,
@@ -289,6 +290,10 @@ def _render_frames(
         for frame, sources in zip(frames, found, strict=True):
             frame.sources = sources
         checks += source_checks
+        # The A and B the blink opens with get a detection limit measured with artificial stars.
+        path_of = {obs.obs_id: path for obs, _, path in downloaded}
+        epsf_cutouts = [path_of[kept[group[0]][0].obs_id] for _, group in members]
+        checks += measure_completeness(key, frames, stacks, epsf_cutouts, target)
     differences = []
     if stack:
         for a, b in combinations(range(len(stacks)), 2):
