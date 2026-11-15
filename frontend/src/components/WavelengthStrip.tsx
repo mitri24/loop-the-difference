@@ -1,4 +1,5 @@
 import type { Frame } from '../types'
+import { ChartFrame, tipHandlers } from './Chart'
 import { bandColour, scale } from './SpectrumChart'
 
 // Same ranges as the detector list in targets.ts (SPHEREx DR1 archive metadata), in µm.
@@ -12,8 +13,7 @@ export const DETECTOR_RANGES_UM: Record<number, [number, number]> = {
 }
 export const AXIS_UM: [number, number] = [0.75, 5.0]
 const AXIS_TICKS = [1, 2, 3, 4, 5]
-// Drawn at the sidebar's width, so 11px text stays 11px.
-const W = 320
+// Drawn at the measured panel width (ChartFrame); the height stays fixed.
 const BAR = 14
 // Odd detectors in the upper row, even ones below: neighbouring ranges overlap slightly.
 const ROW_Y = { odd: 30, even: 46 }
@@ -46,7 +46,6 @@ export function WavelengthStrip({
   detector?: number
   frame?: FrameWavelength | null
 }) {
-  const x = scale(AXIS_UM, [M.left, W - M.right])
   const band = passband(frame)
   const centre = frame?.wavelength_um
   const selected = detector && DETECTOR_RANGES_UM[detector] ? detectorText(detector) : null
@@ -54,60 +53,67 @@ export function WavelengthStrip({
     'SPHEREx detectors D1 to D6 on a wavelength axis from 0.75 to 5.0 µm' +
     (selected ? `; selected ${selected}` : '') +
     `; current frame ${wavelengthText(frame)}`
+  const note = (
+    <>
+      {selected && <>Selected detector {selected} (outlined). </>}
+      Current frame: {wavelengthText(frame)}
+      {band ? ' (▼, width = one resolution element).' : '.'}
+    </>
+  )
 
   return (
-    <figure className="viz wavelength-strip">
-      <figcaption className="viz-title">Where the current frame sits in wavelength</figcaption>
-      <svg viewBox={`0 0 ${W} ${H}`} width="100%" role="img" aria-label={summary}>
-        {Object.entries(DETECTOR_RANGES_UM).map(([key, [lo, hi]]) => {
-          const d = Number(key)
-          const y = d % 2 ? ROW_Y.odd : ROW_Y.even
-          return (
-            <g key={d} className={d === detector ? 'viz-band selected' : 'viz-band'}>
-              <rect x={x(lo)} y={y} width={x(hi) - x(lo)} height={BAR} rx={2} fill={bandColour(d)} />
-              <text x={(x(lo) + x(hi)) / 2} y={y + BAR - 3} textAnchor="middle">
-                D{d}
-              </text>
+    <ChartFrame className="wavelength-strip" title="Where the current frame sits in wavelength" note={note}>
+      {(W, tip) => {
+        const x = scale(AXIS_UM, [M.left, W - M.right])
+        return (
+          <svg width={W} height={H} viewBox={`0 0 ${W} ${H}`} role="img" aria-label={summary}>
+            {Object.entries(DETECTOR_RANGES_UM).map(([key, [lo, hi]]) => {
+              const d = Number(key)
+              const y = d % 2 ? ROW_Y.odd : ROW_Y.even
+              return (
+                <g key={d} className={d === detector ? 'viz-band selected' : 'viz-band'}
+                  {...tipHandlers(tip, (x(lo) + x(hi)) / 2, y, [detectorText(d), d === detector ? 'selected detector' : 'SPHEREx detector'])}>
+                  <rect x={x(lo)} y={y} width={x(hi) - x(lo)} height={BAR} rx={2} fill={bandColour(d)} />
+                  <text x={(x(lo) + x(hi)) / 2} y={y + BAR - 3} textAnchor="middle">
+                    D{d}
+                  </text>
+                </g>
+              )
+            })}
+            {band && centre != null && (
+              <g className="viz-marker" {...tipHandlers(tip, x(centre), ROW_Y.odd - 6, [`${centre.toFixed(3)} µm`, 'current frame, one resolution element wide'])}>
+                <rect
+                  x={x(band[0]) - 1}
+                  y={ROW_Y.odd - 6}
+                  width={Math.max(2, x(band[1]) - x(band[0])) + 2}
+                  height={ROW_Y.even + BAR - ROW_Y.odd + 12}
+                />
+                <text x={x(centre)} y={ROW_Y.odd - 10} textAnchor="middle">
+                  ▼
+                </text>
+                <text
+                  x={x(centre) + (x(centre) > W / 2 ? -9 : 9)}
+                  y={ROW_Y.odd - 10}
+                  textAnchor={x(centre) > W / 2 ? 'end' : 'start'}
+                >
+                  {centre.toFixed(3)} µm
+                </text>
+              </g>
+            )}
+            <g className="viz-axis">
+              <line className="viz-baseline" x1={M.left} x2={W - M.right} y1={AXIS_Y} y2={AXIS_Y} />
+              {AXIS_TICKS.map((t) => (
+                <g key={t}>
+                  <line x1={x(t)} x2={x(t)} y1={AXIS_Y} y2={AXIS_Y + 4} />
+                  <text className="viz-tick" x={x(t)} y={AXIS_Y + 17} textAnchor="middle">
+                    {t === 5 ? '5 µm' : t}
+                  </text>
+                </g>
+              ))}
             </g>
-          )
-        })}
-        {band && centre != null && (
-          <g className="viz-marker">
-            <rect
-              x={x(band[0]) - 1}
-              y={ROW_Y.odd - 6}
-              width={Math.max(2, x(band[1]) - x(band[0])) + 2}
-              height={ROW_Y.even + BAR - ROW_Y.odd + 12}
-            />
-            <text x={x(centre)} y={ROW_Y.odd - 10} textAnchor="middle">
-              ▼
-            </text>
-            <text
-              x={x(centre) + (x(centre) > W / 2 ? -9 : 9)}
-              y={ROW_Y.odd - 10}
-              textAnchor={x(centre) > W / 2 ? 'end' : 'start'}
-            >
-              {centre.toFixed(3)} µm
-            </text>
-          </g>
-        )}
-        <g className="viz-axis">
-          <line x1={M.left} x2={W - M.right} y1={AXIS_Y} y2={AXIS_Y} />
-          {AXIS_TICKS.map((t) => (
-            <g key={t}>
-              <line x1={x(t)} x2={x(t)} y1={AXIS_Y} y2={AXIS_Y + 4} />
-              <text x={x(t)} y={AXIS_Y + 17} textAnchor="middle">
-                {t === 5 ? '5 µm' : t}
-              </text>
-            </g>
-          ))}
-        </g>
-      </svg>
-      <p className="viz-note">
-        {selected && <>Selected detector {selected} (outlined). </>}
-        Current frame: {wavelengthText(frame)}
-        {band ? ' (▼, width = one resolution element).' : '.'}
-      </p>
-    </figure>
+          </svg>
+        )
+      }}
+    </ChartFrame>
   )
 }

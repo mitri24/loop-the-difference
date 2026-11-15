@@ -136,8 +136,9 @@ export function ScatterPlot(p: Props) {
             {p.groupLabels[g] ?? `V${g + 1}`}
           </span>
         ))}
+        {/* One label, as in the side menu's charts; aria-pressed says whether the table is shown. */}
         <button className="btn btn--ghost btn--sm plot__table-toggle" onClick={() => setTable((t) => !t)} aria-pressed={table}>
-          {table ? "Chart" : "Table"}
+          Table
         </button>
       </div>
 

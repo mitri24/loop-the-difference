@@ -41,7 +41,7 @@ test('preview is usable before metadata and final data; inactive full-size frame
   await expect(page.locator('.comparison-status')).toContainText('Preview')
   await expect(page.locator('.viewport img:visible')).toHaveAttribute('src', /preview_002/)
   await page.getByRole('button', { name: 'Next frame', exact: true }).click()
-  await expect(page.locator('.controls .muted').first()).toHaveText('2/2')
+  await expect(page.locator('.controls .frame-count')).toHaveText('2/2')
   finish = true
   await expect(page.locator('.comparison-status')).toContainText('12 images ready', { timeout: 10_000 })
   await expect(page.locator('.viewport img')).toHaveCount(2)

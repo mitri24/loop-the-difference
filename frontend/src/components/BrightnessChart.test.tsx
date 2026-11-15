@@ -38,8 +38,8 @@ describe('BrightnessChart', () => {
   })
 
   it('puts flux ticks on round values', () => {
-    expect(niceTicks([96.3, 137.9])).toEqual({ values: [100, 110, 120, 130], decimals: 0 })
-    expect(niceTicks([-0.83, 1.27])).toEqual({ values: [-0.5, 0, 0.5, 1], decimals: 1 })
+    expect(niceTicks([96.3, 137.9])).toEqual({ values: [100, 110, 120, 130], decimals: 0, step: 10 })
+    expect(niceTicks([-0.83, 1.27])).toEqual({ values: [-0.5, 0, 0.5, 1], decimals: 1, step: 0.5 })
   })
 
   it('keeps the points in the window, oldest first', () => {

@@ -24,17 +24,31 @@ const frame = (epoch: number, date: string): Frame => ({
 const grid = { ra: 10, dec: 20, size_deg: 0.05, pixel_scale_arcsec: 6.15, collection: 'spherex_dr1' }
 
 describe('BlinkPlayer', () => {
-  it('opens in Blink A↔B with labelled chips A and B', () => {
+  it('opens in Blink A↔B with the pair A and B beside the image', () => {
     const frames = [frame(0, '2025-11-10T07:08:30Z'), frame(1, '2026-05-01T10:00:00Z')]
     const html = renderToStaticMarkup(<BlinkPlayer frames={frames} grid={grid} motion={null} />)
-    expect(html).toContain('aria-pressed="true">Blink A↔B')
+    expect(html).toContain('aria-pressed="true" aria-label="Blink A↔B"')
     expect(html).toContain('A · 2025-11-10 07:08 UTC')
     expect(html).toContain('Show frame A')
     expect(html).toContain('Show frame B')
+    // B is named by its date and wavelength in the pair, the shown frame A by its full provenance.
+    expect(html).toContain('<optgroup label="Epoch 2"><option value="1" selected="">2026-05-01 10:00 UTC</option></optgroup>')
+    expect(html).toContain('<span class="pair-detail">λ 1.65 ± 0.02 µm</span>')
     expect(html).toContain('SPHEREx DR1 (spherex_dr1)')
     expect(html).toContain('D3 · λ 1.65 ± 0.02 µm')
-    expect(html).toContain('href="https://irsa.example/obs-1"')
+    expect(html).toContain('href="https://irsa.example/obs-0"')
     expect(html).not.toMatch(/Before|After/)
+  })
+
+  it('names each release in the pair only when A and B differ', () => {
+    const same = [frame(0, '2025-11-10T07:08:30Z'), frame(1, '2026-05-01T10:00:00Z')].map((f) => ({ ...f, release: 'DR1' }))
+    expect(renderToStaticMarkup(<BlinkPlayer frames={same} grid={grid} motion={null} />)).not.toContain('µm · DR1')
+    const mixed = [{ ...same[0] }, { ...same[1], release: 'QR3' }]
+    const html = renderToStaticMarkup(<BlinkPlayer frames={mixed} grid={grid} motion={null} />)
+    expect(html).toContain('λ 1.65 ± 0.02 µm · DR1</span>')
+    expect(html).toContain('λ 1.65 ± 0.02 µm · QR3</span>')
+    // The shown frame's details spell the release out.
+    expect(html).toContain('<dd>SPHEREx DR1</dd>')
   })
 
   it('keeps one frame in the plain player with Play disabled', () => {

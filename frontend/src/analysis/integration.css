@@ -64,3 +64,12 @@
   .reference-analysis .blink { grid-template-columns:72px minmax(0,var(--selected-image-size)) minmax(0,1fr); }
 }
 .reference-analysis .blink__controls input[type="checkbox"] { width:16px; height:16px; min-height:0; flex:none; }
+
+/* Same chart ink as the side menu's own charts (styles.css .viz): 11 px ticks, 12 px axis titles and legend. */
+.reference-analysis .plot__tick { font-size:11px; }
+.reference-analysis .plot__axis-label { font-size:var(--text-xs); }
+.reference-analysis .plot__legend { font-size:var(--text-xs); }
+.reference-analysis .plot__table-toggle { min-height:26px; border-color:var(--border); border-radius:var(--radius-sm); font-size:var(--text-xs); color:var(--text-secondary); }
+.reference-analysis .plot__table-toggle[aria-pressed='true'] { color:var(--accent); border-color:var(--accent); }
+/* Buttons keep the menu's corner radius, so analysis and original controls look like one set. */
+.reference-analysis .btn { border-radius:5px; }

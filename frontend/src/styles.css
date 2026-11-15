@@ -92,14 +92,19 @@ summary { cursor:pointer; min-height:32px; padding:5px 0; font-size:13px; }
 .swatch.later { background:var(--diff-later); }
 .evidence { display:flex; flex-direction:column; gap:8px; font-size:12px; }
 .evidence p { margin:0; }
-.checks { list-style:none; margin:0; padding:0; border-left:3px solid var(--muted); background:var(--surface-2); }
-.checks.error,.checks.blocker { border-left-color:var(--danger); }
-.checks.warning { border-left-color:var(--warning); }
-.checks li { display:flex; flex-direction:column; gap:4px; padding:10px; overflow-wrap:anywhere; }
-.check-label { font-weight:650; }
-.checks.error .check-label,.checks.blocker .check-label { color:var(--danger); }
-.checks.warning .check-label { color:var(--warning); }
-.checks small { font-size:inherit; }
+/* Check items (design-system.md .check-item, as in the analysis panels): icon in the status colour, message,
+   word, detail. Status colour only on the icon; the text keeps the text tokens. */
+.check-list { list-style:none; margin:0; padding:0; display:flex; flex-direction:column; gap:var(--space-3); }
+.check-item { display:grid; grid-template-columns:20px minmax(0,1fr); gap:var(--space-2); font-size:var(--text-sm); overflow-wrap:anywhere; }
+.check-item__icon { width:20px; height:20px; border-radius:50%; display:grid; place-items:center; font-size:11px; font-weight:var(--weight-bold); color:var(--surface-0); background:var(--status-color); }
+.check-item--ok { --status-color:var(--status-ok); }
+.check-item--info { --status-color:var(--status-info); }
+.check-item--warn { --status-color:var(--status-warn); }
+.check-item--fail { --status-color:var(--status-fail); }
+.check-item__title { font-weight:var(--weight-medium); color:var(--text-primary); }
+.check-item__label { margin-left:var(--space-2); font-size:var(--text-xs); font-weight:var(--weight-regular); color:var(--text-muted); }
+.check-item__detail { color:var(--text-secondary); font-size:var(--text-xs); }
+.check-item__detail .check-docs { margin-top:2px; }
 .badge { position:absolute; right:6px; top:6px; padding:3px 6px; background:var(--img-label-bg); color:var(--text); font-size:12px; border-radius:3px; }
 .badge.warning { color:var(--warning); }
 .badge.error,.badge.blocker { color:var(--danger); }
@@ -258,146 +263,69 @@ summary { cursor:pointer; min-height:32px; padding:5px 0; font-size:13px; }
   color: var(--src-unknown);
 }
 
-/* Evidence visuals (NAS-53): timeline, wavelength strip, brightness chart, background channel. */
-.viz {
-  margin: 0;
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-  min-width: 0;
-}
+/* Charts (NAS-53, design-system.md "Charts"): one anatomy for every chart in the side menu and the analysis
+   ScatterPlot – title row with Table toggle, legend above, plot at its measured width, recessive 1 px grid,
+   ticks in tabular figures, a tooltip that follows hover and keyboard focus. */
+.viz { position:relative; margin:0; display:flex; flex-direction:column; gap:var(--space-2); min-width:0; }
+.viz + .viz,.spectrum-section .viz { margin-top:var(--space-3); }
+.viz-head { display:flex; align-items:center; justify-content:space-between; gap:var(--space-2); min-height:28px; }
+.viz-title { font-size:var(--text-sm); font-weight:var(--weight-semibold); color:var(--text-primary); }
+.viz .viz-toggle { flex:none; width:auto; min-height:26px; padding:0 var(--space-2); background:transparent; border-color:var(--border); border-radius:var(--radius-sm); font-size:var(--text-xs); color:var(--text-secondary); }
+.viz .viz-toggle[aria-pressed='true'] { color:var(--accent); border-color:var(--accent); }
+.viz-body { position:relative; min-width:0; }
+.viz svg { display:block; overflow:visible; font-size:11px; }
+.viz text { fill:var(--text-muted); stroke:none; }
+.viz .viz-tick { fill:var(--text-muted); font-size:11px; font-variant-numeric:tabular-nums; }
+.viz .viz-axis-label { fill:var(--text-secondary); font-size:var(--text-xs); }
+.viz-note,.viz-legend { margin:0; font-size:var(--text-xs); color:var(--text-secondary); }
+.viz-legend { display:flex; flex-wrap:wrap; align-items:center; gap:var(--space-1) var(--space-3); padding:0; list-style:none; }
+.viz-legend li { display:inline-flex; align-items:center; gap:5px; }
+.viz-legend .viz-swatch { flex:none; overflow:visible; }
+.viz-note { color:var(--text-muted); }
 
-.viz-title {
-  font-size: 13px;
-  font-weight: 600;
-}
+.viz-grid,.viz-axis line,.viz-row line { stroke:var(--grid-line); stroke-width:1; }
+/* As specific as ".viz-axis line", and later: the baseline and the zero line are axis ink, not grid. */
+.viz .viz-baseline { stroke:var(--axis-line); stroke-width:1; }
+.viz .viz-zero { stroke:var(--axis-line); }
+.viz-errorbar { stroke-width:1.5; opacity:.75; }
+.viz-hit,.viz-hit-area { fill:transparent; stroke:none; }
+.viz a:focus-visible { outline:none; }
+.viz a:focus-visible .viz-mark { stroke:var(--focus-ring); stroke-width:2.5; }
+.viz a:hover .viz-mark { stroke:var(--text-primary); }
 
-.viz svg {
-  display: block;
-  overflow: visible;
-  font-size: 11px;
-}
+/* Tooltip: value first (strong), then where and when; flips to the left of marks on the right half. */
+.viz-tooltip { position:absolute; z-index:2; display:flex; flex-direction:column; gap:1px; max-width:260px; padding:var(--space-1) var(--space-2);
+  background:var(--surface-3); border:1px solid var(--border-strong); border-radius:var(--radius-sm); box-shadow:0 4px 12px var(--shadow-color);
+  color:var(--text-secondary); font-size:var(--text-xs); font-variant-numeric:tabular-nums; line-height:1.4; pointer-events:none;
+  transform:translate(12px, -50%); width:max-content; overflow-wrap:anywhere; }
+.viz-tooltip.flip { transform:translate(calc(-100% - 12px), -50%); }
+.viz-tooltip strong { color:var(--text-primary); font-weight:var(--weight-semibold); }
 
-.viz text {
-  fill: var(--muted);
-  stroke: none;
-}
+/* Table view: behind the Table toggle, otherwise for screen readers only. */
+.viz-table { position:absolute; width:1px; height:1px; padding:0; margin:-1px; overflow:hidden; clip-path:inset(50%); white-space:nowrap; border:0; }
+.viz-table-view { max-height:320px; overflow:auto; border:1px solid var(--border); border-radius:var(--radius-sm); scrollbar-width:thin; }
+.viz-table-view table { width:100%; border-collapse:collapse; font-size:var(--text-xs); font-variant-numeric:tabular-nums; }
+.viz-table-view caption { padding:var(--space-1) var(--space-2); text-align:left; color:var(--text-muted); }
+.viz-table-view th,.viz-table-view td { padding:3px var(--space-2); text-align:left; border-bottom:1px solid var(--border); }
+.viz-table-view thead th { position:sticky; top:0; background:var(--surface-1); color:var(--text-muted); font-weight:var(--weight-medium); }
+.viz-table-view ol { margin:var(--space-2) 0; padding-left:var(--space-5); font-size:var(--text-xs); }
 
-.viz-note,
-.viz-legend {
-  margin: 0;
-  font-size: 12px;
-  color: var(--muted);
-}
+/* Observation timeline: neutral dots, the comparison's frames in the accent, epochs as quiet bands. */
+.viz-epoch rect,.viz-epoch-mark { fill:var(--surface-2); }
+.viz-row.selected rect,.viz-row-mark { fill:none; stroke:var(--accent); }
+.viz-row.selected text { fill:var(--text-primary); font-weight:var(--weight-semibold); }
+.viz-dots circle,.viz-dot { fill:var(--text-muted); }
+.viz-frame circle:not(.viz-hit),.viz-frame line,.viz-frame-mark { fill:var(--surface-1); stroke:var(--accent); stroke-width:2; }
+.viz-frame.shown circle:not(.viz-hit),.viz-frame-mark.shown { fill:var(--accent); }
+.viz-current line { stroke:var(--accent); stroke-dasharray:3 3; }
 
-.viz-legend {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 2px 14px;
-  padding: 0;
-  list-style: none;
-}
-
-.viz-axis line,
-.viz-row line,
-.viz-grid {
-  stroke: var(--border);
-  stroke-width: 1;
-}
-
-.viz-zero {
-  stroke: var(--muted);
-}
-
-.viz-epoch rect {
-  fill: var(--surface-raised);
-}
-
-.viz-row.selected rect {
-  fill: none;
-  stroke: var(--accent);
-}
-
-.viz-row.selected text {
-  fill: var(--text);
-  font-weight: 650;
-}
-
-.viz-dots circle {
-  fill: var(--muted);
-}
-
-.viz-frame circle,
-.viz-frame line {
-  fill: var(--bg);
-  stroke: var(--accent);
-  stroke-width: 2;
-}
-
-.viz-frame.shown circle {
-  fill: var(--accent);
-}
-
-.viz-current line {
-  stroke: var(--accent);
-  stroke-dasharray: 3 3;
-}
-
-.viz-band rect {
-  fill-opacity: .35;
-  stroke: var(--border);
-}
-
-.viz-band.selected rect {
-  stroke: var(--accent);
-  stroke-width: 2;
-}
-
-.viz-band.selected text {
-  fill: var(--text);
-  font-weight: 650;
-}
-
-.viz-marker rect {
-  fill: none;
-  stroke: var(--warning);
-  stroke-width: 2;
-}
-
-.viz-marker text {
-  fill: var(--text);
-}
-
-.viz-point line {
-  stroke: var(--accent);
-}
-
-.viz-point circle {
-  fill: var(--accent);
-  stroke: var(--bg);
-  stroke-width: 2;
-}
-
-.viz-point.flagged circle {
-  fill: var(--bg);
-  stroke: var(--accent);
-}
-
-.viz-table {
-  position: absolute;
-  width: 1px;
-  height: 1px;
-  padding: 0;
-  margin: -1px;
-  overflow: hidden;
-  clip-path: inset(50%);
-  white-space: nowrap;
-  border: 0;
-}
-
-.spectrum-section .brightness-chart {
-  margin-top: 16px;
-}
+/* Wavelength strip: detector bands in their band colours, the frame's passband outlined. */
+.viz-band rect { fill-opacity:.35; stroke:var(--border); }
+.viz-band.selected rect { stroke:var(--accent); stroke-width:2; }
+.viz-band text { fill:var(--text-secondary); }
+.viz-band.selected text { fill:var(--text-primary); font-weight:var(--weight-semibold); }
+.viz-marker rect { fill:none; stroke:var(--status-warn); stroke-width:2; }
+.viz-marker text { fill:var(--text-primary); }
 
 .sky-slider {
   display: flex;
@@ -577,27 +505,45 @@ summary { cursor:pointer; min-height:32px; padding:5px 0; font-size:13px; }
 .source-rows li:last-child { border-bottom:0; }
 .source-rows li > button { flex:1; min-width:0; border-bottom:0; }
 .source-rows .source-mark { width:auto; flex:none; display:inline-flex; border-left:1px solid var(--border); color:var(--candidate); }
-.blink-mode { display:flex; border:1px solid var(--border); border-radius:4px; }
-.blink-mode button { flex:1; min-width:0; border:0; border-radius:3px; background:transparent; padding:8px 6px; font-size:12px; }
-.blink-pair { display:grid; grid-template-columns:repeat(auto-fit,minmax(140px,1fr)); gap:8px; font-size:12px; }
-.blink-pair > p { grid-column:1/-1; margin:0; }
-.blink-chip { display:flex; flex-direction:column; gap:3px; min-width:0; padding:8px; border:1px solid var(--border); border-radius:4px; overflow-wrap:anywhere; }
-.blink-chip.current { border-color:var(--accent); }
-.blink-chip > button { align-self:flex-start; min-width:32px; font-weight:650; }
-.blink-chip select { width:100%; min-width:0; }
 
-/* A bounded image contact sheet: scrolling belongs to this strip, never the page. */
-.observation-gallery { grid-column:1 / -1; min-width:0; margin-block:12px; }
-.gallery-heading { display:flex; justify-content:center; text-align:center; flex-wrap:wrap; gap:4px 12px; margin-bottom:8px; font-size:13px; }
-.observation-strip { display:flex; width:fit-content; max-width:100%; margin-inline:auto; gap:10px; overflow-x:auto; padding:4px 4px 12px; scroll-snap-type:x proximity; }
-.observation-card { flex:0 0 172px; min-width:0; display:flex; flex-direction:column; gap:6px; padding:8px; border:1px solid var(--border); border-radius:4px; font-size:12px; scroll-snap-align:start; overflow-wrap:anywhere; }
-.observation-card.current { border-color:var(--accent); }
-.observation-preview { position:relative; display:block; width:100%; padding:0; aspect-ratio:1; overflow:hidden; background:#090b0c; }
+/* Blink player parts (layout in styles/shell.css). Thumbnails: a horizontal strip by default (embed), a bounded
+   vertical rail beside the image in the viewer; only the strip scrolls. */
+.observation-gallery { position:relative; min-width:0; }
+.observation-strip { display:flex; gap:var(--space-1); overflow-x:auto; overflow-y:hidden; padding:2px; scrollbar-width:thin; }
+.observation-card { flex:0 0 64px; }
+.observation-preview { position:relative; display:block; width:100%; min-height:0; padding:0; aspect-ratio:1; overflow:hidden; background:var(--sky-bg); border:1px solid var(--border); border-radius:var(--radius-sm); }
+.observation-card.current .observation-preview { border-color:var(--accent); box-shadow:inset 0 0 0 1px var(--accent); }
 .observation-preview img { display:block; image-rendering:pixelated; width:100%; height:100%; object-fit:contain; }
-.observation-preview > span { position:absolute; bottom:0; left:0; right:0; padding:5px; background:rgba(0,0,0,.85); color:#fff; text-align:left; }
-.gallery-pair-actions { display:flex; flex-wrap:wrap; gap:4px; }
-.gallery-pair-actions button { flex:1; min-height:36px; padding:4px; font-size:12px; }
-.observation-strip:focus-visible, .observation-preview:focus-visible { outline:2px solid var(--accent); outline-offset:2px; }
-
+.observation-preview > span { position:absolute; bottom:0; left:0; right:0; padding:1px var(--space-1); background:var(--img-label-bg); color:var(--text-primary); font-size:10px; font-variant-numeric:tabular-nums; text-align:left; }
 .observation-preview .thumbnail-centre { position:absolute; top:50%; left:50%; width:14px; height:14px; transform:translate(-50%,-50%); border:1px solid var(--overlay-target); border-radius:50%; pointer-events:none; }
-.gallery-field { margin:0 0 8px; color:var(--muted); font-size:12px; text-align:center; overflow-wrap:anywhere; }
+.observation-strip:focus-visible,.observation-preview:focus-visible { outline:2px solid var(--focus-ring); outline-offset:2px; }
+
+/* Transport bar: play controls, frame scrubber, speed and the A↔B / all switch in one row (two when narrow). */
+.transport { display:flex; flex-wrap:wrap; align-items:center; gap:var(--space-2); }
+.transport-buttons { display:flex; gap:var(--space-1); }
+.transport-buttons button { min-width:36px; }
+.transport-buttons .primary { min-width:64px; }
+.transport > input[type='range'] { flex:1 1 56px; min-width:56px; width:auto; min-height:32px; padding:0; }
+.frame-count { min-width:36px; color:var(--text-secondary); font-size:var(--text-xs); font-variant-numeric:tabular-nums; }
+.transport .speed { width:auto; flex:none; }
+.transport .speed input { width:72px; min-height:32px; }
+.blink-mode { display:flex; flex:none; border:1px solid var(--border); border-radius:var(--radius-sm); }
+.blink-mode button { min-width:0; min-height:38px; padding:0 var(--space-3); border:0; border-radius:3px; background:transparent; font-size:var(--text-xs); }
+
+/* Side column: the blink pair, then the shown frame. Each fact once; numbers in tabular figures. */
+.player-side { display:flex; flex-direction:column; gap:var(--space-2); min-width:0; font-size:var(--text-sm); }
+.blink-pair { display:grid; gap:var(--space-2); padding-bottom:var(--space-3); border-bottom:1px solid var(--border); }
+.pair-row { display:grid; grid-template-columns:36px minmax(0,1fr); gap:2px var(--space-2); align-items:center; }
+.pair-letter { grid-row:span 2; width:36px; min-height:36px; padding:0; font-weight:650; }
+.pair-letter[aria-pressed='true'] { color:var(--accent); border-color:var(--accent); background:var(--accent-subtle); }
+.pair-row select { min-height:32px; padding:var(--space-1) var(--space-2); font-size:var(--text-sm); font-variant-numeric:tabular-nums; }
+.pair-detail { color:var(--text-secondary); font-size:var(--text-xs); font-variant-numeric:tabular-nums; }
+.selected-head { display:flex; flex-wrap:wrap; align-items:center; justify-content:space-between; gap:var(--space-2); margin-bottom:var(--space-2); }
+.selected-head h3 { margin:0; font-size:var(--text-md); }
+.frame-letter { color:var(--accent); }
+.gallery-pair-actions { display:flex; gap:var(--space-1); }
+.gallery-pair-actions button { min-height:28px; padding:2px var(--space-2); font-size:var(--text-xs); }
+.player-side .meta { grid-template-columns:max-content minmax(0,1fr); gap:var(--space-1) var(--space-3); font-size:var(--text-xs); font-variant-numeric:tabular-nums; }
+.player-side .meta dd { margin:0; }
+.diff-pickers { display:grid; gap:var(--space-2); }
+.diff-pickers select { min-height:32px; padding:var(--space-1) var(--space-2); }
