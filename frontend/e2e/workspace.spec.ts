@@ -719,6 +719,26 @@ test('fixture: a failed name search is resolved again on Enter', async ({ page }
   expect(attempts).toBe(2)
 })
 
+test('full map: the search bar floats transparent over the sky, without a name; the Aladin controls sit below it', async ({ page }) => {
+  await page.setViewportSize({ width: 1440, height: 900 })
+  await page.goto('/')
+  await expect(page.locator('.aladin-logo-container')).toBeVisible()
+  // The name is gone from view; the page keeps it as its one heading for screen readers.
+  await expect(page.locator('.hud .brand')).toHaveCount(0)
+  await expect(page.locator('.hud h1')).toHaveClass(/sr-only/)
+  await expect(page.locator('.hud')).toHaveCSS('background-color', 'rgba(0, 0, 0, 0)')
+  // The sky starts at the top of the window, under the search bar.
+  const sky = (await page.locator('.sky-view').boundingBox())!
+  expect(sky.y).toBeLessThanOrEqual(1)
+  // Aladin's top controls stand below the bar and take clicks.
+  const hud = (await page.locator('.hud').boundingBox())!
+  for (const selector of ['.aladin-cooFrame', '.aladin-location', '.aladin-fullScreen-control', '.aladin-widgets-toolbar']) {
+    const box = (await page.locator(selector).first().boundingBox())!
+    expect(box.y, selector).toBeGreaterThanOrEqual(hud.y + hud.height - 1)
+    await hitTarget(page.locator(selector).first())
+  }
+})
+
 test('fixture: the search bar keeps its parts apart and unclipped, with and without a sheet', async ({ page }) => {
   await fixtures(page)
   await page.goto('/?ra=37.954542&dec=89.264111&band=6&fov=0.2')
@@ -727,7 +747,7 @@ test('fixture: the search bar keeps its parts apart and unclipped, with and with
     await page.setViewportSize({ width, height })
     for (const open of [false, true]) {
       if (open) await openSheet(page, 'layers')
-      const parts = await page.locator('.brand, .global-search, .examples-toggle, .header-actions').evaluateAll(els => els
+      const parts = await page.locator('.global-search, .examples-toggle, .header-actions').evaluateAll(els => els
         .filter(e => getComputedStyle(e).display !== 'none' && e.getClientRects().length > 0)
         .map(e => { const r = e.getBoundingClientRect(); return { left: r.left, right: r.right, clipped: e.scrollWidth > e.clientWidth + 1 } })
         .sort((a, b) => a.left - b.left))
