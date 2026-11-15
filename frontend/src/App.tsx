@@ -167,11 +167,15 @@ export default function App() {
     const shell = shellRef.current
     const card = shell?.querySelector<HTMLElement>('.sky-area')
     if (!shell || !card) return
+    const hud = shell.querySelector<HTMLElement>('.hud')
     const observer = new ResizeObserver(() => {
+      // The search bar's height: on the full map, Aladin's top controls sit below it.
+      if (hud) shell.style.setProperty('--hud-h', `${hud.offsetHeight}px`)
       if (!card.offsetWidth) return
       shell.style.setProperty('--map-card-h', `${card.offsetHeight}px`)
     })
     observer.observe(card)
+    if (hud) observer.observe(hud)
     return () => observer.disconnect()
   }, [])
 

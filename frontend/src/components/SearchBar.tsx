@@ -42,7 +42,8 @@ export function SearchBar({ value, onChange, draft, busy, onShow, onFind, onDraf
   return (
     <header className="hud" id="workspace-tools">
       <div className="hud-row">
-        <span className="brand" title="Loop the Difference · SPHEREx observation workspace"><span className="brand-name">Loop the Difference</span></span>
+        {/* No visible name (the sky and the search come first); the page still has one heading for screen readers. */}
+        <h1 className="sr-only">Loop the Difference · SPHEREx observation workspace</h1>
         <div className="search-group">
           <form className="global-search" role="search" onSubmit={(event) => { event.preventDefault(); submit() }}>
             <span className="search-mark" aria-hidden="true" />
