@@ -3,10 +3,9 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import { createDistantTrack } from './api'
 import type { Mark } from './candidate'
 import {
-  MAX_TARGETS, checkDistant, distanceRanges, distantState, farthestAu, labelTime, isCurrent, outsideRanges, planDistantTrack,
-  summarizeDistant, useDistantTrack, type DistantField, type DistantPlan, type DistantRow,
+  MAX_TARGETS, TRACK_WINDOW_DAYS, checkDistant, distanceGrid, distanceRanges, distantState, farthestAu, labelTime, isCurrent,
+  outsideRanges, planDistantTrack, summarizeDistant, useDistantTrack, type DistantField, type DistantPlan, type DistantRow,
 } from './distantTrack'
-import { EPOCH_GAP_DAYS } from './timeAxis'
 import { possibleTrack, type PossibleTrack } from './track'
 import type { DetectedSource, DistantTrack, Frame } from './types'
 
@@ -26,6 +25,9 @@ const B = mark('f10', 61157.882123, 308.533543, -22.894745)
 const pluto = (mjds: number[]) => possibleTrack([A, B], PLUTO, [A.mjd, B.mjd, ...mjds])!
 // 720″/day within half a day: far too fast for 20 AU.
 const FAST = [mark('a', 60000, 150, 20), mark('b', 60000.5, 150, 20 + 360 / 3600)]
+// 600″ north in 180 days, σ 1″: not a straight line for a star, so if one object it is in the Solar System.
+const ACROSS = [mark('a', 60000, 150, 20), mark('b', 60180, 150, 20 + 600 / 3600)]
+const across = (mjds: number[], marks = ACROSS) => possibleTrack(marks, { ra: 150, dec: 20 }, [...marks.map((m) => m.mjd), ...mjds])!
 
 describe('distant-object track request', () => {
   it('asks for the other images beyond a day of Pluto’s marks, within 400 days, up to the distance its motion allows', () => {
@@ -68,9 +70,31 @@ describe('distant-object track request', () => {
     expect(plan.request!.target_mjds).toEqual([...plan.request!.target_mjds].sort((a, b) => a - b))
   })
 
-  it('asks nothing for motion across epochs, a single mark, or when the straight line covers every other image', () => {
-    const across = [mark('a', 60000, 150, 20), mark('b', 60180, 150, 20 + 600 / 3600)]
-    expect(planDistantTrack(possibleTrack(across, { ra: 150, dec: 20 }, [60000, 60090, 60180]), across, [frame('c', 60090)])).toBeNull()
+  it('asks for marks of different epochs too, up to the distance their mean rate allows', () => {
+    const track = across([60090, 60500])
+    expect(track.regime).toBe('solarSystem')
+    const frames = [frame('a', 60000), frame('mid', 60090), frame('b', 60180), frame('late', 60500)]
+    const plan = planDistantTrack(track, ACROSS, frames)!
+    expect(plan.frames.map((f) => [f.frame.obs_id, f.skip])).toEqual([['mid', null], ['late', 'tooFar']])
+    expect(plan.request).toMatchObject({ target_mjds: [60090], d_min_au: 20, steps: 64, marks: [{ mjd: 60000 }, { mjd: 60180 }] })
+    // 3.33″/day on average over half a year: no bound object beyond about 1420 AU gets that far.
+    expect(plan.request!.d_max_au).toBeCloseTo(4700 / (track.fit.rate - 3 * track.fit.sigmaRate), 6)
+    expect(plan.request!.d_max_au).toBeLessThan(1500)
+  })
+
+  it('names marks more than 400 days apart instead of asking, as the API would refuse them', () => {
+    const year = [mark('a', 60000, 150, 20), mark('b', 60000 + TRACK_WINDOW_DAYS + 1, 150, 20 + 600 / 3600)]
+    expect(planDistantTrack(across([60200], year), year, [frame('mid', 60200)])).toMatchObject({ blocked: 'marksTooFar', request: null })
+    const edge = [year[0], { ...year[1], mjd: 60000 + TRACK_WINDOW_DAYS }]
+    expect(distanceGrid(across([], edge), edge)).toMatchObject({ grid: { d_min_au: 20 } })
+  })
+
+  it('asks nothing without significant motion, for a star, a single mark, or when the straight line covers every other image', () => {
+    const star = [mark('a', 60000, 150, 20), mark('b', 60365, 150, 20 + 8 / 3600)]
+    expect(across([], star).regime).toBe('stellar')
+    expect(distanceGrid(across([], star), star)).toBeNull()
+    const still = [mark('a', 60000, 150, 20, 6), mark('b', 60180, 150, 20 + 5 / 3600, 6)]
+    expect(distanceGrid(across([], still), still)).toBeNull()
     expect(planDistantTrack(pluto([]), [A], [frame('later', 61172.95538)])).toBeNull()
     expect(planDistantTrack(null, [A, B], [frame('later', 61172.95538)])).toBeNull()
     expect(planDistantTrack(pluto([61156.3]), [A, B], [frame('f8', 61156.3)])).toBeNull()
@@ -84,9 +108,6 @@ describe('distant-object track request', () => {
     expect(planDistantTrack(track, close, [frame('c', 60010)])).toMatchObject({ blocked: 'marksTooClose', request: null })
   })
 
-  it('relies on the fast regime keeping the marks within the API’s 30 days', () => {
-    expect(EPOCH_GAP_DAYS).toBeLessThanOrEqual(30)
-  })
 })
 
 // Five assumed distances; at each target time the positions run east in steps of 0.01°.
@@ -135,6 +156,16 @@ describe('distant-object track check', () => {
     expect(unknownOnly[0].result).toMatchObject({ kind: 'fits', hits: [2], unknown: [2] })
     const both = [source(at(2).ra, at(2).dec, 'unknown'), source(at(2).ra, at(2).dec + 5 / 3600)]
     expect(checkDistant(plan([frame('fits', T.fits, both)]), DISTANT, GRID)[0].result).toMatchObject({ hits: [2], unknown: [] })
+  })
+
+  it('widens the search circle by the model’s own error', () => {
+    const loose: DistantTrack = {
+      ...DISTANT, hypotheses: DISTANT.hypotheses.map((h) => ({ ...h, points: h.points.map((p) => ({ ...p, model_error_arcsec: 20 })) })),
+    }
+    // 15″ north of the 20 AU position: beyond 1.5 pixels (9.2″), inside 2σ (3″) plus the model error (20″).
+    const frames = [frame('fits', T.fits, [source(at(0).ra, at(0).dec + 15 / 3600)])]
+    expect(checkDistant(plan(frames), DISTANT, GRID)[0].result.kind).toBe('nothing')
+    expect(checkDistant(plan(frames), loose, GRID)[0].result).toMatchObject({ kind: 'fits', hits: [0] })
   })
 
   it('takes a 2σ radius larger than the pixel floor from the prediction', () => {
@@ -235,6 +266,7 @@ describe('useDistantTrack', () => {
   it('waits for the API while two marks of one epoch ask, and stays off or too fast without asking', () => {
     const frames = [frame('later', 61172.95538)]
     expect(renderToStaticMarkup(<Probe track={pluto([61172.95538])} marks={[A, B]} frames={frames} />)).toBe('loading')
+    expect(renderToStaticMarkup(<Probe track={across([60090])} marks={ACROSS} frames={[frame('mid', 60090)]} />)).toBe('loading')
     expect(renderToStaticMarkup(<Probe track={pluto([61172.95538])} marks={[A]} frames={frames} />)).toBe('off')
     const track = possibleTrack(FAST, { ra: 150, dec: 20 }, [60000, 60000.5, 60010])
     expect(renderToStaticMarkup(<Probe track={track} marks={FAST} frames={[frame('c', 60010)]} />)).toBe('tooFast')

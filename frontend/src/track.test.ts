@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { candidateState, type Mark } from './candidate'
-import { checkFrames, fitTrack, possibleTrack, predict, regime, trackEvidence } from './track'
+import { checkFrames, fitTrack, possibleTrack, predict, regime, searchRadius, trackEvidence } from './track'
 import type { DetectedSource, Frame } from './types'
 
 const mark = (mjd: number, ra: number, dec: number, sigma = 1): Mark => ({
@@ -94,6 +94,12 @@ describe('possible track', () => {
     expect(three.sigmaRate).toBeLessThanOrEqual(two.sigmaRate)
     expect(predict(three, 60002).radius_arcsec).toBeLessThan(predict(two, 60002).radius_arcsec)
     expect(three.rmsArcsec).toBeGreaterThan(0)
+  })
+
+  it('adds the model error to the 2σ search radius and keeps the 1.5-pixel floor', () => {
+    expect(searchRadius(3, 6.15)).toBeCloseTo(9.225, 6)
+    expect(searchRadius(3, 6.15, 10)).toBe(13)
+    expect(searchRadius(3, 6.15, 2)).toBeCloseTo(9.225, 6)
   })
 
   it('needs two different dates', () => {

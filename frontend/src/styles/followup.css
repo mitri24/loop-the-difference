@@ -1,0 +1,13 @@
+/* Follow-up of a possible track (components/FollowupCheck.tsx): the result line first, every detail folded.
+   As wide as the candidate check, never wider: long lines and obs_ids wrap. */
+.followup { display:grid; gap:6px; justify-self:stretch; min-width:0; }
+.followup p { margin:0; }
+.followup .notice button { min-height:28px; padding:1px 8px; font-size:12px; }
+.followup-details { display:grid; gap:10px; min-width:0; padding-top:4px; }
+.followup-subhead { font-size:13px; font-weight:600; }
+.followup-checks { margin:0; padding:0; list-style:none; display:grid; gap:4px; font-size:12px; overflow-wrap:anywhere; }
+.followup-checks li { display:grid; grid-template-columns:14px minmax(0,1fr); gap:6px; }
+.followup-checks .candidate-hint { font-size:12px; }
+.followup-chart .followup-curve { fill:none; stroke-width:1.5; stroke-linejoin:round; }
+.followup-chart .followup-threshold { stroke:var(--axis-line); stroke-dasharray:4 3; }
+.followup-chart .followup-best { fill:none; stroke:var(--text-primary); stroke-width:1.5; pointer-events:none; }

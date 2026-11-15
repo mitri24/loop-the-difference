@@ -1,6 +1,6 @@
 import { utcMinute } from '../blink'
 import {
-  MAX_AU, MAX_TARGETS, MAX_TARGET_DAYS, MIN_AU, distanceRanges, outsideRanges,
+  MAX_AU, MAX_TARGETS, MIN_AU, TRACK_WINDOW_DAYS, distanceRanges, outsideRanges,
   type DistantRow, type DistantSummary, type DistantTrackState, type Nearest,
 } from '../distantTrack'
 import { MATCH_STYLE, degText } from '../sourceLayer'
@@ -63,7 +63,7 @@ export function TrackCheck({ checks, onShow }: { checks: FrameCheck[]; onShow: (
 }
 
 const DISTANT = 'Distant-object track'
-const COUNTED = 'Counted: detections ≥5σ with no Gaia DR3 or AllWISE match, or with no catalogue answer, inside a search circle (2σ, at least 1.5 pixels). One can still be another source; nothing can mean too faint.'
+const COUNTED = 'Counted: detections ≥5σ with no Gaia DR3 or AllWISE match, or with no catalogue answer, inside a search circle (2σ plus the model error, at least 1.5 pixels). One can still be another source; nothing can mean too faint.'
 // Positions this close to the centre fit into the largest region size on offer.
 const REACH_DEG = Math.max(...FIELDS_OF_VIEW) / 2
 
@@ -108,7 +108,7 @@ function distantRowText({ frame, result }: DistantRow, distances: number[]): str
     case 'noSources':
       return NO_SOURCES
     case 'tooFar':
-      return `more than ${MAX_TARGET_DAYS} days from the marks – not predicted`
+      return `more than ${TRACK_WINDOW_DAYS} days from the marks – not predicted`
     case 'overLimit':
       return `beyond the ${MAX_TARGETS} times nearest to the marks – not predicted`
   }
@@ -120,6 +120,7 @@ export function DistantTrackCheck({ state }: { state: DistantTrackState }) {
   if (status === 'off') return null
   if (status === 'tooFast') return <p className="candidate-hint">{DISTANT}: moves too fast for an object beyond {MIN_AU} AU</p>
   if (status === 'marksTooClose') return <p className="candidate-hint">{DISTANT}: needs marks more than 86 s apart</p>
+  if (status === 'marksTooFar') return <p className="candidate-hint">{DISTANT}: needs marks at most {TRACK_WINDOW_DAYS} days apart</p>
   if (status === 'loading') {
     return <p className="candidate-hint" role="status">{DISTANT}: computing positions{range && ` for ${rangesText([range], '')}`}…</p>
   }

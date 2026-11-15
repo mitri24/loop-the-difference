@@ -1,11 +1,13 @@
 import type { ReactNode } from 'react'
 import { MARK_LETTERS, markText, type Candidate } from '../candidate'
 import type { DistantTrackState } from '../distantTrack'
+import type { FollowupState } from '../followup'
 import { trackEvidence, type PossibleTrack } from '../track'
 import { followsTarget } from '../knownObjects'
 import type { Observation } from '../types'
 import { KnownObjectCheck, type KnownContext } from './KnownObjectCheck'
 import { Precovery } from './Precovery'
+import { FollowupCheck } from './FollowupCheck'
 import { DistantTrackCheck } from './TrackCheck'
 import { TrackSummary } from './TrackSummary'
 
@@ -24,10 +26,12 @@ interface Props {
   distant?: DistantTrackState
   // Saves the marks with their frames, detections, track and verdict, and the link that opens them again.
   onDownload?: () => void
+  // Forced photometry along the track at every other visit, started on request (useFollowup).
+  followup?: FollowupState
 }
 
 // Beside the image: what to do next, the marks so far and what they still need.
-export function CandidatePanel({ candidate: { marks, notice, armed, setArmed, clear, verdict, setVerdict }, blocked, track, known, visits, distant, sources = true, onDownload, children }: Props) {
+export function CandidatePanel({ candidate: { marks, notice, armed, setArmed, clear, verdict, setVerdict }, blocked, track, known, visits, distant, followup, sources = true, onDownload, children }: Props) {
   return (
     <section className="candidate-check" aria-labelledby="candidate-heading">
       <h3 id="candidate-heading">Candidate check</h3>
@@ -59,6 +63,7 @@ export function CandidatePanel({ candidate: { marks, notice, armed, setArmed, cl
             {track && <TrackSummary track={track} />}
             {children}
             {distant && <DistantTrackCheck state={distant} />}
+            {followup && <FollowupCheck state={followup} observations={visits?.observations ?? null} />}
           </KnownObjectCheck>
           {visits && <Precovery track={track} marks={marks} {...visits} detector={known.detector}
             followsTarget={followsTarget(known.motion, marks) ? known.target : null} />}

@@ -6,24 +6,48 @@ import { useEffect, useMemo, useState } from 'react'
 import { createDistantTrack } from './api'
 import { insideFrame, nearestSource, sepArcsec, type Mark } from './candidate'
 import { lineValid } from './precovery'
-import { searchRadius, type PossibleTrack } from './track'
+import { searchRadius, type PossibleTrack, type Regime } from './track'
 import { useDistantTrackLayer } from './trackLayer'
-import type { DetectedSource, DistantTrack, DistantTrackRequest, Frame, FrameManifest, TrackMark } from './types'
+import type { DetectedSource, DistanceGrid, DistantTrack, DistantTrackRequest, Frame, FrameManifest, TrackMark } from './types'
 
-// Limits of DistantTrackRequest in backend/app/models.py; the fast regime keeps the marks within 30 days.
+// Limits of DistanceGrid and DistantTrackRequest in backend/app/models.py (TRACK_WINDOW_DAYS): the marks
+// 1.5 minutes to 400 days apart, every target time within 400 days of both.
 const MIN_MARK_GAP_DAYS = 0.001
-export const MAX_TARGET_DAYS = 400
+export const TRACK_WINDOW_DAYS = 400
 export const MAX_TARGETS = 24
 export const MIN_AU = 20
 export const MAX_AU = 2000
 const STEPS = 64
 // Earth's mean orbital speed 29.8 km/s plus the escape speed 19 AU from the Sun, 9.7 km/s: a bound object
 // Δ ≥ 20 AU away crosses the sky at most 0.0228 AU/day, 4700/Δ ″/day. Farther out the escape speed drops,
-// so the farthest distance this allows errs on the far side.
+// so the farthest distance this allows errs on the far side. Marks of different epochs give the mean rate
+// between them, never more than the fastest rate in between: the bound holds there too.
 const REACH = 4700
 
 /** The farthest distance in AU at which a bound object still moves `rate` ″/day, at most 2000 AU. */
 export const farthestAu = (rate: number) => (rate > 0 ? Math.min(MAX_AU, REACH / rate) : MAX_AU)
+
+// Significant motion that may be a distant object: within one epoch, or across epochs and not a straight line.
+const DISTANT_REGIMES: Regime[] = ['fast', 'solarSystem']
+
+// Why no distances can be asked for: too fast for 20 AU, or the marks closer or farther apart in time than the API takes.
+export type GridBlock = 'tooFast' | 'marksTooClose' | 'marksTooFar'
+
+const trackMark = ({ ra, dec, mjd, sigma_arcsec }: Mark): TrackMark => ({ ra: String(ra), dec: String(dec), mjd, sigma_arcsec })
+
+/**
+ * Null unless two marks show motion that may be a distant object (fast or solarSystem). Else 20 AU up to the
+ * farthest distance the marks' motion (less 3σ) allows a bound object, or why nothing can be asked.
+ */
+export function distanceGrid(track: PossibleTrack | null, marks: Mark[]): { grid: DistanceGrid } | { blocked: GridBlock } | null {
+  if (!track || !DISTANT_REGIMES.includes(track.regime) || marks.length !== 2) return null
+  const gap = Math.abs(marks[1].mjd - marks[0].mjd)
+  const farthest = farthestAu(track.fit.rate - 3 * track.fit.sigmaRate)
+  if (farthest <= MIN_AU) return { blocked: 'tooFast' }
+  if (gap < MIN_MARK_GAP_DAYS) return { blocked: 'marksTooClose' }
+  if (gap > TRACK_WINDOW_DAYS) return { blocked: 'marksTooFar' }
+  return { grid: { marks: [trackMark(marks[0]), trackMark(marks[1])], d_min_au: MIN_AU, d_max_au: farthest, steps: STEPS } }
+}
 
 type Grid = Pick<FrameManifest, 'ra' | 'dec' | 'size_deg' | 'pixel_scale_arcsec'>
 export type DistantField = Grid & Pick<FrameManifest, 'frames'>
@@ -31,20 +55,19 @@ export type DistantField = Grid & Pick<FrameManifest, 'frames'>
 export interface DistantPlan {
   // The other images beyond the straight-line window, in time order; `skip` says why one is not predicted.
   frames: { frame: Frame; skip: 'tooFar' | 'overLimit' | null }[]
-  // Why nothing is asked: too fast for 20 AU, or the marks closer in time than the API takes.
-  blocked: 'tooFast' | 'marksTooClose' | null
+  blocked: GridBlock | null
   request: DistantTrackRequest | null
 }
 
 const days = (marks: Pick<Mark, 'mjd'>[], mjd: number) => marks.map((m) => Math.abs(mjd - m.mjd))
-const trackMark = ({ ra, dec, mjd, sigma_arcsec }: Mark): TrackMark => ({ ra: String(ra), dec: String(dec), mjd, sigma_arcsec })
 
 /**
- * Null unless two marks of one epoch show significant motion and other images lie beyond the straight-line
- * window. Asks for 20 AU up to the farthest distance the marks' motion (less 3σ) allows a bound object.
+ * Null unless two marks show motion that may be a distant object, within one epoch or across epochs, and other
+ * images lie beyond the straight-line window. Asks for the distance grid at those within 400 days of both marks.
  */
 export function planDistantTrack(track: PossibleTrack | null, marks: Mark[], frames: Frame[]): DistantPlan | null {
-  if (track?.regime !== 'fast' || marks.length !== 2) return null
+  const asked = distanceGrid(track, marks)
+  if (!asked || !track) return null
   const marked = new Set(marks.map((m) => m.obs_id))
   const others = frames
     .filter((f) => !marked.has(f.obs_id) && !lineValid(track, marks, f.mjd))
@@ -52,25 +75,16 @@ export function planDistantTrack(track: PossibleTrack | null, marks: Mark[], fra
   if (others.length === 0) return null
   // The model error grows with time: the times nearest to a mark go first.
   const targets = new Set([...new Set(others.map((f) => f.mjd))]
-    .filter((mjd) => Math.max(...days(marks, mjd)) <= MAX_TARGET_DAYS)
+    .filter((mjd) => Math.max(...days(marks, mjd)) <= TRACK_WINDOW_DAYS)
     .sort((a, b) => Math.min(...days(marks, a)) - Math.min(...days(marks, b)))
     .slice(0, MAX_TARGETS))
-  const farthest = farthestAu(track.fit.rate - 3 * track.fit.sigmaRate)
-  const blocked = farthest <= MIN_AU ? 'tooFast'
-    : Math.abs(marks[1].mjd - marks[0].mjd) < MIN_MARK_GAP_DAYS ? 'marksTooClose' : null
   return {
     frames: others.map((frame) => ({
       frame,
-      skip: targets.has(frame.mjd) ? null : Math.max(...days(marks, frame.mjd)) > MAX_TARGET_DAYS ? 'tooFar' : 'overLimit',
+      skip: targets.has(frame.mjd) ? null : Math.max(...days(marks, frame.mjd)) > TRACK_WINDOW_DAYS ? 'tooFar' : 'overLimit',
     })),
-    blocked,
-    request: blocked || targets.size === 0 ? null : {
-      marks: [trackMark(marks[0]), trackMark(marks[1])],
-      target_mjds: [...targets].sort((a, b) => a - b),
-      d_min_au: MIN_AU,
-      d_max_au: farthest,
-      steps: STEPS,
-    },
+    blocked: 'blocked' in asked ? asked.blocked : null,
+    request: 'grid' in asked && targets.size > 0 ? { ...asked.grid, target_mjds: [...targets].sort((a, b) => a - b) } : null,
   }
 }
 
@@ -120,7 +134,7 @@ export function checkDistant(plan: DistantPlan, track: DistantTrack | null, grid
       const found = nearestSource(sources, point.ra, point.dec, Infinity)
       if (!found) continue
       if (!nearest || found.sep_arcsec < nearest.sep_arcsec) nearest = found
-      const radius = searchRadius(point.radius_arcsec, grid.pixel_scale_arcsec)
+      const radius = searchRadius(point.radius_arcsec, grid.pixel_scale_arcsec, point.model_error_arcsec ?? 0)
       if (found.sep_arcsec > radius) continue
       hits.push(i)
       if (!nearestSource(answered, point.ra, point.dec, radius)) unknown.push(i)
@@ -222,7 +236,7 @@ interface DistantAnswer {
 export const isCurrent = (answer: DistantAnswer, key: string, attempt: number) => answer.key === key && answer.attempt === attempt
 
 export interface DistantTrackState {
-  status: 'off' | 'tooFast' | 'marksTooClose' | 'loading' | 'error' | 'ready'
+  status: 'off' | GridBlock | 'loading' | 'error' | 'ready'
   // The assumed distances asked for, nearest and farthest, in AU.
   range: [number, number] | null
   error: string | null
@@ -247,7 +261,7 @@ export function distantState(
   return { ...off, status: 'ready', range, track, rows, summary: summarizeDistant(rows, distances) }
 }
 
-const errorText = (cause: unknown) =>
+export const errorText = (cause: unknown) =>
   cause instanceof DOMException && cause.name === 'TimeoutError' ? 'The data service timed out. Retry in a moment.'
     : cause instanceof Error ? cause.message : String(cause)
 
