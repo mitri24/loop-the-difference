@@ -16,6 +16,7 @@ import { markerPosition, skyToFrame } from '../motion'
 import { SEARCH_AREA_LABEL, type Prediction } from '../track'
 import type { Check, Frame, FrameManifest, ProperMotion } from '../types'
 import { CheckBadge, checksForFrame } from './EvidencePanel'
+import { ImageMarks, type ImageMark } from './ImageMarks'
 import { LazyThumbnail } from './LazyThumbnail'
 import { ObservationImage } from './ObservationImage'
 import { PairTable } from './PairTable'
@@ -41,6 +42,9 @@ interface Props {
   // says about the pair.
   controls?: ReactNode
   changes?: ReactNode
+  // What the layers show on the sky for the shown frame (catalogues, detected sources, known asteroids), drawn on
+  // the image as well.
+  marks?: ImageMark[]
 }
 
 // One layout without page scrolling, left-aligned: thumbnails | image | A and B as a comparison table, one transport
@@ -61,6 +65,7 @@ export function BlinkPlayer({
   pairRequest = null,
   controls = null,
   changes = null,
+  marks = [],
 }: Props) {
   const [reduced] = useState(prefersReducedMotion)
   const [pair, setPair] = useState<BlinkPair | null>(() => defaultBlinkPair(frames))
@@ -245,6 +250,7 @@ export function BlinkPlayer({
           )
         })}
         <div className="reticle" aria-hidden="true" />
+        <ImageMarks marks={marks} grid={grid} />
         {marker && (
           <div
             className="marker"

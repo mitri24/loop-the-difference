@@ -3,6 +3,7 @@ import { TRACK_LABEL } from '../motionTrack'
 import type { PlateState } from '../historicalPlate'
 import { POSSIBLE_TRACK_LABEL } from '../trackLayer'
 import { epochFor } from '../smallBodyLayer'
+import type { LayerKey, SkyMark } from '../catalogLayers'
 import type { Frame, SmallBodyEpoch } from '../types'
 import { CatalogLegend } from './CatalogLegend'
 import { SkySlider } from './SkySlider'
@@ -34,6 +35,8 @@ interface Props {
   plateOnSky: boolean
   onPlateOnSkyChange: (on: boolean) => void
   plate: PlateState
+  // The catalogue markers that are on, so the SPHEREx images show them too.
+  onCatalogMarks?: (marks: Record<LayerKey, SkyMark[]>) => void
 }
 
 const PLATE_STATUS: Record<Exclude<PlateState['status'], 'loaded'>, string> = {
@@ -46,7 +49,7 @@ const PLATE_STATUS: Record<Exclude<PlateState['status'], 'loaded'>, string> = {
 // Everything the app draws on the Aladin sky: the SPHEREx frames, their detected sources and the catalogue markers.
 export function LayersSection({ aladin, sizeDeg, frame, framesOnSky, onFramesOnSkyChange, sourcesOnSky, onSourcesOnSkyChange, framesBlocked,
   trackShown, possibleTrackShown, skySlice, onSkySliceChange, cubeActive, smallBodyEpochs, smallBodiesOnSky, onSmallBodiesOnSkyChange,
-  plateAvailable, plateOnSky, onPlateOnSkyChange, plate }: Props) {
+  plateAvailable, plateOnSky, onPlateOnSkyChange, plate, onCatalogMarks }: Props) {
   const blocked = !aladin || !frame || !!framesBlocked
   const answered = smallBodyEpochs.some((epoch) => epoch.error == null)
   const jplEpoch = frame ? epochFor(smallBodyEpochs, frame.mjd) : null
@@ -54,7 +57,8 @@ export function LayersSection({ aladin, sizeDeg, frame, framesOnSky, onFramesOnS
     : jplEpoch ? ` @ ${jplEpoch.date.slice(0, 10)}` : ' · no lookup within a day of this frame'
   return (
     <section className="layers-section" aria-labelledby="layers-heading">
-      <h3 id="layers-heading">Layers on the sky</h3>
+      <h3 id="layers-heading">Layers on the sky and the images</h3>
+      <p className="muted">Markers you switch on here also appear on the SPHEREx images; the frames and the 1950 plate stay on the sky map.</p>
       <label className="layer-toggle">
         <input type="checkbox" checked={framesOnSky} disabled={blocked}
           onChange={(event) => onFramesOnSkyChange(event.target.checked)} />
@@ -84,7 +88,7 @@ export function LayersSection({ aladin, sizeDeg, frame, framesOnSky, onFramesOnS
       {(!frame || framesBlocked) && <p className="muted">{framesBlocked ?? 'Load a comparison to place its frames and their detected sources on the sky. Gaia DR3 and SkyBoT follow the date of the shown frame, so they wait for frames too.'}</p>}
       {trackShown && <p className="track-key"><span aria-hidden="true">─●─</span> Path {TRACK_LABEL}, a dot per frame date</p>}
       {possibleTrackShown && <p className="track-key possible"><span aria-hidden="true">◎</span> {POSSIBLE_TRACK_LABEL}</p>}
-      <CatalogLegend aladin={aladin} sizeDeg={sizeDeg} frameMjd={frame?.mjd ?? null}>
+      <CatalogLegend aladin={aladin} sizeDeg={sizeDeg} frameMjd={frame?.mjd ?? null} onMarks={onCatalogMarks}>
         <label>
           <input type="checkbox" checked={smallBodiesOnSky} disabled={!aladin || !answered}
             onChange={(event) => onSmallBodiesOnSkyChange(event.target.checked)} />

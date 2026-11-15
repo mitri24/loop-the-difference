@@ -130,6 +130,18 @@ export const sourceName = (data: Record<string, string> = {}) =>
   data.main_id || data.Name || data.AllWISE || data.Source || data.label || ''
 
 export type LayerKey = 'gaia' | 'wise' | 'simbad' | 'skybot'
+
+// A loaded marker as plain data, for drawing it on the SPHEREx images as well (BlinkPlayer).
+export interface SkyMark {
+  ra: number
+  dec: number
+  name: string
+}
+export const NO_MARKS: Record<LayerKey, SkyMark[]> = { gaia: [], wise: [], simbad: [], skybot: [] }
+const toMarks = (sources: unknown[]): SkyMark[] => sources.map((source) => {
+  const s = source as { ra: number; dec: number; data?: Record<string, string> }
+  return { ra: s.ra, dec: s.dec, name: sourceName(s.data) }
+})
 export type LayerStatus = 'off' | 'loading' | 'ready' | 'none' | 'unavailable'
 /** A loaded catalogue, 'none' for a field without objects, null when the service failed. */
 export type LayerResult<T> = T | 'none' | null
@@ -301,6 +313,7 @@ function useLayer(
   view: View | null,
   mjd: number | null,
   report: (key: LayerKey, status: LayerStatus) => void,
+  reportMarks: (key: LayerKey, marks: SkyMark[]) => void,
 ) {
   // One catalogue per layer, refilled in place: removing it would close Aladin's shared table.
   const catalog = useRef<Promise<Catalog> | null>(null)
@@ -335,10 +348,13 @@ function useLayer(
     }
     if (!on || !view || epoch == null) {
       show(null)
+      reportMarks(key, [])
       return
     }
     const settle = (result: LayerResult<unknown[]>) => {
-      show(result === 'none' || !result ? NO_SOURCES : result)
+      const sources = result === 'none' || !result ? NO_SOURCES : result
+      show(sources)
+      reportMarks(key, toMarks(sources))
       report(key, layerStatus(result))
     }
     const hit = cache.peek(view, epoch)
@@ -354,7 +370,7 @@ function useLayer(
     return () => {
       stale = true
     }
-  }, [key, aladin, on, view, epoch, report, cache])
+  }, [key, aladin, on, view, epoch, report, reportMarks, cache])
 }
 
 /**
@@ -423,10 +439,16 @@ export function useCatalogLayers(
     (key: LayerKey, s: LayerStatus) => setStatus((old) => ({ ...old, [key]: s })),
     [],
   )
-  useLayer('gaia', aladin, enabled.gaia, view, epoch, report)
-  useLayer('wise', aladin, enabled.wise, view, epoch, report)
-  useLayer('simbad', aladin, enabled.simbad, view, epoch, report)
-  useLayer('skybot', aladin, enabled.skybot, view, epoch, report)
+  // The markers each layer shows, for the SPHEREx images too.
+  const [marks, setMarks] = useState<Record<LayerKey, SkyMark[]>>(NO_MARKS)
+  const reportMarks = useCallback(
+    (key: LayerKey, list: SkyMark[]) => setMarks((old) => (old[key] === list || (old[key].length === 0 && list.length === 0) ? old : { ...old, [key]: list })),
+    [],
+  )
+  useLayer('gaia', aladin, enabled.gaia, view, epoch, report, reportMarks)
+  useLayer('wise', aladin, enabled.wise, view, epoch, report, reportMarks)
+  useLayer('simbad', aladin, enabled.simbad, view, epoch, report, reportMarks)
+  useLayer('skybot', aladin, enabled.skybot, view, epoch, report, reportMarks)
 
   const shownStatus = (key: LayerKey): LayerStatus => (enabled[key] ? status[key] : 'off')
   return {
@@ -437,5 +459,6 @@ export function useCatalogLayers(
       skybot: shownStatus('skybot'),
     },
     skybotDate: epoch == null ? null : isoDate(epoch),
+    marks,
   }
 }
