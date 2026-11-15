@@ -557,6 +557,8 @@ summary { cursor:pointer; min-height:32px; padding:5px 0; font-size:13px; }
 /* Marking in the image: a crosshair and the candidate colour round the image; marks A and B where they were set
    (the frame's own mark full, the other one faint). */
 .viewport.marking { cursor:crosshair; outline:2px solid var(--candidate); outline-offset:-2px; }
-.image-mark { position:absolute; transform:translate(-50%,-50%); display:inline-flex; align-items:center; gap:1px; color:var(--candidate); font-weight:700; font-size:13px; line-height:1; text-shadow:0 0 3px #000; pointer-events:none; opacity:.5; white-space:nowrap; }
-.image-mark > span { font-size:20px; }
+.image-mark { position:absolute; width:18px; aspect-ratio:1; transform:translate(-50%,-50%); border:2px solid var(--candidate); border-radius:50%; box-shadow:0 0 0 1px #000, inset 0 0 0 1px #000; pointer-events:none; opacity:.5; }
+.image-mark::before { content:''; position:absolute; inset:3px; border:2px solid var(--candidate); border-radius:50%; }
+.image-mark-letter { position:absolute; left:calc(100% + 3px); top:50%; transform:translateY(-50%); color:var(--candidate); font-weight:700; font-size:13px; line-height:1; text-shadow:0 0 3px #000; }
 .image-mark.current { opacity:1; }
+.candidate-hint:empty { display:none; }

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { frameToSky, markerPosition, skyToFrame } from './motion'
+import { frameToSky, gridExtentDeg, markerPosition, skyToFrame } from './motion'
 import type { ProperMotion } from './types'
 
 // Gaia DR3 4472832130942575872 (Barnard's Star), from backend/tests/fixtures/gaia_barnard.csv
@@ -56,5 +56,18 @@ describe('frameToSky', () => {
     expect(centre.ra).toBeCloseTo(120, 9)
     expect(centre.dec).toBeCloseTo(30, 9)
     expect(frameToSky(0.2, 0.5, 120, 30, 0.2).ra).toBeGreaterThan(120)
+  })
+})
+
+describe('gridExtentDeg', () => {
+  it('takes the PNG width: a 0.02° region still has 16 pixels of 6.15″, 98.4″', () => {
+    expect(gridExtentDeg(16, 6.15, 0.02) * 3600).toBeCloseTo(98.4, 6)
+    expect(gridExtentDeg(117, 6.15, 0.2) * 3600).toBeCloseTo(719.55, 6)
+  })
+
+  it('keeps size_deg until a frame-sized image loaded or without a pixel scale', () => {
+    expect(gridExtentDeg(null, 6.15, 0.2)).toBe(0.2)
+    expect(gridExtentDeg(1, 6.15, 0.2)).toBe(0.2)
+    expect(gridExtentDeg(117, undefined, 0.2)).toBe(0.2)
   })
 })

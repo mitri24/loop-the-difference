@@ -100,9 +100,12 @@
 .viewer-stage { flex:1; min-width:0; display:flex; flex-direction:column; gap:var(--space-3); container-type:size; }
 .candidate-side { flex:none; width:clamp(240px, 30cqw, 360px); min-height:0; overflow-y:auto; overscroll-behavior:contain; scrollbar-width:thin; display:flex; flex-direction:column; gap:var(--space-3); padding-left:var(--space-3); border-left:1px solid var(--border); font-size:var(--text-sm); }
 .candidate-side > .candidate-check { padding-top:0; border-top:0; }
-/* Too narrow for both side by side (tablets, phones): the check follows under the images, the body scrolls, and the
-   player fits the viewer body as before. */
-@container (max-width:759px) {
+/* Too narrow for both side by side (tablets, phones), or the difference image with its own side column: the check
+   follows under the images, the body scrolls, and the player fits the viewer body as before. */
+.viewer-split.stacked { flex:none; flex-direction:column; }
+.viewer-split.stacked > .viewer-stage { flex:none; container-type:normal; }
+.viewer-split.stacked > .candidate-side { width:auto; overflow:visible; padding:var(--space-3) 0 0; border-left:0; border-top:1px solid var(--border); }
+@container (max-width:699px) {
   .viewer-split { flex:none; flex-direction:column; }
   .viewer-stage { flex:none; container-type:normal; }
   .candidate-side { width:auto; overflow:visible; padding:var(--space-3) 0 0; border-left:0; border-top:1px solid var(--border); }

@@ -59,3 +59,9 @@ export function frameToSky(x: number, y: number, ra0: number, dec0: number, size
   const dec = (Math.atan2(Math.sin(d0) + eta * Math.cos(d0), Math.hypot(xi, denom)) * 180) / Math.PI
   return { ra: ((ra % 360) + 360) % 360, dec }
 }
+
+// The sky across the frame PNG: its pixels times the pixel scale. The grid has at least 16 pixels (backend
+// target_grid), so a small region's image covers more than size_deg; anything smaller is not a frame grid.
+export function gridExtentDeg(pixels: number | null, pixelScaleArcsec: number | undefined, sizeDeg: number): number {
+  return pixels && pixels >= 16 && pixelScaleArcsec ? (pixels * pixelScaleArcsec) / 3600 : sizeDeg
+}

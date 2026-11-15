@@ -14,12 +14,14 @@ interface Props {
   track: PossibleTrack | null
   known: KnownContext
   children?: ReactNode
+  // Detected sources with their "Mark" buttons are listed (not without the sky view).
+  sources?: boolean
   // Every SPHEREx visit of the field and the obs_ids in the blink (stack members included); null until the archive answered.
   visits?: { observations: Observation[]; inBlink: string[] } | null
 }
 
 // Beside the image: what to do next, the marks so far and what they still need.
-export function CandidatePanel({ candidate: { marks, notice, armed, setArmed, clear }, blocked, track, known, visits, children }: Props) {
+export function CandidatePanel({ candidate: { marks, notice, armed, setArmed, clear }, blocked, track, known, visits, sources = true, children }: Props) {
   return (
     <section className="candidate-check" aria-labelledby="candidate-heading">
       <h3 id="candidate-heading">Candidate check</h3>
@@ -33,8 +35,8 @@ export function CandidatePanel({ candidate: { marks, notice, armed, setArmed, cl
       </button>
       <p className="candidate-hint">
         {blocked ?? (armed
-          ? 'Click the object in the image; the mark also appears on the map. "Mark" in Detected sources works too.'
-          : 'Or use "Mark" next to a detected source.')}
+          ? `Click the object in the image.${sources ? ' "Mark" in Detected sources works too.' : ''}`
+          : sources && 'Or use "Mark" next to a detected source.')}
       </p>
       <p className="candidate-notice" role="status" aria-live="polite">{notice}</p>
       {marks.length > 0 && (

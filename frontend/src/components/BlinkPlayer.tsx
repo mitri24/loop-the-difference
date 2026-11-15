@@ -14,7 +14,7 @@ import {
   type BlinkPair,
 } from '../blink'
 import { MARK_LETTERS, type Mark } from '../candidate'
-import { frameToSky, markerPosition, skyToFrame } from '../motion'
+import { frameToSky, gridExtentDeg, markerPosition, skyToFrame } from '../motion'
 import { SEARCH_AREA_LABEL, type Prediction } from '../track'
 import type { Check, Frame, FrameManifest, ProperMotion } from '../types'
 import { CheckBadge, checksForFrame } from './EvidencePanel'
@@ -70,6 +70,15 @@ export function BlinkPlayer({
   const [mode, setMode] = useState<'ab' | 'all'>(pair ? 'ab' : 'all')
   const [index, setIndex] = useState(pair?.a ?? 0)
   const [playing, setPlaying] = useState(false)
+  // Arming the mark pauses: a click must land on the frame the user aimed at.
+  const [wasMarking, setWasMarking] = useState(marking)
+  if (marking !== wasMarking) {
+    setWasMarking(marking)
+    if (marking) setPlaying(false)
+  }
+  // Pixels across the frames' common grid, from the loaded PNG: every overlay and click uses the image's real extent.
+  const [pixels, setPixels] = useState<number | null>(null)
+  const extentDeg = gridExtentDeg(pixels, grid.pixel_scale_arcsec, grid.size_deg)
   const [delayMs, setDelayMs] = useState(reduced ? REDUCED_DELAY_MS : 500)
   const [autoPaused, setAutoPaused] = useState(false)
   const [copyState, setCopyState] = useState<'idle' | 'copied' | 'failed'>('idle')
@@ -168,9 +177,9 @@ export function BlinkPlayer({
   })
 
   const frame = frames[index]
-  const marker = motion && markerPosition(motion, frame.mjd, grid.ra, grid.dec, grid.size_deg)
+  const marker = motion && markerPosition(motion, frame.mjd, grid.ra, grid.dec, extentDeg)
   const predicted = predictions.find((p) => p.mjd === frame.mjd)
-  const searchArea = predicted && skyToFrame(predicted.ra, predicted.dec, grid.ra, grid.dec, grid.size_deg)
+  const searchArea = predicted && skyToFrame(predicted.ra, predicted.dec, grid.ra, grid.dec, extentDeg)
   // Releases name the calibration: different ones for A and B are a comparison caveat, so the pair shows them.
   const mixedReleases = pair && frameRelease(frames[pair.a], grid.collection) !== frameRelease(frames[pair.b], grid.collection)
   const epochGroups = [...new Set(frames.map((f) => f.epoch))].map((epoch) =>
@@ -270,10 +279,13 @@ export function BlinkPlayer({
         className={marking ? 'viewport marking' : 'viewport'}
         title={marking ? 'Click the object to mark it in this frame' : undefined}
         onClick={(event) => {
-          if (!marking || !onMark || (event.target instanceof Element && event.target.closest('button, a'))) return
-          const box = event.currentTarget.getBoundingClientRect()
-          const at = frameToSky((event.clientX - box.left) / box.width, (event.clientY - box.top) / box.height, grid.ra, grid.dec, grid.size_deg)
-          setPlaying(false)
+          // Only the shown, loaded image marks: not the stamp, the checks badge, a placeholder or an error message.
+          const image = event.target
+          if (!marking || !onMark || !(image instanceof HTMLImageElement) || !image.naturalWidth || image.style.visibility === 'hidden') return
+          // Playing, the frame may change under the pointer: that click only pauses.
+          if (playing) return setPlaying(false)
+          const box = image.getBoundingClientRect()
+          const at = frameToSky((event.clientX - box.left) / box.width, (event.clientY - box.top) / box.height, grid.ra, grid.dec, extentDeg)
           onMark(frame, at.ra, at.dec)
         }}
       >
@@ -286,6 +298,7 @@ export function BlinkPlayer({
               src={f.url}
               alt={`SPHEREx detector ${f.detector}, ${f.date.slice(0, 10)}`}
               visible={i === index}
+              onSize={setPixels}
             />
           )
         })}
@@ -300,16 +313,17 @@ export function BlinkPlayer({
         {searchArea && predicted && (
           <div
             className="search-area"
-            style={{ left: `${searchArea.x * 100}%`, top: `${searchArea.y * 100}%`, width: `${(predicted.radius_arcsec / 1800 / grid.size_deg) * 100}%` }}
+            style={{ left: `${searchArea.x * 100}%`, top: `${searchArea.y * 100}%`, width: `${(predicted.radius_arcsec / 1800 / extentDeg) * 100}%` }}
             title={`Possible track, search area ${SEARCH_AREA_LABEL}`}
           />
         )}
         {marks.map((mark, i) => {
-          const at = skyToFrame(mark.ra, mark.dec, grid.ra, grid.dec, grid.size_deg)
+          const at = skyToFrame(mark.ra, mark.dec, grid.ra, grid.dec, extentDeg)
+          const here = mark.obs_id === frame.obs_id
           return at && (
-            <span key={mark.obs_id} className={mark.obs_id === frame.obs_id ? 'image-mark current' : 'image-mark'}
-              style={{ left: `${at.x * 100}%`, top: `${at.y * 100}%` }} title={`Your mark ${MARK_LETTERS[i]}${mark.obs_id === frame.obs_id ? ', set in this frame' : ''}`}>
-              <span aria-hidden="true">◎</span>{MARK_LETTERS[i]}
+            <span key={mark.obs_id} className={here ? 'image-mark current' : 'image-mark'}
+              style={{ left: `${at.x * 100}%`, top: `${at.y * 100}%` }} title={`Your mark ${MARK_LETTERS[i]}${here ? ', set in this frame' : ''}`}>
+              <span className="image-mark-letter">{MARK_LETTERS[i]}</span>
             </span>
           )
         })}

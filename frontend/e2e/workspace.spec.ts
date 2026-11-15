@@ -480,18 +480,23 @@ test('fixture: Mark detected sources in two frames lists candidate marks A and B
     await page.screenshot({ path: info.outputPath(`candidate-${width}.png`) })
     await panel.getByRole('button', { name: 'Clear marks' }).click()
     await expect(panel.locator('.candidate-marks li')).toHaveCount(0)
+    // Image path (beside and under the images): arming pauses playback; a click in the image marks the frame shown
+    // there at that position, drawn on the image as ◎ A. The stamp on the image does not mark.
+    await page.getByRole('button', { name: 'Play', exact: true }).click()
+    const mark = panel.getByRole('button', { name: 'Mark in this frame' })
+    await mark.click()
+    await expect(page.getByRole('button', { name: 'Play', exact: true })).toBeVisible()
+    await expect(page.locator('.viewer .viewport')).toHaveClass(/marking/)
+    await page.locator('.viewer .viewport .stamp').click()
+    await expect(panel.locator('.candidate-marks li')).toHaveCount(0)
+    await page.locator('.viewer .viewport img:visible').click()
+    await expect(panel.locator('.candidate-marks li')).toHaveText([/^◎ A · 2026-0\d-10 12:00 UTC · RA .* Dec 89\.26\d+° .* · position as clicked$/])
+    await expect(page.locator('.viewer .viewport .image-mark')).toHaveText('A')
+    await mark.click()
+    await panel.getByRole('button', { name: 'Clear marks' }).click()
+    await expect(page.locator('.viewer .viewport .image-mark')).toHaveCount(0)
+    await page.getByRole('button', { name: 'Show frame B' }).click()
   }
-  // Image path: armed, a click in the image marks the frame shown there at that position, drawn on the image as ◎ A.
-  const mark = panel.getByRole('button', { name: 'Mark in this frame' })
-  await mark.click()
-  await expect(page.locator('.viewer .viewport')).toHaveClass(/marking/)
-  const image = (await page.locator('.viewer .viewport').boundingBox())!
-  await page.mouse.click(image.x + image.width / 2, image.y + image.height / 2)
-  await expect(panel.locator('.candidate-marks li')).toHaveText([/^◎ A · 2026-09-10 12:00 UTC · RA .* Dec 89\.26\d+° .* · position as clicked$/])
-  await expect(page.locator('.viewer .viewport .image-mark')).toHaveText('◎A')
-  await mark.click()
-  await panel.getByRole('button', { name: 'Clear marks' }).click()
-  await expect(page.locator('.viewer .viewport .image-mark')).toHaveCount(0)
   // Sky path on the full sky (Explore): armed, a click outside the frame explains itself, one inside marks the shown frame.
   await page.getByRole('button', { name: 'Back to sky' }).click()
   await page.getByRole('button', { name: 'Mark a candidate on the sky' }).click()

@@ -463,7 +463,7 @@ export default function App() {
   const blocking = checks.some((check) => check.severity === 'blocker' || check.severity === 'error')
   // Beside the image, not in the inspector: the user marks in the image and reads the check next to it.
   const candidateSide = manifest && hasFrames && <aside className="candidate-side" aria-label="Candidate check">
-    <CandidatePanel candidate={candidate} blocked={markBlocked} track={possible && { ...possible, predictions }}
+    <CandidatePanel candidate={candidate} blocked={markBlocked} track={possible && { ...possible, predictions }} sources={!skyUnavailable}
       known={{ epochs: smallBodies.epochs, motion, detector: manifest.detector, target: targetText(query) }}
       visits={summary && { observations: summary.observations, inBlink: [...manifest.frames.map((f) => f.obs_id),
         ...manifest.differences.flatMap((d) => [...d.obs_ids_a, ...d.obs_ids_b])] }}>
@@ -548,7 +548,7 @@ export default function App() {
               onClick={() => (inspectOpen ? closeInspect() : setInspectOpen(true))}>Inspect</button>
           </div>
           <div className="viewer-body">
-            <div className="viewer-split">
+            <div className={showDifference ? 'viewer-split stacked' : 'viewer-split'}>
               <div className="viewer-stage">
                 {statusBlock}
                 {job && emptyState}

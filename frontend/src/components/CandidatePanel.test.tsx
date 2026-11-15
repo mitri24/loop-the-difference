@@ -6,8 +6,8 @@ import { CandidatePanel } from './CandidatePanel'
 
 const mark = (obs_id: string, date: string): Mark =>
   ({ obs_id, mjd: 61000, date, ra: 308.52331, dec: -22.89019, sigma_arcsec: 3 })
-const render = (marks: Mark[], blocked: string | null = null, armed = false, track: PossibleTrack | null = null) => renderToStaticMarkup(
-  <CandidatePanel candidate={{ marks, notice: '', armed, setArmed: () => undefined, clear: () => undefined }} blocked={blocked} track={track}
+const render = (marks: Mark[], blocked: string | null = null, armed = false, track: PossibleTrack | null = null, sources = true) => renderToStaticMarkup(
+  <CandidatePanel candidate={{ marks, notice: '', armed, setArmed: () => undefined, clear: () => undefined }} blocked={blocked} track={track} sources={sources}
     known={{ epochs: [], motion: null, detector: 3, target: 'Pluto' }} />,
 )
 
@@ -24,9 +24,14 @@ describe('CandidatePanel', () => {
     const html = render([mark('a', '2026-04-25T21:55:00Z')], null, true)
     expect(html).toContain('Now mark it in another frame')
     expect(html).toContain('aria-pressed="true"')
-    expect(html).toContain('Click the object in the image')
+    expect(html).toContain('Click the object in the image. &quot;Mark&quot; in Detected sources works too.')
     expect(html).toContain('A · 2026-04-25 21:55 UTC')
     expect(html).toContain('Unverified candidate – needs verification')
+  })
+
+  it('names only what is on screen: without the sky view no detected sources are listed', () => {
+    expect(render([], null, true, null, false)).toContain('<p class="candidate-hint">Click the object in the image.</p>')
+    expect(render([], null, false, null, false)).not.toContain('detected source')
   })
 
   it('lists A and B and disables the toggle with its reason', () => {
