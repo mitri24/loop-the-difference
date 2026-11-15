@@ -11,7 +11,7 @@ export const MAX_CHECK_DEG = 0.5
 const MJD_J2000 = 51544.5
 export const yearToMjd = (year: number) => MJD_J2000 + (year - 2000) * 365.25
 
-export const NOT_A_LINE = 'Not a straight line this far – see distance hypotheses'
+export const NOT_A_LINE = 'No straight-line prediction'
 export const PLATE_NOTE = 'plate date inside the file; time not printed'
 
 export interface LookRow {

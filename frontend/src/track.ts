@@ -86,7 +86,7 @@ export const REGIMES = {
   stellar: { icon: '★', word: 'Consistent with stellar proper motion', note: 'Straight-line prediction at every frame date.' },
   solarSystem: {
     icon: '⤳', word: 'Not a straight line across half a year – if one object, it is in the Solar System',
-    note: 'No straight-line prediction across epochs; it needs an assumed distance.',
+    note: 'No straight-line prediction across epochs. For positions at assumed distances with Earth’s parallax, mark it in two frames of one epoch.',
   },
 } as const
 export type Regime = keyof typeof REGIMES
@@ -123,6 +123,10 @@ export function trackEvidence(track: PossibleTrack | null): Evidence {
 // A detection counts as at the prediction within 2σ of the prediction, but never closer than
 // 1.5 SPHEREx pixels: centroids of the same blob scatter by about a pixel.
 export const SEARCH_PIXELS = 1.5
+
+/** The search radius around a prediction: its 2σ, at least SEARCH_PIXELS. */
+export const searchRadius = (radiusArcsec: number, pixelScaleArcsec: number) =>
+  Math.max(radiusArcsec, SEARCH_PIXELS * pixelScaleArcsec)
 // Mirrors MAX_SOURCES in backend/app/sources.py: a full list holds only the brightest detections.
 export const SPHEREX_SOURCE_CAP = 300
 
@@ -151,7 +155,7 @@ export function checkFrames(
     .sort((a, b) => a.frame.mjd - b.frame.mjd)
     .map(({ frame, index }) => {
       const prediction = track.predictions.find((p) => p.mjd === frame.mjd) ?? null
-      const radius_arcsec = Math.max(prediction?.radius_arcsec ?? 0, SEARCH_PIXELS * grid.pixel_scale_arcsec)
+      const radius_arcsec = searchRadius(prediction?.radius_arcsec ?? 0, grid.pixel_scale_arcsec)
       const row = { index, frame, prediction, radius_arcsec }
       if (!prediction) return { ...row, result: { kind: 'window' as const } }
       if (!insideFrame(prediction.ra, prediction.dec, grid)) return { ...row, result: { kind: 'outside' as const } }
@@ -162,3 +166,6 @@ export function checkFrames(
         : { ...row, result: { kind: 'nothing' as const } }
     })
 }
+
+/** `value` at `digits` significant digits, without trailing zeros: 0.798, 41, 280, 2000. */
+export const num = (value: number, digits = 3) => Number(value.toPrecision(digits)).toString()
