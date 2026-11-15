@@ -51,6 +51,8 @@
 .explore-actions { position:absolute; z-index:var(--z-chrome); left:50%; bottom:96px; transform:translateX(-50%); display:flex; flex-wrap:wrap; justify-content:center; gap:var(--space-2); width:max-content; max-width:calc(100% - 32px); }
 .pick-card { display:flex; align-items:center; gap:var(--space-2); padding:var(--space-1) var(--space-1) var(--space-1) var(--space-3); background:var(--surface-glass); border:1px solid var(--border-strong); border-radius:var(--radius-md); font-family:var(--font-mono); font-size:var(--text-xs); }
 .explore-actions > button { background:var(--surface-glass); }
+.explore-cue { font-family:var(--font-sans); font-size:var(--text-sm); }
+.explore-cue > span { padding-block:var(--space-1); }
 
 /* Investigate: the sky shrinks to an overview map in its own column beside the viewer, width from its handle. */
 .stage.investigate { display:grid; grid-template-columns:minmax(0,1fr) auto; grid-template-rows:minmax(0,1fr); }
@@ -135,9 +137,18 @@
 .section-count { min-width:18px; padding:0 5px; border-radius:var(--radius-md); background:var(--surface-3); color:var(--text-primary); font-size:10px; font-variant-numeric:tabular-nums; text-align:center; }
 .section-count.alert { background:var(--status-fail); color:var(--surface-0); }
 
-/* On-demand sheets (options, layers, about) open from the header. */
+/* On-demand sheets (options, layers, about) open from the header; narrow headers fold them into "⋯". */
+.header-tools { display:contents; }
 .header-tool { min-height:32px; padding:4px 8px; background:transparent; border-color:transparent; color:var(--muted); font-size:var(--text-xs); }
 .header-tool[aria-expanded='true'] { color:var(--accent); border-color:var(--accent); }
+.header-more { display:none; min-width:36px; font-size:var(--text-md); }
+.header-more-menu { position:absolute; top:calc(100% - 2px); right:16px; z-index:1; display:flex; flex-direction:column; align-items:stretch; gap:2px; padding:var(--space-1); border:1px solid var(--border-strong); border-radius:var(--radius-md); background:var(--surface-1); box-shadow:0 8px 24px var(--shadow-color); }
+.header-more-menu[hidden] { display:none; }
+.header-more-menu .header-tool { justify-content:flex-start; min-height:40px; padding:0 var(--space-4); }
+@container (max-width:899px) {
+  .header-tools { display:none; }
+  .header-more { display:inline-flex; }
+}
 
 /* Timeline under the viewer: height from its top edge, collapsible to its heading. */
 .bottom-bar { grid-area:bar; position:relative; z-index:var(--z-chrome); display:flex; flex-direction:column; height:var(--bar-h); min-height:0; background:var(--surface-1); border-top:1px solid var(--border); }
