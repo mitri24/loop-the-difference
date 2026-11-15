@@ -153,6 +153,9 @@ def build_frames(
     urls = [cutout_url(o.access_url, ra, dec, size_deg) for o in selected]
     report(0, len(selected))
 
+    # Reuse decoded and aligned pixels across progressive previews and the final render.
+    prepared = {}
+
     def publish_preview(downloaded, checks):
         # Separate files: a provisional stretch must never overwrite immutable final PNGs.
         count = len(downloaded)
@@ -172,6 +175,7 @@ def build_frames(
             settings,
             stack=False,
             preview=True,
+            prepared=prepared,
         )
 
     # Start with widely separated dates; one slow cutout cannot block another ready image.
@@ -193,6 +197,7 @@ def build_frames(
         collections,
         settings,
         stack=stack,
+        prepared=prepared,
     )
 
 
@@ -211,12 +216,21 @@ def _render_frames(
     *,
     stack=False,
     preview=False,
+    prepared=None,
 ) -> dict:
     target, shape = target_grid(ra, dec, size_deg)
+    prepared = {} if prepared is None else prepared
     kept, exposures, cutouts = [], [], []
     for obs, url, path in downloaded:
-        data, variance, wcs, unusable = read_image(path)
-        exposure = align(data, variance, wcs, target, shape)
+        if path not in prepared:
+            data, variance, wcs, unusable = read_image(path)
+            exposure = align(data, variance, wcs, target, shape)
+            prepared[path] = (
+                exposure,
+                target_is_flagged(unusable, wcs, ra, dec),
+                wavelength_at(path, ra, dec),
+            )
+        exposure, flagged, (wavelength, bandwidth) = prepared[path]
         coverage = float(exposure.covered.mean())
         if coverage < MIN_COVERAGE:
             checks.append(
@@ -229,7 +243,7 @@ def _render_frames(
                 )
             )
             continue
-        if target_is_flagged(unusable, wcs, ra, dec):
+        if flagged:
             checks.append(
                 Check(
                     code="FLAGGED_PIXELS",
@@ -240,7 +254,6 @@ def _render_frames(
                     affects=[f"obs:{obs.obs_id}"],
                 )
             )
-        wavelength, bandwidth = wavelength_at(path, ra, dec)
         kept.append((obs, url, coverage, wavelength, bandwidth))
         exposures.append(exposure)
         cutouts.append(path.name)

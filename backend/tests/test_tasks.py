@@ -563,3 +563,29 @@ def test_missing_cutout_says_why_the_archive_did_not_deliver(monkeypatch, settin
     assert checks[0].detail.startswith(
         f"{observation.obs_id}: archive did not deliver the cutout ("
     )
+
+
+def test_progressive_previews_decode_and_align_each_download_only_once(
+    monkeypatch, settings, tmp_path
+):
+    observations = [_observation(mjd) for mjd in (100, 290, 470, 650)]
+    _offline_archive(monkeypatch, settings, tmp_path, observations)
+    read = tasks.read_image
+    align = tasks.align
+    decoded, aligned = [], []
+
+    def counted_read(path):
+        decoded.append(path)
+        return read(path)
+
+    def counted_align(*args):
+        aligned.append(1)
+        return align(*args)
+
+    monkeypatch.setattr(tasks, "read_image", counted_read)
+    monkeypatch.setattr(tasks, "align", counted_align)
+    result = tasks.build_frames("job", RA, DEC, SIZE_DEG, 6, 12)
+    assert len(result["frames"]) == 4
+    assert len(decoded) == len(set(decoded)) == len(observations)
+    assert len(aligned) == len(observations)
+    assert (settings.cache_dir / "frames/job/preview.json").is_file()

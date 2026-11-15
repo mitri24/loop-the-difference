@@ -92,8 +92,12 @@ def _search(settings: Settings, params: dict[str, str]) -> httpx.Response:
     """One SIA2 query, asked again on a busy or failing gateway; the error names IRSA's answer."""
     for attempt in range(1, SEARCH_ATTEMPTS + 1):
         try:
-            response = httpx.get(
-                settings.irsa_sia_url, params=params, timeout=settings.http_timeout_s
+            # IRSA's GET gateway can return 502 while the same SIA query works as POST.
+            # Switch transport after the first transient failure, keeping the query unchanged.
+            response = (
+                httpx.get(settings.irsa_sia_url, params=params, timeout=settings.http_timeout_s)
+                if attempt == 1
+                else httpx.post(settings.irsa_sia_url, data=params, timeout=settings.http_timeout_s)
             )
             response.raise_for_status()
             return response
@@ -104,7 +108,8 @@ def _search(settings: Settings, params: dict[str, str]) -> httpx.Response:
                 else isinstance(exc, httpx.TransportError)
             )
             if attempt < SEARCH_ATTEMPTS and retry:
-                time.sleep(SEARCH_RETRY_S * attempt)
+                if attempt > 1:
+                    time.sleep(SEARCH_RETRY_S * attempt)
                 continue
             raise ArchiveError(unreachable_text(exc)) from exc
     raise AssertionError("unreachable")
@@ -155,10 +160,16 @@ def spherex_collections(settings: Settings) -> list[str]:
 
 
 def _fetch_collections(settings: Settings) -> list[str]:
-    response = httpx.get(
-        settings.irsa_sia_url, params={"MAXREC": "0"}, timeout=COLLECTIONS_TIMEOUT_S
-    )
-    response.raise_for_status()
+    try:
+        response = httpx.get(
+            settings.irsa_sia_url, params={"MAXREC": "0"}, timeout=COLLECTIONS_TIMEOUT_S
+        )
+        response.raise_for_status()
+    except httpx.HTTPError:
+        response = httpx.post(
+            settings.irsa_sia_url, data={"MAXREC": "0"}, timeout=COLLECTIONS_TIMEOUT_S
+        )
+        response.raise_for_status()
     return parse_collections(response.content)
 
 

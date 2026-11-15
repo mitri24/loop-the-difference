@@ -43,6 +43,16 @@ def _obs(mjd: float, detector: int = 6) -> Observation:
     )
 
 
+@pytest.fixture(autouse=True)
+def post_uses_the_offline_search_fixture(monkeypatch):
+    # Existing recorded responses exercise either HTTP transport, without live network calls.
+    monkeypatch.setattr(
+        archive.httpx,
+        "post",
+        lambda url, data, timeout: archive.httpx.get(url, params=data, timeout=timeout),
+    )
+
+
 def test_parse_real_sia_answer():
     observations = parse_sia_votable(FIXTURE.read_bytes())
 
@@ -392,3 +402,26 @@ def test_search_asks_again_on_a_gateway_error_and_names_irsas_answer(settings, m
 )
 def test_release_label(collection, label):
     assert release_label(collection) == label
+
+
+def test_a_broken_get_gateway_switches_immediately_to_post(settings, monkeypatch):
+    requests = []
+
+    def get(url, params, timeout):
+        requests.append(("GET", dict(params)))
+        return httpx.Response(502, request=httpx.Request("GET", url))
+
+    def post(url, data, timeout):
+        requests.append(("POST", dict(data)))
+        return _Answer(FIXTURE.read_bytes())
+
+    monkeypatch.setattr(archive.httpx, "get", get)
+    monkeypatch.setattr(archive.httpx, "post", post)
+    monkeypatch.setattr(
+        archive.time, "sleep", lambda *_: pytest.fail("Do not sleep before switching gateways")
+    )
+    found, failed = search_observations(133.795, -7.245, settings, ["spherex_dr1"])
+    assert len(found) == 6 and failed == []
+    assert [method for method, _ in requests] == ["GET", "POST"]
+    assert requests[0][1] == requests[1][1]
+    assert archive.sia_cache_path(settings.cache_dir, "spherex_dr1", 133.795, -7.245).is_file()

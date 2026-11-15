@@ -8,8 +8,8 @@ export const INTRO_SEEN_KEY = 'ltd-intro-seen'
 export const INTRO_TIMING = {
   // The loading animation shows at least this long after the page started, so a fast load still reads as one.
   minLoadingMs: 700,
-  // Orbits close, the planets blink and the name appears (index.html: last animation ends at 1.6 s).
-  playMs: 1700,
+  // Orbits close, the planets blink and the finished 3D logo holds for an extra 1.5 s.
+  playMs: 3200,
   openMs: 700,
   // Reduced motion: the finished logo, briefly, then a fade.
   reducedPlayMs: 500,
