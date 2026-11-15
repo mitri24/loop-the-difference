@@ -40,6 +40,28 @@ describe('PairTable', () => {
     expect(far).toContain('class="pair-verdict fail"')
   })
 
+  it('lists the archive metadata of A and B, a dash where the archive lists none', () => {
+    const exposure = frame(0, '2025-05-05T16:49:00Z', 4.61, {
+      exposure_s: 113.5826, start_mjd: 60800.700028, end_mjd: 60800.701361, resolving_power: 127.8,
+      spatial_resolution_arcsec: 3.075, calib_level: 2, instrument_name: 'SPHEREx', facility_name: 'SPHEREx',
+      release_date: '2026-09-27T23:59:28Z', publisher_did: 'ivo://irsa.ipac/spherex_dr1?2025W19_1B_0116_1/D6',
+    })
+    // A stack of eight; a manifest from before pipeline 13 has none of the fields.
+    const stack = frame(1, '2025-11-03T12:14:45Z', 4.612, { n_combined: 8, exposure_s: 908.6608, start_mjd: 60982.50957, end_mjd: 60986.21 })
+    const dash = '<td><span class="muted">–</span></td>'
+    const html = table([exposure, stack])
+    expect(html).toContain('<td>2025-05-05 16:48:02 → 16:49:58 UTC (115 s)</td><td>2025-11-03 12:13 → 2025-11-07 05:02 UTC (3.7 d)</td>')
+    expect(html).toContain('<td>113.6 s</td><td>8 × 113.6 s = 909 s</td>')
+    expect(html).toContain(`<th scope="row" title="λ/Δλ as the archive lists it (em_res_power)">Resolving power</th><td>127.8</td>${dash}`)
+    expect(html).toContain(`<td>3.075″</td>${dash}`)
+    expect(html).toContain(`<td>2 · calibrated, science-ready</td>${dash}`)
+    expect(html).toContain(`<td>SPHEREx</td>${dash}`)
+    expect(html).toContain(`<td>2026-09-27</td>${dash}`)
+    expect(html).toContain(`<td><code class="pair-id">ivo://irsa.ipac/spherex_dr1?2025W19_1B_0116_1/D6</code></td>${dash}`)
+    const old = table([frame(0, '2026-02-10T12:00:00Z', 4.61), frame(1, '2026-05-11T12:00:00Z', 4.612)])
+    expect(old.split(`${dash}${dash}`)).toHaveLength(9)
+  })
+
   it('offers the shown frame as A or B when it is neither', () => {
     const frames = [frame(0, '2026-02-10T12:00:00Z', 4.61), frame(1, '2026-05-11T12:00:00Z', 4.612), frame(2, '2026-08-09T12:00:00Z', 4.62)]
     const html = table(frames, 2, null)

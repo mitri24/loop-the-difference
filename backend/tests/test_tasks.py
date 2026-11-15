@@ -219,6 +219,62 @@ def test_exposure_job_numbers_the_epoch_of_every_frame(monkeypatch, settings, tm
     assert manifest["differences"] == []
 
 
+def test_frames_carry_the_archive_metadata_and_a_stack_combines_it(monkeypatch, settings, tmp_path):
+    shared = {
+        "exposure_s": 113.5826,
+        "spatial_resolution_arcsec": 3.075,
+        "resolving_power": 127.8,
+        "calib_level": 2,
+        "instrument_name": "SPHEREx",
+        "facility_name": "SPHEREx",
+        "pixel_scale_arcsec": 6.15,
+    }
+    observations = [
+        _observation(mjd).model_copy(
+            update={
+                **shared,
+                "start_mjd": mjd - 0.0007,
+                "end_mjd": mjd + 0.0007,
+                "publisher_did": f"ivo://irsa.ipac/spherex_dr1?obs-{mjd}/D6",
+                "release_date": f"2026-10-0{i + 1}T12:00:00Z",
+            }
+        )
+        for i, mjd in enumerate([100, 101, 102, 290, 291, 292])
+    ]
+    # Exposure 291 lacks its exposure time and was calibrated to another level.
+    observations[4] = observations[4].model_copy(update={"exposure_s": None, "calib_level": 3})
+    _offline_archive(monkeypatch, settings, tmp_path, observations)
+
+    single = build_frames("job", RA, DEC, SIZE_DEG, 6, 12, stack=False)["frames"]
+    stacks = build_frames("job", RA, DEC, SIZE_DEG, 6, 12, stack=True)["frames"]
+
+    assert (single[0]["exposure_s"], single[0]["start_mjd"], single[0]["end_mjd"]) == (
+        113.5826,
+        100 - 0.0007,
+        100 + 0.0007,
+    )
+    assert [(f["exposure_s"], f["calib_level"]) for f in single[3:]] == [
+        (113.5826, 2),
+        (None, 3),
+        (113.5826, 2),
+    ]
+    first, second = stacks
+    assert first["exposure_s"] == pytest.approx(3 * 113.5826)
+    assert (first["start_mjd"], first["end_mjd"]) == (100 - 0.0007, 102 + 0.0007)
+    # Named by its first exposure, like obs_id; public once its last exposure is.
+    assert first["publisher_did"] == "ivo://irsa.ipac/spherex_dr1?obs-100/D6"
+    assert first["release_date"] == "2026-10-03T12:00:00Z"
+    assert {key: first[key] for key in shared if key != "exposure_s"} == {
+        key: value for key, value in shared.items() if key != "exposure_s"
+    }
+    # A stack claims no value its exposures disagree on or one of them lacks.
+    assert (second["exposure_s"], second["calib_level"], second["resolving_power"]) == (
+        None,
+        None,
+        127.8,
+    )
+
+
 def test_wavelength_spread_beyond_one_resolution_element_blocks_the_difference():
     (check,) = wavelength_checks([4.50, None, 4.60], detector=6)
 

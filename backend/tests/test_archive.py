@@ -61,6 +61,53 @@ def test_parse_real_sia_answer():
         )
 
 
+def test_parser_keeps_the_archive_metadata_in_obscore_units():
+    observations = parse_sia_votable(FIXTURE.read_bytes())
+
+    # 2025W19_1B_0116_1, detector 6; the FIELDs give s, d (MJD) and arcsec, em_res_power is λ/Δλ.
+    obs = next(o for o in observations if o.detector == 6)
+    assert (obs.exposure_s, obs.start_mjd, obs.end_mjd) == (113.5826, 60800.700028, 60800.701361)
+    assert obs.mjd == pytest.approx((obs.start_mjd + obs.end_mjd) / 2)
+    assert (obs.spatial_resolution_arcsec, obs.pixel_scale_arcsec) == (3.075, 6.15)
+    assert (obs.resolving_power, obs.calib_level) == (127.8, 2)
+    assert obs.publisher_did == "ivo://irsa.ipac/spherex_dr1?2025W19_1B_0116_1/D6"
+    assert (obs.instrument_name, obs.facility_name) == ("SPHEREx", "SPHEREx")
+    assert obs.release_date == "2026-09-27T23:59:28Z"
+    assert [o.resolving_power for o in observations if o.detector == 1] == [39.1, 39.1]
+
+
+def test_metadata_the_archive_leaves_out_stays_empty():
+    content = (
+        FIXTURE.read_bytes()
+        .replace(b'name="t_exptime"', b'name="other"')
+        .replace(b"<TD>3.075000</TD>", b"<TD></TD>")
+        .replace(b"<TD>127.800000</TD>", b"<TD>NaN</TD>")
+        .replace(b"<TD>2026-09-27 23:59:28</TD>", b"<TD></TD>")
+    )
+
+    observations = parse_sia_votable(content)
+
+    assert len(observations) == 6
+    assert {(o.exposure_s, o.spatial_resolution_arcsec) for o in observations} == {(None, None)}
+    assert [o.resolving_power for o in observations if o.detector == 6] == [None, None]
+    assert [o.release_date for o in observations[:2]] == [None, None]
+    assert observations[2].release_date == "2026-10-05T13:09:13Z"
+
+
+@pytest.mark.parametrize(
+    ("value", "iso"),
+    [
+        ("2026-09-27", "2026-09-27T00:00:00Z"),
+        ("2026-09-27T23:59:28.75Z", "2026-09-27T23:59:28Z"),
+        ("2026-09-28T01:59:28+02:00", "2026-09-27T23:59:28Z"),
+        ("next week", None),
+        (None, None),
+    ],
+)
+def test_release_dates_become_iso_utc(value, iso):
+    assert archive._timestamp(value) == iso
+
+
 @pytest.mark.parametrize("value", [None, "", "--", "null", '{"aws": {"key": "a.fits"}}'])
 def test_unusable_cloud_access_gives_no_cloud_url(value):
     assert parse_cloud_access(value) is None

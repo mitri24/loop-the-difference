@@ -9,6 +9,18 @@ export interface Observation {
   access_url: string
   cloud_url?: string | null // the whole Level-2 file on AWS S3
   collection?: string | null // IRSA collection, e.g. spherex_qr3
+  // IRSA's ObsCore metadata, null where it lists none (field comments: see Frame).
+  exposure_s?: number | null
+  start_mjd?: number | null
+  end_mjd?: number | null
+  spatial_resolution_arcsec?: number | null
+  resolving_power?: number | null
+  calib_level?: number | null
+  publisher_did?: string | null
+  instrument_name?: string | null
+  facility_name?: string | null
+  release_date?: string | null
+  pixel_scale_arcsec?: number | null
 }
 
 export interface Epoch {
@@ -64,6 +76,20 @@ export interface Frame {
   bandwidth_um: number | null
   sources?: DetectedSource[]
   release?: string | null // "DR1", "QR3", "DR1 deep", or "DR1 + QR3" for a mixed stack
+  // IRSA's ObsCore metadata; absent in manifests cached before pipeline 13. A stack adds up the exposure times,
+  // spans the first start to the last end, names its first exposure by publisher_did (like obs_id), takes the last
+  // release_date and keeps every other field only where all its exposures agree (else null).
+  exposure_s?: number | null // t_exptime in s
+  start_mjd?: number | null // t_min
+  end_mjd?: number | null // t_max
+  spatial_resolution_arcsec?: number | null // s_resolution
+  resolving_power?: number | null // em_res_power, λ/Δλ
+  calib_level?: number | null // ObsCore 0 raw … 2 calibrated, science-ready … 4 analysis product
+  publisher_did?: string | null // IVOA ID, e.g. ivo://irsa.ipac/spherex_dr1?2025W19_1B_0116_1/D6
+  instrument_name?: string | null
+  facility_name?: string | null
+  release_date?: string | null // when IRSA made the image public, ISO UTC
+  pixel_scale_arcsec?: number | null // the detector's; the frame PNG has FrameManifest.pixel_scale_arcsec
 }
 
 export type CheckSeverity = 'error' | 'blocker' | 'warning' | 'info'

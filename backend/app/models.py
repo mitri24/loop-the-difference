@@ -17,6 +17,22 @@ class Observation(BaseModel):
     collection: str | None = None
     # The image's footprint as IRSA gives it (s_region, e.g. "POLYGON ICRS ..."); server only.
     s_region: str | None = Field(default=None, exclude=True)
+    # IRSA's ObsCore metadata, None where it lists none: exposure time (t_exptime), start and end
+    # of the exposure (t_min, t_max), angular resolution (s_resolution), λ/Δλ (em_res_power),
+    # calibration level (2: calibrated, science-ready), IVOA publisher ID (obs_publisher_did),
+    # the date IRSA made the image public (obs_release_date, ISO UTC) and the detector's pixel
+    # scale (s_pixel_scale).
+    exposure_s: float | None = None
+    start_mjd: float | None = None
+    end_mjd: float | None = None
+    spatial_resolution_arcsec: float | None = None
+    resolving_power: float | None = None
+    calib_level: int | None = None
+    publisher_did: str | None = None
+    instrument_name: str | None = None
+    facility_name: str | None = None
+    release_date: str | None = None
+    pixel_scale_arcsec: float | None = None
 
 
 class Epoch(BaseModel):
@@ -85,6 +101,21 @@ class Frame(BaseModel):
     sources: list["DetectedSource"] = []
     # SPHEREx release of the frame's exposures: "DR1", "QR3", "DR1 deep", or "DR1 + QR3".
     release: str | None = None
+    # The exposures' ObsCore metadata (Observation). A stack adds up their exposure times, spans
+    # the first start to the last end, names its first exposure by publisher_did (like obs_id),
+    # takes the last release_date and keeps every other field only where all exposures agree.
+    # pixel_scale_arcsec is the detector's; the frame PNG has FrameManifest.pixel_scale_arcsec.
+    exposure_s: float | None = None
+    start_mjd: float | None = None
+    end_mjd: float | None = None
+    spatial_resolution_arcsec: float | None = None
+    resolving_power: float | None = None
+    calib_level: int | None = None
+    publisher_did: str | None = None
+    instrument_name: str | None = None
+    facility_name: str | None = None
+    release_date: str | None = None
+    pixel_scale_arcsec: float | None = None
 
 
 class Check(BaseModel):
