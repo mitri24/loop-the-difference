@@ -47,7 +47,7 @@ import { sliceText, useCubeWavelengths, useSkySlice } from './skyCube'
 import { epochFor, smallBodyMarkers, useSmallBodyLayer } from './smallBodyLayer'
 import { countSources, useSourceLayer } from './sourceLayer'
 import { targetText } from './targets'
-import type { FrameJob, ObservationSummary, ProperMotion } from './types'
+import type { DetectedSource, FrameJob, ObservationSummary, ProperMotion } from './types'
 import { POLARIS, readEmbed, readMarks, readPair, readQuery, toSearch, type TargetQuery, type ViewMode } from './url'
 import { downloadMarks } from './markExport'
 import { PHONE, useMedia } from './useMedia'
@@ -482,7 +482,25 @@ export default function App() {
     setPairRequest({ pair: next })
     setShareStatus(same ? 'A and B already share a wavelength: blinking them.' : 'A and B now share a wavelength: blinking them.')
   }
-  const quick = useQuickSpectrum(manifest ? `${manifest.ra}` : null, manifest ? `${manifest.dec}` : null)
+  // The quick-look spectrum measures the target, or a source the user picked ("Spectrum" in the source list).
+  const [spectrumSource, setSpectrumSource] = useState<{ job: string; ra: number; dec: number; label: string } | null>(null)
+  const pickedSource = spectrumSource && spectrumSource.job === job?.job_id ? spectrumSource : null
+  const quick = useQuickSpectrum(manifest ? `${pickedSource?.ra ?? manifest.ra}` : null, manifest ? `${pickedSource?.dec ?? manifest.dec}` : null)
+  const startQuick = quick.start
+  // A picked source starts its measurement once the hook has its position, and shows it in Measure.
+  const pendingSpectrum = useRef(false)
+  useEffect(() => {
+    if (!pendingSpectrum.current || !pickedSource) return
+    pendingSpectrum.current = false
+    startQuick()
+  }, [pickedSource, startQuick])
+  const spectrumOf = (source: DetectedSource) => {
+    if (!job) return
+    selectInspect('measure')
+    if (pickedSource && pickedSource.ra === source.ra && pickedSource.dec === source.dec) return
+    pendingSpectrum.current = true
+    setSpectrumSource({ job: job.job_id, ra: source.ra, dec: source.dec, label: source.catalog_id ?? `source at RA ${source.ra.toFixed(5)}° Dec ${source.dec.toFixed(5)}°` })
+  }
   const tabsSeen = new Set<InspectId>([...opened, ...(stage === 'investigate' && (!phone || inspectOpen) ? [inspect] : [])])
 
   // Stop waiting for a slow archive: the requests stop here; the server's job is not cancelled, so Retry may find it done.
@@ -558,7 +576,8 @@ export default function App() {
     </CandidatePanel>
     {!skyUnavailable && frame && !showDifference && <details className="disclosure">
       <summary>Detected sources{sourceSummary}</summary>
-      <SourceList frame={frame} onSelect={(ra, dec) => { sky?.gotoRaDec(ra, dec); if (job) setFollowed({ ra, dec, job: job.job_id }) }} onMark={(source) => candidate.markSource(frame, source)} />
+      <SourceList frame={frame} onSelect={(ra, dec) => { sky?.gotoRaDec(ra, dec); if (job) setFollowed({ ra, dec, job: job.job_id }) }} onMark={(source) => candidate.markSource(frame, source)}
+        onSpectrum={spectrumOf} />
     </details>}
     {!skyUnavailable && !showDifference && manifest.frames.length >= 2 && <details className="disclosure" onToggle={(event) => setSourceMapOpen(event.currentTarget.open)}>
       <summary>Source map · unusual sources first</summary>
@@ -614,7 +633,8 @@ export default function App() {
     { id: 'measure', label: 'Measure', content: <>
       {manifest && positionTrack && <PositionChart track={positionTrack} subject={followedHere ? 'the selected source' : 'the target'}
         detector={manifest.detector} onFollowTarget={followedHere ? () => setFollowed(null) : undefined} />}
-      {manifest ? <SpectrumChart quick={quick} centerUm={(frame ?? manifest.frames[0])?.wavelength_um} detector={manifest.detector} />
+      {manifest ? <SpectrumChart quick={quick} centerUm={(frame ?? manifest.frames[0])?.wavelength_um} detector={manifest.detector}
+        subject={pickedSource?.label} onBackToTarget={pickedSource ? () => setSpectrumSource(null) : undefined} />
         : pending('chart', 'Loading the comparison…')}
       {analysisTarget && <details className="disclosure" onToggle={(event) => { if (event.currentTarget.open) setAnalysisWanted(true) }}>
         <summary>Second method: aligned aperture spectrum</summary>

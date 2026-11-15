@@ -88,6 +88,26 @@ describe('SpectrumChart', () => {
     expect(html).not.toContain('Measure the target in all SPHEREx visits')
   })
 
+  it('reads the reference bands for a picked source and offers the way back to the target', () => {
+    // Flat 100 µJy from 2.5 to 4.95 µm with a 20 % dip over the CH₄ window.
+    const points = Array.from({ length: 50 }, (_, i) => {
+      const lam = +(2.5 + i * 0.05).toFixed(2)
+      return point(i % 2, lam, lam >= 3.25 && lam <= 3.4 ? 80 : 100, 2)
+    })
+    const spectrum = { collection: 'spherex_dr1', ra: 1, dec: 2, complete: true, points, checks: [] }
+    const quick = { job: { job_id: 's', status: 'finished' as const, progress: 50, total: 50, error: null, spectrum },
+      error: null, running: false, spectrum, start: () => undefined }
+    const html = renderToStaticMarkup(<SpectrumChart quick={quick} subject="Gaia DR3 42" onBackToTarget={() => undefined} />)
+    expect(html).toContain('Measuring <strong>Gaia DR3 42</strong>')
+    expect(html).toContain('Back to the target')
+    expect(html).toContain('Flux at the source by wavelength')
+    expect(html).toMatch(/CH₄ 3.32 µm: dip 20 % ± \d+ % \([\d.]+σ\) – consistent with CH₄ absorption, needs verification/)
+    expect(html).toContain('H₂O ice 3.05 µm: no significant dip')
+    expect(html).toContain('The points come from 2 epochs')
+    expect(html).toContain('stroke-dasharray="3 3"') // reference lines on the chart
+    expect(html).not.toMatch(/contains (water|methane)|brown dwarf/i)
+  })
+
   it('counts missing cutouts for the retry and keeps the other notes', () => {
     const check = (code: string, detail: string): Check => ({
       code,

@@ -1,4 +1,5 @@
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { BANDS, bandText, readBands, type Band } from '../bands'
 import { createSpectrum, getSpectrumJob } from '../api'
 import type { Check, Spectrum, SpectrumJob, SpectrumPoint } from '../types'
 import { BrightnessChart } from './BrightnessChart'
@@ -80,25 +81,26 @@ export function useQuickSpectrum(ra: string | null, dec: string | null): QuickSp
     return () => window.clearTimeout(timer)
   }, [live.job, running, key])
 
-  const sending = useRef(false)
+  // The position whose request is on its way: a second click there is ignored, another position starts.
+  const sending = useRef<string | null>(null)
   const start = useCallback(() => {
-    if (ra == null || dec == null || sending.current) return
-    sending.current = true
     const requested = `${ra},${dec}`
+    if (ra == null || dec == null || sending.current === requested) return
+    sending.current = requested
     setState((s) => ({ ...s, error: null }))
     createSpectrum({ ra, dec })
       .then(
         (job) => setState((s) => (s.key === requested ? { ...s, job } : s)),
         (e: Error) => setState((s) => (s.key === requested ? { ...s, error: e.message } : s)),
       )
-      .finally(() => (sending.current = false))
+      .finally(() => { if (sending.current === requested) sending.current = null })
   }, [ra, dec])
 
   return { job: live.job, error: live.error, running, spectrum: live.job?.status === 'finished' ? live.job.spectrum : null, start }
 }
 
 // Build button, progress and errors of the shared job, the same in both tabs.
-function QuickStatus({ quick, build }: { quick: QuickSpectrum; build: string }) {
+function QuickStatus({ quick, build, where = 'the target' }: { quick: QuickSpectrum; build: string; where?: string }) {
   const { job, error, running, spectrum, start } = quick
   const { retry } = summarize(spectrum?.checks ?? [])
   return (
@@ -117,7 +119,7 @@ function QuickStatus({ quick, build }: { quick: QuickSpectrum; build: string }) 
           <Skeleton variant="chart" />
         </div>
       )}
-      {(error ?? job?.error) && <p className="notice error">Could not measure the target: {error ?? job?.error}</p>}
+      {(error ?? job?.error) && <p className="notice error">Could not measure {where}: {error ?? job?.error}</p>}
       {spectrum && spectrum.points.length === 0 && <p className="notice">No visit gave a usable flux at this position.</p>}
     </>
   )
@@ -125,17 +127,54 @@ function QuickStatus({ quick, build }: { quick: QuickSpectrum; build: string }) 
 
 // The Measure tab: one measurement of the target in every SPHEREx visit, read two ways – its brightness over time
 // (in a narrow window around the shown frame's wavelength: did it change?) and its spectrum (what is it?).
-export function SpectrumChart({ quick, centerUm, detector }: { quick: QuickSpectrum; centerUm?: number | null; detector?: number }) {
-  const points = quick.spectrum?.points ?? []
+export function SpectrumChart({ quick, centerUm, detector, subject, onBackToTarget }: {
+  quick: QuickSpectrum
+  centerUm?: number | null
+  detector?: number
+  // A source picked in the source list instead of the target; null measures the target.
+  subject?: string | null
+  onBackToTarget?: () => void
+}) {
+  const points = useMemo(() => quick.spectrum?.points ?? [], [quick.spectrum])
   const { notes } = summarize(quick.spectrum?.checks ?? [])
+  const [showBands, setShowBands] = useState(true)
+  const readings = useMemo(() => readBands(points), [points])
+  const epochs = new Set(points.map((p) => p.epoch)).size
+  const where = subject ? 'the source' : 'the target'
   return (
     <section className="quick-measure" aria-label="Quick-look photometry">
-      <QuickStatus quick={quick} build="Measure the target in all SPHEREx visits" />
+      {subject && (
+        <p className="notice">
+          Measuring <strong>{subject}</strong>, picked in the source list.{' '}
+          {onBackToTarget && <button type="button" className="text-button" onClick={onBackToTarget}>Back to the target</button>}
+        </p>
+      )}
+      <QuickStatus quick={quick} build={`Measure ${where} in all SPHEREx visits`} where={where} />
       {points.length > 0 && <BrightnessChart points={points} centerUm={centerUm} detector={detector} />}
-      {points.length > 0 && <Plot points={points} />}
+      {points.length > 0 && <Plot points={points} bands={showBands ? BANDS : []} title={`Flux at ${where} by wavelength`} />}
+      {points.length > 0 && (
+        <section className="band-readings" aria-label="Reference molecular bands">
+          <label className="check">
+            <input type="checkbox" checked={showBands} onChange={(event) => setShowBands(event.target.checked)} /> Reference bands on the chart
+          </label>
+          <ul>
+            {readings.map((r) => (
+              <li key={r.band.id} className={`band-${r.status}`}>
+                {bandText(r)}
+                {r.noisyContinuum && ' · the points around it scatter more than their errors (variability or a blend): read with care'}
+              </li>
+            ))}
+          </ul>
+          <p className="muted">
+            SPHEREx resolves broad bands only (R ≈ 35–130). A dip is read against a straight continuum fitted on clean points on
+            both sides; it is consistent with a band, not proof of a molecule.
+            {epochs > 1 && ` The points come from ${epochs} epochs: a moving or variable source mixes them.`}
+          </p>
+        </section>
+      )}
       {quick.spectrum && (
         <p className="caveat">
-          Quick-look only: aperture flux at the target, one point per
+          Quick-look only: aperture flux at {where}, one point per
           visit, colour = detector, marker shape = epoch, bars = 1σ from the VARIANCE extension. Changes are candidates that
           need checking. {notes.join(' · ')}
         </p>
@@ -174,10 +213,12 @@ export interface PlotWindow {
   kind: 'band' | 'continuum'
 }
 
-export function Plot({ points, title = 'Flux at the target by wavelength', windows = [] }: {
+export function Plot({ points, title = 'Flux at the target by wavelength', windows = [], bands = [] }: {
   points: SpectrumPoint[]
   title?: string
   windows?: PlotWindow[]
+  // Reference molecular bands (NAS-84): a dashed line and a label each.
+  bands?: Band[]
 }) {
   const { x: xp, y: yr } = ranges(points)
   // Every window stays in view, also one without a visit in it.
@@ -290,6 +331,14 @@ export function Plot({ points, title = 'Flux at the target by wavelength', windo
                 Flux (µJy)
               </text>
             </g>
+            {bands.filter((b) => b.centre >= xr[0] && b.centre <= xr[1]).map((b, i) => (
+              // Labels on three staggered rows: H₂O, CH₄ and CH₃OH lie 0.2–0.3 µm apart.
+              <g key={b.id} className="viz-band" aria-hidden="true">
+                <line x1={x(b.centre)} x2={x(b.centre)} y1={M.top} y2={H - M.bottom} stroke="var(--text-secondary)" strokeDasharray="3 3" />
+                <text className="viz-tick" x={x(b.centre)} y={M.top + 10 + (i % 3) * 11} textAnchor="middle"
+                  paintOrder="stroke" stroke="var(--surface-1)" strokeWidth={3}>{b.molecule.replace(' ice', '')}</text>
+              </g>
+            ))}
             <NearestLayer tip={tip} x={M.left - HIT_RADIUS} y={M.top - HIT_RADIUS} width={W - M.left - M.right + 2 * HIT_RADIUS}
               height={H - M.top - M.bottom + 2 * HIT_RADIUS}
               points={points.map((p) => ({ x: x(p.wavelength_um), y: y(p.flux_ujy), href: p.source_url,
