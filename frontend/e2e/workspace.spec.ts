@@ -577,6 +577,28 @@ test('fixture: the marks file keeps marks, frames and verdict; its link opens th
   await expect(page.locator('.viewer .viewport .candidate-mark')).toHaveCount(2)
 })
 
+test('fixture: the intro runs the logo while the app loads, blinks its planets, opens onto the app, then stays away', async ({ page }, info) => {
+  await fixtures(page)
+  await page.setViewportSize({ width: 1440, height: 900 })
+  // Automated browsers get no intro unless ?intro=1 asks for it.
+  await page.goto('/?intro=1')
+  const intro = page.locator('#intro')
+  await expect(intro).toBeVisible()
+  await expect(intro).toHaveClass(/intro--play/)
+  await page.waitForTimeout(1400)
+  await page.screenshot({ path: info.outputPath('intro-logo.png') })
+  await expect(intro).toHaveClass(/intro--open/)
+  await expect(intro).toHaveCount(0)
+  await expect(page.getByTestId('sky-search')).toBeVisible()
+  // A key opens it at once.
+  await page.goto('/?intro=1')
+  await expect(page.locator('#intro')).toHaveClass(/intro--play/)
+  await page.keyboard.press('Escape')
+  await expect(page.locator('#intro')).toHaveCount(0, { timeout: 2000 })
+  await page.goto('/')
+  await expect(page.locator('#intro')).toHaveCount(0)
+})
+
 test('fixture: Explore picks a region on the sky, Investigate shows its images, Full map and back keep everything', async ({ page }) => {
   await fixtures(page)
   await page.setViewportSize({ width: 1440, height: 900 })
