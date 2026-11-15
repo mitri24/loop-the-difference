@@ -9,9 +9,9 @@ from app.jobs import job_id_for
 from app.models import Frame, FrameManifest
 from app.tasks import PIPELINE_VERSION, manifest_path
 
-POLARIS_D6 = job_id_for(
-    "spherex_dr1", parse_ra("02:31:49.09"), parse_dec("+89:15:50.8"), 0.2, 6, 12
-)
+POLARIS = ("spherex_dr1", parse_ra("02:31:49.09"), parse_dec("+89:15:50.8"), 0.2)
+POLARIS_D6 = job_id_for(*POLARIS, 6, 12)
+POLARIS_D6_STACKS = job_id_for(*POLARIS, 6, 12, stack=True)
 
 
 @pytest.fixture(autouse=True)
@@ -72,9 +72,14 @@ def test_dry_run_lists_every_target_and_detector_without_network(settings, capsy
 
     lines = capsys.readouterr().out.splitlines()
     assert code == 0
-    assert len(lines) == 7 * 3
-    assert lines[:2] == [f"{POLARIS_D6} · Polaris · D6", "spectrum · Polaris"]
+    assert len(lines) == 7 * 5
+    assert lines[:3] == [
+        f"{POLARIS_D6} · Polaris · D6",
+        "spectrum · Polaris",
+        f"{POLARIS_D6_STACKS} · Polaris · D6 stacks",
+    ]
     assert "resolve:R Dra · R Draconis · D1" in lines
+    assert "resolve:R Dra · R Draconis · D1 stacks" in lines
 
 
 def test_jobs_use_the_same_key_as_a_demo_click(settings, capsys):
@@ -87,17 +92,25 @@ def test_jobs_use_the_same_key_as_a_demo_click(settings, capsys):
     code = warm.run(["--targets", "polaris"], settings, resolver=_fail_resolver, build=build)
 
     assert code == 0
-    assert [c["key"] for c in calls][0] == POLARIS_D6
-    assert [c["detector"] for c in calls] == [6, 1]
+    assert [c["key"] for c in calls][:2] == [POLARIS_D6, POLARIS_D6_STACKS]
+    assert [(c["detector"], c["stack"]) for c in calls] == [
+        (6, False),
+        (6, True),
+        (1, False),
+        (1, True),
+    ]
     assert calls[0]["size_deg"] == 0.2 and calls[0]["max_frames"] == 12
-    assert "· 2 frames ·" in capsys.readouterr().out
+    out = capsys.readouterr().out
+    assert "· D6 · 2 frames ·" in out and "· D6 stacks · 2 frames ·" in out
 
 
 def test_pluto_uses_its_fixed_2026_position_like_the_ui(settings):
     jobs = warm.plan({"plutoknowndwarfplanet2026"})
 
     assert [job.key("spherex_dr1") for job in jobs] == [
-        job_id_for("spherex_dr1", 308.5364, -22.9153, 0.2, d, 12) for d in (6, 1)
+        job_id_for("spherex_dr1", 308.5364, -22.9153, 0.2, d, 12, s)
+        for d in (6, 1)
+        for s in (False, True)
     ]
 
 
@@ -112,9 +125,10 @@ def test_named_targets_are_resolved_like_the_ui(settings):
         ["--targets", "r-draconis"], settings, resolver=lambda n: (1.23456789, 2.0), build=build
     )
 
-    assert len(calls) == 2
+    assert len(calls) == 4
     assert calls[0]["ra"] == 1.234568  # six decimals, as the UI sends them
     assert calls[0]["key"] == job_id_for("spherex_dr1", 1.234568, 2.0, 0.2, 6, 12)
+    assert calls[1]["key"] == job_id_for("spherex_dr1", 1.234568, 2.0, 0.2, 6, 12, stack=True)
 
 
 def test_complete_cached_manifest_is_skipped_unless_forced(settings, capsys):
@@ -122,11 +136,11 @@ def test_complete_cached_manifest_is_skipped_unless_forced(settings, capsys):
     calls = []
 
     def build(**kwargs):
-        calls.append(kwargs["detector"])
+        calls.append(kwargs["key"])
         return {"frames": [], "warnings": [], "complete": True}
 
     assert warm.run(["--targets", "polaris"], settings, resolver=_fail_resolver, build=build) == 0
-    assert calls == [1]
+    assert len(calls) == 3 and POLARIS_D6 not in calls and POLARIS_D6_STACKS in calls
     assert "cached" in capsys.readouterr().out
 
     sia = sia_cache_path(
@@ -136,7 +150,7 @@ def test_complete_cached_manifest_is_skipped_unless_forced(settings, capsys):
     sia.write_bytes(b"<stale/>")
 
     warm.run(["--targets", "polaris", "--force"], settings, resolver=_fail_resolver, build=build)
-    assert calls == [1, 6, 1]
+    assert len(calls) == 3 + 4 and calls[3] == POLARIS_D6
     assert not sia.exists()
 
 
@@ -147,7 +161,7 @@ def test_incomplete_manifest_fails_the_run(settings, capsys):
     code = warm.run(["--targets", "polaris"], settings, resolver=_fail_resolver, build=build)
 
     assert code == 1
-    assert capsys.readouterr().out.count("INCOMPLETE") == 2
+    assert capsys.readouterr().out.count("INCOMPLETE") == 4
 
 
 def test_a_failed_job_does_not_stop_the_others_but_fails_the_run(settings, capsys):
@@ -164,8 +178,8 @@ def test_a_failed_job_does_not_stop_the_others_but_fails_the_run(settings, capsy
     )
 
     assert code == 1
-    assert calls == [6, 1, 6, 1]
-    assert capsys.readouterr().err.count("FAILED") == 2
+    assert calls == [6, 6, 1, 1, 6, 6, 1, 1]
+    assert capsys.readouterr().err.count("FAILED") == 4
 
 
 def test_unknown_target_filter_is_reported(settings, capsys):
@@ -242,7 +256,7 @@ def test_failed_or_incomplete_spectrum_fails_the_run_but_warms_the_frames(
 
     monkeypatch.setattr(warm, "build_spectrum", broken)
     assert warm.run(["--targets", "polaris"], settings, resolver=_fail_resolver, build=build) == 1
-    assert calls == [6, 1]
+    assert calls == [6, 6, 1, 1]
     assert "FAILED · spectrum · Polaris" in capsys.readouterr().err
 
     skipped = {"code": "SPECTRUM_POINTS_SKIPPED", "detail": "3 visits skipped: 3 NaN"}

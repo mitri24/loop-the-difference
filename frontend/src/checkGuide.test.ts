@@ -49,6 +49,7 @@ describe('explainChecks', () => {
     const [missing] = explainChecks([check('NO_OBSERVATIONS', 'error'), check('CUTOUT_MISSING', 'warning')])
     expect(missing.items.map((item) => item.action?.id)).toEqual(['retry', 'retry'])
     expect(explainChecks([check('SOURCES_CATALOG_UNAVAILABLE', 'info')])[0]).toMatchObject({ kind: 'limit', items: [{ action: undefined }] })
+    expect(explainChecks([check('WAVELENGTH_CLOSE', 'warning')])[0]).toMatchObject({ kind: 'limit', items: [{ title: 'Slightly different wavelengths' }] })
   })
 
   it('keeps an unknown check in the backend’s own words, by its severity', () => {
@@ -83,6 +84,7 @@ describe('passedChecks', () => {
     expect(codes([check('WAVELENGTH_MISMATCH', 'blocker'), check('FLAGGED_PIXELS', 'warning')])).toEqual(['ALIGNED', 'EPOCHS', 'CUTOUTS', 'RELEASES'])
     expect(codes([], { frames: [frame(0), frame(1, null)] })).not.toContain('WAVELENGTH')
     expect(codes([check('WAVELENGTH_UNKNOWN', 'info')])).not.toContain('WAVELENGTH')
+    expect(codes([check('WAVELENGTH_CLOSE', 'warning')])).not.toContain('WAVELENGTH')
     expect(codes([check('SINGLE_EPOCH', 'blocker')], { epochs: 1, frames: [frame(0)] })).toEqual(['CUTOUTS', 'FLAGS', 'RELEASES'])
     expect(passedChecks(manifest({ preview: true }), [])).toEqual([])
     expect(passedChecks(manifest({ frames: [] }), [])).toEqual([])

@@ -22,9 +22,11 @@ export const wiseUrl = (ra: number, dec: number, rDeg: number, mirror = VIZIER_M
   `${mirror}/viz-bin/votable?-source=II/328/allwise&-c=${cone(ra, dec)}&-c.rd=${rDeg}&-out.max=${MAX_SOURCES}&-sort=W1mag&-out=AllWISE,RAJ2000,DEJ2000,W1mag,W2mag`
 
 // TAP always answers with a table, also for an empty field; votable/td keeps the rows readable.
+// Brightest first: by V, then Gaia G where V is missing. The service speaks ADQL 2.0 (no NULLS LAST,
+// no COALESCE); its PostgreSQL sorts objects without a magnitude last.
 export const simbadUrl = (ra: number, dec: number, rDeg: number) =>
   `https://simbad.cfa.harvard.edu/simbad/sim-tap/sync?request=doQuery&lang=adql&format=votable/td&query=${encodeURIComponent(
-    `SELECT TOP ${MAX_SOURCES} main_id, ra, dec, otype, pmra, pmdec FROM basic WHERE CONTAINS(POINT('ICRS', ra, dec), CIRCLE('ICRS', ${ra}, ${dec}, ${rDeg})) = 1`,
+    `SELECT TOP ${MAX_SOURCES} main_id, ra, dec, otype, pmra, pmdec FROM basic LEFT JOIN allfluxes ON basic.oid = allfluxes.oidref WHERE CONTAINS(POINT('ICRS', ra, dec), CIRCLE('ICRS', ${ra}, ${dec}, ${rDeg})) = 1 ORDER BY V, G`,
   )}`
 
 // Asteroids move: the epoch is the shown frame's time, passed as Julian Date.

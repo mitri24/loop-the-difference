@@ -20,6 +20,9 @@ from .spectral import BANDS, resolution_element_um
 # Broadband (per-visit stack) frames mix many LVF channels. Their effective
 # wavelengths are compared to the band width instead of one resolution element.
 STACK_LAMBDA_TOLERANCE = 0.10  # fraction of the band width
+# Single frames match within wavelength_match_fraction × λ/R (config); up to this many λ/R
+# they still compare, with a warning; beyond it the difference is disabled.
+WAVELENGTH_LIMIT_FRACTION = 1.0
 PSF_RATIO_WARN = 1.25
 NOISE_RATIO_WARN = 2.0
 COVERAGE_WARN = 0.9
@@ -56,7 +59,7 @@ def compare_frames(a: Frame, b: Frame) -> tuple[bool, list[Check]]:
                     f"(λ/R = {res * 1000:.1f} nm, R = {band.resolving_power:g}).",
                 )
             )
-        elif dlam <= 2 * res:
+        elif dlam <= WAVELENGTH_LIMIT_FRACTION * res:
             checks.append(
                 Check(
                     code="wavelength_close",
@@ -94,7 +97,7 @@ def compare_frames(a: Frame, b: Frame) -> tuple[bool, list[Check]]:
 
     # 3. Time baseline ---------------------------------------------------------------
     dt = abs(a.mjd - b.mjd)
-    if dt < settings.visit_gap_days:
+    if dt <= settings.visit_gap_days:
         checks.append(
             Check(
                 code="same_visit",

@@ -37,6 +37,8 @@ class BandInfo:
 
 
 # Nominal values (SPHEREx Explanatory Supplement); exact per-image ranges come from IRSA.
+# R as IRSA lists it for the spectral images (band N = DN), as in backend/app/frames.py:
+# https://caltech-ipac.github.io/spherex-archive-documentation/spherex-data-products
 BANDS: dict[str, BandInfo] = {
     "D1": BandInfo("D1", 1, 0.75, 1.09, 39, "SWIR"),
     "D2": BandInfo("D2", 2, 1.10, 1.62, 41, "SWIR"),
@@ -119,7 +121,7 @@ def resolution_element_um(lam_um: float, band: str) -> float:
 
 
 def wavelengths_match(lam_a: float, lam_b: float, band: str, fraction: float) -> bool:
-    """True when two wavelengths differ by less than ``fraction`` of λ/R."""
+    """True when two wavelengths differ by at most ``fraction`` of λ/R."""
     if not (math.isfinite(lam_a) and math.isfinite(lam_b)):
         return False
     ref = 0.5 * (lam_a + lam_b)
