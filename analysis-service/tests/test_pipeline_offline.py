@@ -248,7 +248,9 @@ async def test_solar_system_check_explains_residual(monkeypatch):
     assert top.kind == "solar_system" and top.known_source == "(433) Eros"
     assert "(JPL SBIdent, seen from SPHEREx)" in top.explanation
     assert updated.solar_system and updated.solar_system[0].epoch == "A"
-    detail = next(c.detail for c in updated.checks if c.code == "solar_system")
+    check = next(c for c in updated.checks if c.code == "solar_system")
+    assert check.title.startswith("Known asteroids/comets on the image: 1 at A, 0 at B")
+    detail = check.detail
     assert detail.startswith("JPL Small-Body Identification API, A seen from SPHEREx (its position")
     assert "; B seen from the geocentre, as JPL Horizons gave no SPHEREx position" in detail
 

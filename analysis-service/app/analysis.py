@@ -969,10 +969,12 @@ async def run_solar_system_check(diff_id: str, progress: Progress) -> Difference
                         name=o.name, epoch=label, x=dx, y=dy, vmag=o.vmag, date_utc=frame.date_utc
                     )
                 )
+    # The query box is wider than the image toward the pole: count what lies on it, as marked.
+    on_image = {e: sum(1 for m in markers if m.epoch == e) for e in ("A", "B")}
     check = Check(
         code="solar_system",
         severity="ok" if n_sso == 0 else "info",
-        title=f"Known asteroids/comets: {len(sso_a)} at A, {len(sso_b)} at B; "
+        title=f"Known asteroids/comets on the image: {on_image['A']} at A, {on_image['B']} at B; "
         f"{n_sso} residual(s) explained",
         detail=_observers_detail(seen_a, seen_b),
     )
