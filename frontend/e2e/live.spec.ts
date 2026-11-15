@@ -54,8 +54,8 @@ test.describe('Live services (no mocked API responses)', () => {
     await expect.poll(() => page.evaluate(() => !!document.fullscreenElement)).toBe(true)
     await page.evaluate(() => document.exitFullscreen())
     await page.setViewportSize({ width: 390, height: 844 })
-    await page.getByRole('button', { name: 'Inspect', exact: true }).click()
-    await page.getByTestId('inspect-candidate').click()
+    // The candidate check follows under the images on phones.
+    await page.locator('.candidate-side').scrollIntoViewIfNeeded()
     await page.screenshot({ path: info.outputPath('live-comparison-mobile.png') })
     await info.attach('native-controls.json', { body: JSON.stringify(await page.locator('.aladin-widgets-toolbar').evaluate(el => [...el.querySelectorAll('*')].map(e => ({ tag: e.tagName, cls: e.className, title: e.getAttribute('title'), text: e.textContent })).filter(e => e.tag === 'BUTTON' || e.title)), null, 2), contentType: 'application/json' })
   })

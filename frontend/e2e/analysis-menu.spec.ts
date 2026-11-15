@@ -39,7 +39,7 @@ async function fixtures(page:Page) {
 }
 // No sidebar: the analysis parts are tabs of the inspector under the overview map (on phones it opens with Inspect
 // under the images); controls open as sheets.
-const tabs = ['quality','candidate','measure','coverage','analysis','data']
+const tabs = ['quality','measure','coverage','analysis','data']
 async function openTab(page:Page, id:string) {
   const toggle=page.locator('.inspect-toggle')
   if (await toggle.isVisible() && await toggle.getAttribute('aria-expanded')!=='true') await toggle.click()
@@ -119,7 +119,6 @@ test('additional algorithms use the current target, share their sequence and sit
   await measure.getByRole('button',{name:'Measure spectrum',exact:true}).click()
   await expect(measure.getByRole('img',{name:'SPHEREx spectrum of the target: flux density versus wavelength'})).toBeVisible()
   await page.screenshot({path:info.outputPath('page-analysis-desktop.png')})
-  await expect(await openTab(page,'candidate')).toBeInViewport()
   await page.setViewportSize({width:390,height:844})
   await openTab(page,'analysis')
   await expect(page.getByRole('tab',{name:'Significance (σ)'})).toBeVisible()

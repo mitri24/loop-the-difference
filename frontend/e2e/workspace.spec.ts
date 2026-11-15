@@ -283,7 +283,7 @@ test('touch: pan, locate, compare and dismiss remain usable after rotation', asy
   await page.locator('#target-panel').getByRole('button', { name: 'Polaris', exact: true }).tap()
   await expect(page.getByRole('button', { name: 'Play', exact: true })).toBeVisible()
   await page.setViewportSize({ width: 667, height: 375 })
-  await expect(await openTab(page, 'candidate', true)).toBeInViewport()
+  await expect(await openTab(page, 'quality', true)).toBeInViewport()
   await closeInspector(page, true)
   await hitTarget(page.getByRole('button', { name: 'Next frame', exact: true }))
   await page.getByTestId('header-more').tap()
@@ -482,7 +482,8 @@ test('fixture: Mark detected sources in two frames lists candidate marks A and B
   for (const width of [320, 1920]) {
     await page.setViewportSize({ width, height: 900 })
     await page.goto('/?ra=37.954542&dec=89.264111&fov=0.2&band=6')
-    await openTab(page, 'candidate')
+    // Beside the images (under them on narrow screens), not a tab of the inspector.
+    await expect(page.getByTestId('inspect-candidate')).toHaveCount(0)
     await expect(panel).toContainText('Spotted motion? Mark the object in two frames')
     await hitTarget(panel.getByRole('button', { name: 'Mark in this frame' }))
     await page.locator('summary', { hasText: 'Detected sources' }).click()
@@ -498,6 +499,22 @@ test('fixture: Mark detected sources in two frames lists candidate marks A and B
     await page.screenshot({ path: info.outputPath(`candidate-${width}.png`) })
     await panel.getByRole('button', { name: 'Clear marks' }).click()
     await expect(panel.locator('.candidate-marks li')).toHaveCount(0)
+    // Image path (beside and under the images): arming pauses playback; a click in the image marks the frame shown
+    // there at that position, drawn on the image as ◎ A. The stamp on the image does not mark.
+    await page.getByRole('button', { name: 'Play', exact: true }).click()
+    const mark = panel.getByRole('button', { name: 'Mark in this frame' })
+    await mark.click()
+    await expect(page.getByRole('button', { name: 'Play', exact: true })).toBeVisible()
+    await expect(page.locator('.viewer .viewport')).toHaveClass(/marking/)
+    await page.locator('.viewer .viewport .stamp').click()
+    await expect(panel.locator('.candidate-marks li')).toHaveCount(0)
+    await page.locator('.viewer .viewport img:visible').click()
+    await expect(panel.locator('.candidate-marks li')).toHaveText([/^◎ A · 2026-0\d-10 12:00 UTC · RA .* Dec 89\.26\d+° .* · position as clicked$/])
+    await expect(page.locator('.viewer .viewport .candidate-mark')).toHaveText('A')
+    await mark.click()
+    await panel.getByRole('button', { name: 'Clear marks' }).click()
+    await expect(page.locator('.viewer .viewport .candidate-mark')).toHaveCount(0)
+    await page.getByRole('button', { name: 'Show frame B' }).click()
   }
   // Sky path on the full sky (Explore, "Full map" in the overview bar): armed, a click outside the frame explains
   // itself, one inside marks the shown frame.

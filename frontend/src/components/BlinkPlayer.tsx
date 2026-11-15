@@ -12,7 +12,8 @@ import {
   type BlinkLetter,
   type BlinkPair,
 } from '../blink'
-import { markerPosition, skyToFrame } from '../motion'
+import { MARK_LETTERS, type Mark } from '../candidate'
+import { frameToSky, gridExtentDeg, markerPosition, skyToFrame } from '../motion'
 import { SEARCH_AREA_LABEL, type Prediction } from '../track'
 import type { Check, Frame, FrameManifest, ProperMotion } from '../types'
 import { CheckBadge, checksForFrame } from './EvidencePanel'
@@ -45,6 +46,12 @@ interface Props {
   // What the layers show on the sky for the shown frame (catalogues, detected sources, known asteroids), drawn on
   // the image as well.
   marks?: ImageMark[]
+  // Candidate check: while marking is armed, a click on the shown image marks that position in that frame. The
+  // user's marks A and B stand on the image; the check itself goes under the A/B table (candidate).
+  marking?: boolean
+  onMark?: (frame: Frame, ra: number, dec: number) => void
+  candidateMarks?: Mark[]
+  candidate?: ReactNode
 }
 
 // One layout without page scrolling, left-aligned: thumbnails | image | A and B as a comparison table, one transport
@@ -66,6 +73,10 @@ export function BlinkPlayer({
   controls = null,
   changes = null,
   marks = [],
+  marking = false,
+  onMark,
+  candidateMarks = [],
+  candidate = null,
 }: Props) {
   const [reduced] = useState(prefersReducedMotion)
   const [pair, setPair] = useState<BlinkPair | null>(() => defaultBlinkPair(frames))
@@ -73,6 +84,15 @@ export function BlinkPlayer({
   const [scope, setScope] = useState<'ab' | 'all'>(pair ? 'ab' : 'all')
   const [index, setIndex] = useState(pair?.a ?? 0)
   const [playing, setPlaying] = useState(false)
+  // Arming the mark pauses: a click must land on the frame the user aimed at.
+  const [wasMarking, setWasMarking] = useState(marking)
+  if (marking !== wasMarking) {
+    setWasMarking(marking)
+    if (marking) setPlaying(false)
+  }
+  // Pixels across the frames' common grid, from the loaded PNG: every overlay and click uses the image's real extent.
+  const [pixels, setPixels] = useState<number | null>(null)
+  const extentDeg = gridExtentDeg(pixels, grid.pixel_scale_arcsec, grid.size_deg)
   const [delayMs, setDelayMs] = useState(reduced ? REDUCED_DELAY_MS : 500)
   const [autoPaused, setAutoPaused] = useState(false)
   const [copyState, setCopyState] = useState<'idle' | 'copied' | 'failed'>('idle')
@@ -178,9 +198,9 @@ export function BlinkPlayer({
   })
 
   const frame = frames[index]
-  const marker = motion && markerPosition(motion, frame.mjd, grid.ra, grid.dec, grid.size_deg)
+  const marker = motion && markerPosition(motion, frame.mjd, grid.ra, grid.dec, extentDeg)
   const predicted = predictions.find((p) => p.mjd === frame.mjd)
-  const searchArea = predicted && skyToFrame(predicted.ra, predicted.dec, grid.ra, grid.dec, grid.size_deg)
+  const searchArea = predicted && skyToFrame(predicted.ra, predicted.dec, grid.ra, grid.dec, extentDeg)
   const copyLink = async () => {
     try {
       await navigator.clipboard.writeText(window.location.href)
@@ -236,7 +256,20 @@ export function BlinkPlayer({
         </section>
       )}
 
-      <div className="viewport">
+      <div
+        className={marking ? 'viewport marking' : 'viewport'}
+        title={marking ? 'Click the object to mark it in this frame' : undefined}
+        onClick={(event) => {
+          // Only the shown, loaded image marks: not the stamp, the checks badge, a placeholder or an error message.
+          const image = event.target
+          if (!marking || !onMark || !(image instanceof HTMLImageElement) || !image.naturalWidth || image.style.visibility === 'hidden') return
+          // Playing, the frame may change under the pointer: that click only pauses.
+          if (playing) return setPlaying(false)
+          const box = image.getBoundingClientRect()
+          const at = frameToSky((event.clientX - box.left) / box.width, (event.clientY - box.top) / box.height, grid.ra, grid.dec, extentDeg)
+          onMark(frame, at.ra, at.dec)
+        }}
+      >
         {/* Load only the visible frame and its next playback partner. */}
         {[index, nextIndex(index, count, blinkPair)].filter((i, n, all) => all.indexOf(i) === n).map((i) => {
           const f = frames[i]
@@ -246,11 +279,12 @@ export function BlinkPlayer({
               src={f.url}
               alt={`SPHEREx detector ${f.detector}, ${f.date.slice(0, 10)}`}
               visible={i === index}
+              onSize={setPixels}
             />
           )
         })}
         <div className="reticle" aria-hidden="true" />
-        <ImageMarks marks={marks} grid={grid} />
+        <ImageMarks marks={marks} grid={{ ...grid, size_deg: extentDeg }} />
         {marker && (
           <div
             className="marker"
@@ -261,10 +295,20 @@ export function BlinkPlayer({
         {searchArea && predicted && (
           <div
             className="search-area"
-            style={{ left: `${searchArea.x * 100}%`, top: `${searchArea.y * 100}%`, width: `${(predicted.radius_arcsec / 1800 / grid.size_deg) * 100}%` }}
+            style={{ left: `${searchArea.x * 100}%`, top: `${searchArea.y * 100}%`, width: `${(predicted.radius_arcsec / 1800 / extentDeg) * 100}%` }}
             title={`Possible track, search area ${SEARCH_AREA_LABEL}`}
           />
         )}
+        {candidateMarks.map((mark, i) => {
+          const at = skyToFrame(mark.ra, mark.dec, grid.ra, grid.dec, extentDeg)
+          const here = mark.obs_id === frame.obs_id
+          return at && (
+            <span key={mark.obs_id} className={here ? 'candidate-mark current' : 'candidate-mark'}
+              style={{ left: `${at.x * 100}%`, top: `${at.y * 100}%` }} title={`Your mark ${MARK_LETTERS[i]}${here ? ', set in this frame' : ''}`}>
+              <span className="candidate-mark-letter">{MARK_LETTERS[i]}</span>
+            </span>
+          )
+        })}
         {/* The letter in its colour, as on the thumbnails and in the table; the text reads "A · date". */}
         <span className="stamp">{letter ? <><b className={`stamp-letter ${letter.toLowerCase()}`}>{letter}</b> · {utcMinute(frame.date)}</> : stampText(frame, null)}</span>
         <CheckBadge checks={checksForFrame(checks, frame)} />
@@ -327,6 +371,7 @@ export function BlinkPlayer({
             <a href={frame.source_url} target="_blank" rel="noreferrer">{frame.obs_id}</a></p>
         )}
         {changes}
+        {candidate}
       </div>
     </div>
   )

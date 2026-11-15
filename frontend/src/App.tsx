@@ -53,9 +53,10 @@ const POLARIS_CENTER = { ra: 37.954542, dec: 89.264111 }
 const MAX_FRAMES = 12
 const usesStacks = (mode: ViewMode) => mode !== 'exposures'
 // No sidebar: the information about the comparison is one menu, the inspector under the overview map (one tab per
-// kind, one bounded panel). Only controls open on demand, as a sheet: target & options, sky layers, about.
+// kind, one bounded panel). The candidate check is the exception: it stands beside the image it marks on.
+// Only controls open on demand, as a sheet: target & options, sky layers, about.
 type Panel = 'target' | 'layers' | 'about'
-type InspectId = 'quality' | 'candidate' | 'measure' | 'coverage' | 'analysis' | 'data'
+type InspectId = 'quality' | 'measure' | 'coverage' | 'analysis' | 'data'
 const PANELS: { id: Panel; title: string; label: string }[] = [
   { id: 'target', title: 'Target & options', label: 'Options' },
   { id: 'layers', title: 'Sky layers', label: 'Layers' },
@@ -357,12 +358,11 @@ export default function App() {
   const counts = frame?.sources ? countSources(frame.sources) : null
   const sourceSummary = counts ? ` · ${counts.detected} in this frame · ${counts.none} ${counts.none === 1 ? 'needs' : 'need'} verification${counts.unknown ? ` · ${counts.unknown} unknown` : ''}` : ''
   const frameOnSky = frame && sky && framesOnSky && !showDifference && !analysisSkyCaption ? frame : null
-  const markBlocked = skyUnavailable ? 'The sky view needs WebGL2.'
-    : showDifference ? 'Marks are set on single frames, not on the difference image.'
-    : manifest?.preview ? 'Mark candidates after the final images and checks are ready.'
-    : analysisSkyCaption ? 'The aligned analysis image is on the sky: turn off "Show on sky" in the Analysis tab to mark on the SPHEREx frames.'
-    : !frameOnSky ? 'Turn on "SPHEREx frames on the sky" in Layers to mark by clicking.' : null
-  // Marking by clicking the sky works on the overview map and, larger, on the full sky (Explore).
+  const markBlocked = showDifference ? 'Marks are set on single frames, not on the difference image.'
+    : manifest?.preview ? 'Mark candidates after the final images and checks are ready.' : null
+  // Marking by clicking works on the image, and on the sky wherever the SPHEREx frame is on it: the overview map
+  // and, larger, the full sky (Explore).
+  const skyMarking = !markBlocked && !!frameOnSky
   const candidate = useCandidate(job?.job_id ?? null, !markBlocked)
   useMarkLayer(sky, candidate.marks)
   const possible = useMemo(() => manifest ? possibleTrack(candidate.marks, manifest, manifest.frames.map((f) => f.mjd)) : null, [candidate.marks, manifest])
@@ -458,6 +458,24 @@ export default function App() {
         : <button type="button" className="text-button" onClick={() => selectMode('difference')}>Show the later minus the earlier epoch</button>}
     </section>
   )
+  // Beside the image, under the A/B table (under the difference image, which has its own side column): the user
+  // marks in the image and reads the check next to it.
+  const candidateSide = manifest && hasFrames && <div className="candidate-side">
+    <CandidatePanel candidate={candidate} blocked={markBlocked} track={possible && { ...possible, predictions }} distant={distant} sources={!skyUnavailable}
+      known={{ epochs: smallBodies.epochs, motion, detector: manifest.detector, target: targetText(query) }}
+      visits={summary && { observations: summary.observations, inBlink: [...manifest.frames.map((f) => f.obs_id),
+        ...manifest.differences.flatMap((d) => [...d.obs_ids_a, ...d.obs_ids_b])] }}>
+      {possible && predictions.length > 0 && <TrackCheck checks={checkFrames({ ...possible, predictions }, manifest.frames, candidate.marks, manifest)}
+        onShow={(index, p) => { setSeek({ index }); sky?.gotoRaDec(p.ra, p.dec) }} />}
+    </CandidatePanel>
+    {!skyUnavailable && frame && !showDifference && <details className="disclosure">
+      <summary>Detected sources{sourceSummary}</summary>
+      <SourceList frame={frame} onSelect={(ra, dec) => sky?.gotoRaDec(ra, dec)} onMark={(source) => candidate.markSource(frame, source)} />
+    </details>}
+    {manifest.stacked
+      ? <p className="muted">Known asteroids and comets (JPL SBIdent) are looked up for single exposures: switch the view to Exposures.</p>
+      : <SmallBodies lookup={smallBodies} currentMjd={frame?.mjd ?? null} />}
+  </div>
   const viewer = manifest && hasFrames && (showDifference
     ? <>
       <div className="view-back">
@@ -465,10 +483,12 @@ export default function App() {
         <span className="muted">Difference image: the later minus the earlier epoch stack</span>
       </div>
       <DifferenceView key={job.job_id} manifest={manifest} />
+      {!EMBED && candidateSide}
     </>
     : <BlinkPlayer key={`${job.job_id}-${manifest.preview ? manifest.frames[0]?.url : 'final'}`} frames={manifest.frames} checks={checks} grid={manifest} motion={motion} predictions={predictions}
       onIndexChange={showFrame} onPairChange={setPair} seek={seek} pairRequest={pairRequest} active={EMBED || stage === 'investigate'} showShare={EMBED}
-      controls={imagesToggle} changes={changes} marks={imageMarks} />)
+      controls={imagesToggle} changes={changes} marks={imageMarks} candidate={!EMBED && candidateSide}
+      marking={candidate.armed} candidateMarks={candidate.marks} onMark={(shown, ra, dec) => candidate.markAt(shown, manifest, ra, dec)} />)
   const evidence = manifest && <EvidencePanel checks={checks} manifest={manifest} frameLabel={`this comparison · ${manifest.frames.length} ${manifest.frames.length === 1 ? 'image' : 'images'}`}
     onAction={(action) => { if (!EMBED || action !== 'choose-region') onCheckAction(action) }} />
 
@@ -493,27 +513,11 @@ export default function App() {
   </div> : loadFirst
   const blocking = checks.some((check) => check.severity === 'blocker' || check.severity === 'error')
   const current = PANELS.find((item) => item.id === panel)
-  // One tab per question a scientist asks, in the order of the investigation: can I trust the comparison, is it a
-  // candidate, how does it measure, where else was it observed, a second method, the data. What A and B are stands
-  // beside the image. Results first; second methods and provenance details stay folded. Every panel stays mounted.
+  // One tab per question a scientist asks, in the order of the investigation: can I trust the comparison, how does
+  // it measure, where else was it observed, a second method, the data. What A and B are, and whether it is a
+  // candidate, stand beside the image. Results first; second methods and provenance details stay folded. Every panel stays mounted.
   const tabs: InspectorTab<InspectId>[] = [
     { id: 'quality', label: 'Quality', count: checks.length, alert: blocking, content: evidence || pending('lines', 'Loading the checks…') },
-    { id: 'candidate', label: 'Candidate', count: candidate.marks.length, content: manifest && hasFrames ? <>
-      <CandidatePanel candidate={candidate} blocked={markBlocked} track={possible && { ...possible, predictions }} distant={distant}
-        known={{ epochs: smallBodies.epochs, motion, detector: manifest.detector, target: targetText(query) }}
-        visits={summary && { observations: summary.observations, inBlink: [...manifest.frames.map((f) => f.obs_id),
-          ...manifest.differences.flatMap((d) => [...d.obs_ids_a, ...d.obs_ids_b])] }}>
-        {possible && predictions.length > 0 && <TrackCheck checks={checkFrames({ ...possible, predictions }, manifest.frames, candidate.marks, manifest)}
-          onShow={(index, p) => { setSeek({ index }); sky?.gotoRaDec(p.ra, p.dec) }} />}
-      </CandidatePanel>
-      {!skyUnavailable && frame && !showDifference && <details className="disclosure">
-        <summary>Detected sources{sourceSummary}</summary>
-        <SourceList frame={frame} onSelect={(ra, dec) => sky?.gotoRaDec(ra, dec)} onMark={(source) => candidate.markSource(frame, source)} />
-      </details>}
-      {manifest.stacked
-        ? <p className="muted">Known asteroids and comets (JPL SBIdent) are looked up for single exposures: switch the view to Exposures.</p>
-        : <SmallBodies lookup={smallBodies} currentMjd={frame?.mjd ?? null} />}
-    </> : pending('lines', 'Loading the comparison…') },
     { id: 'measure', label: 'Measure', content: <>
       {manifest ? <SpectrumChart quick={quick} centerUm={(frame ?? manifest.frames[0])?.wavelength_um} detector={manifest.detector} />
         : pending('chart', 'Loading the comparison…')}
@@ -631,8 +635,8 @@ export default function App() {
             <button type="button" className="primary" onClick={() => show({ ...draft, ra: pick.ra.toFixed(6), dec: pick.dec.toFixed(6) })}>Compare here</button>
             <button type="button" aria-label="Clear the selected position" onClick={() => setPick(null)}>✕</button>
           </div>}
-          {/* Candidate marking on the full sky: the marks and the check stay in the Candidate tab. */}
-          {job && !markBlocked && (candidate.armed
+          {/* Candidate marking on the full sky: the marks and the check stay beside the images. */}
+          {job && skyMarking && (candidate.armed
             ? <div className="pick-card candidate-sky" role="group" aria-label="Candidate marking on the sky">
               <span><span aria-hidden="true">◎</span> Click the object inside the SPHEREx frame · {candidate.marks.length}/2 marks</span>
               <span className="candidate-notice" role="status" aria-live="polite">{candidate.notice}</span>

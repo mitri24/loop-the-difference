@@ -48,3 +48,20 @@ export function skyToFrame(
   const y = 0.5 - t.eta / rad(sizeDeg)
   return x >= 0 && x <= 1 && y >= 0 && y <= 1 ? { x, y } : null
 }
+
+// Inverse of skyToFrame: a point of the frame grid (fractions from its top left corner) on the sky.
+export function frameToSky(x: number, y: number, ra0: number, dec0: number, sizeDeg: number): { ra: number; dec: number } {
+  const xi = (0.5 - x) * rad(sizeDeg)
+  const eta = (0.5 - y) * rad(sizeDeg)
+  const d0 = rad(dec0)
+  const denom = Math.cos(d0) - eta * Math.sin(d0)
+  const ra = ra0 + (Math.atan2(xi, denom) * 180) / Math.PI
+  const dec = (Math.atan2(Math.sin(d0) + eta * Math.cos(d0), Math.hypot(xi, denom)) * 180) / Math.PI
+  return { ra: ((ra % 360) + 360) % 360, dec }
+}
+
+// The sky across the frame PNG: its pixels times the pixel scale. The grid has at least 16 pixels (backend
+// target_grid), so a small region's image covers more than size_deg; anything smaller is not a frame grid.
+export function gridExtentDeg(pixels: number | null, pixelScaleArcsec: number | undefined, sizeDeg: number): number {
+  return pixels && pixels >= 16 && pixelScaleArcsec ? (pixels * pixelScaleArcsec) / 3600 : sizeDeg
+}

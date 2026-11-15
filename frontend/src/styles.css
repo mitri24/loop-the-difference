@@ -584,3 +584,15 @@ summary { cursor:pointer; min-height:32px; padding:5px 0; font-size:13px; }
 .player-side .meta dd { margin:0; }
 .diff-pickers { display:grid; gap:var(--space-2); }
 .diff-pickers select { min-height:32px; padding:var(--space-1) var(--space-2); }
+/* Marking in the image: a crosshair and the candidate colour round the image; marks A and B where they were set
+   (the frame's own mark full, the other one faint). */
+.viewport.marking { cursor:crosshair; outline:2px solid var(--candidate); outline-offset:-2px; }
+/* While marking, a click on a layer marker (often right on the object) reaches the image. */
+.viewport.marking .image-mark > * { pointer-events:none; }
+.candidate-mark { position:absolute; width:18px; aspect-ratio:1; transform:translate(-50%,-50%); border:2px solid var(--candidate); border-radius:50%; box-shadow:0 0 0 1px #000, inset 0 0 0 1px #000; pointer-events:none; opacity:.5; }
+.candidate-mark::before { content:''; position:absolute; inset:3px; border:2px solid var(--candidate); border-radius:50%; }
+.candidate-mark-letter { position:absolute; left:calc(100% + 3px); top:50%; transform:translateY(-50%); color:var(--candidate); font-weight:700; font-size:13px; line-height:1; text-shadow:0 0 3px #000; }
+.candidate-mark.current { opacity:1; }
+.candidate-hint:empty { display:none; }
+/* The candidate check beside the image, under the A/B table (under the difference image in that mode). */
+.candidate-side { display:flex; flex-direction:column; gap:var(--space-3); min-width:0; font-size:var(--text-sm); }

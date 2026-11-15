@@ -96,7 +96,7 @@ test('the inspector: a tab per kind, arrow keys between tabs, the image never mo
   await page.goto(`/?ra=${manifest.ra}&dec=${manifest.dec}&fov=0.2&band=6`)
   await expect(page.locator('.player')).toBeVisible()
   const image = await page.locator('.viewer .viewport').boundingBox()
-  for (const id of ['quality', 'candidate', 'measure', 'coverage', 'analysis', 'data']) {
+  for (const id of ['quality', 'measure', 'coverage', 'analysis', 'data']) {
     await page.getByTestId(`inspect-${id}`).click()
     await expect(page.getByTestId(`inspect-${id}`)).toHaveAttribute('aria-selected', 'true')
     await expect(page.locator(`#inspect-panel-${id}`)).toBeVisible()
@@ -105,10 +105,10 @@ test('the inspector: a tab per kind, arrow keys between tabs, the image never mo
   // Arrows move the focus between tabs (not between frames), Home and End jump; Enter opens the focused tab.
   await page.getByTestId('inspect-quality').click()
   await page.keyboard.press('ArrowRight')
-  await expect(page.getByTestId('inspect-candidate')).toBeFocused()
+  await expect(page.getByTestId('inspect-measure')).toBeFocused()
   await expect(page.getByTestId('inspect-quality')).toHaveAttribute('aria-selected', 'true')
   await page.keyboard.press('Enter')
-  await expect(page.getByTestId('inspect-candidate')).toHaveAttribute('aria-selected', 'true')
+  await expect(page.getByTestId('inspect-measure')).toHaveAttribute('aria-selected', 'true')
   await page.keyboard.press('End')
   await expect(page.getByTestId('inspect-data')).toBeFocused()
   await page.keyboard.press('Home')
