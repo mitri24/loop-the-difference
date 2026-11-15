@@ -2,6 +2,8 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import {
   catalogCache,
   catalogRadius,
+  catwiseMotions,
+  catwiseUrl,
   fetchVotable,
   gaiaSources,
   gaiaUrl,
@@ -10,6 +12,7 @@ import {
   parseVotableRows,
   propagateGaia,
   simbadSources,
+  wiseSources,
   sourceName,
   simbadUrl,
   skybotUrl,
@@ -344,5 +347,53 @@ describe('catalogue download', () => {
     cancel.abort()
     await expect(answer).rejects.toThrow()
     expect(fetch).toHaveBeenCalledTimes(1)
+  })
+})
+
+describe('AllWISE at the frame time with CatWISE2020 motions', () => {
+  const MJD_2010_5 = 51544.5 + 10.5 * 365.25
+  const MJD_2015_4 = 51544.5 + 15.4 * 365.25
+  const MJD_2026 = 51544.5 + 26 * 365.25
+  // Barnard's Star in AllWISE (VizieR II/328, 2010.5) and a still source 40″ away.
+  const barnard = ['J175747.94+044323.8', '269.4497700', '+04.7232800', '4.358', '4.069']
+  const still = ['J175749.00+044330.0', '269.4541667', '4.7250000', '9.1', '9.0']
+  // Its CatWISE2020 counterpart: Gaia-like motion, position at its mean epoch 2015.4.
+  const at2015 = propagateGaia({ ra: 269.44977, dec: 4.72328, pmRa: -801.6, pmDec: 10362.4 }, MJD_2015_4, 2010.5)
+  const motion = { ...at2015, pmRa: -801.6, pmDec: 10362.4, epochYr: 2015.4 }
+
+  it('asks the analysis service for CatWISE2020, at most 30′ around the view', () => {
+    expect(catwiseUrl(269.45, 4.72, 0.2)).toBe('/analysis/api/catalog?ra=269.45&dec=4.72&radius_arcmin=12.00&catalog=catwise')
+    expect(catwiseUrl(1, 2, 1)).toContain('radius_arcmin=30.00')
+  })
+
+  it('keeps only answers with a motion; anything but a list is no answer', () => {
+    const answer = [
+      { ra: 1, dec: 2, pm_ra_mas_yr: -8100, pm_dec_mas_yr: 680, epoch_jyear: 2015.2 },
+      { ra: 1, dec: 2, pm_ra_mas_yr: null, pm_dec_mas_yr: null, epoch_jyear: 2015.2 },
+    ]
+    expect(catwiseMotions(answer)).toEqual([{ ra: 1, dec: 2, pmRa: -8100, pmDec: 680, epochYr: 2015.2 }])
+    expect(catwiseMotions({ job_id: 'fixture' })).toBeNull()
+    expect(catwiseMotions([])).toEqual([])
+  })
+
+  it('moves the matched source to the frame time and keeps the others at 2010.5', () => {
+    const [moved, kept] = wiseSources([barnard, still], [motion], MJD_2026)
+    const expected = propagateGaia(motion, MJD_2026, 2015.4)
+    expect(moved.ra).toBeCloseTo(expected.ra, 9)
+    expect(moved.dec).toBeCloseTo(expected.dec, 9)
+    // 15.5 years at 10.36″/yr north: about 161″ from the AllWISE position.
+    expect((moved.dec - 4.72328) * 3600).toBeCloseTo(160.6, 0)
+    expect(moved.data).toMatchObject({ AllWISE: 'J175747.94+044323.8', motion: 'CatWISE2020', pmDE: '10362' })
+    expect([kept.ra, kept.dec]).toEqual([269.4541667, 4.725])
+    expect(kept.data).not.toHaveProperty('motion')
+    // At the AllWISE epoch the moved source is back where AllWISE saw it.
+    const [back] = wiseSources([barnard], [motion], MJD_2010_5)
+    expect([back.ra, back.dec]).toEqual([expect.closeTo(269.44977, 6), expect.closeTo(4.72328, 6)])
+  })
+
+  it('moves nothing without motions or when the counterpart is more than 3″ off', () => {
+    expect(wiseSources([barnard], null, MJD_2026)[0].dec).toBe(4.72328)
+    const off = { ...motion, dec: motion.dec + 5 / 3600 }
+    expect(wiseSources([barnard], [off], MJD_2026)[0].dec).toBe(4.72328)
   })
 })
