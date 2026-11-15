@@ -33,6 +33,7 @@ import { useFrameLayers } from './frameLayers'
 import { usePickLayer } from './pickLayer'
 import { usePlateLayer } from './historicalPlate'
 import { useMotionTrack } from './motionTrack'
+import { useDistantTrack } from './distantTrack'
 import { checkFrames, possibleTrack } from './track'
 import { useTrackLayer } from './trackLayer'
 import { sliceForDetector } from './sky'
@@ -359,6 +360,7 @@ export default function App() {
   const possible = useMemo(() => manifest ? possibleTrack(candidate.marks, manifest, manifest.frames.map((f) => f.mjd)) : null, [candidate.marks, manifest])
   const predictions = useMemo(() => (showDifference ? [] : possible?.predictions ?? []), [possible, showDifference])
   useTrackLayer(sky, predictions)
+  const distant = useDistantTrack(showDifference ? null : sky, possible, candidate.marks, manifest)
   usePickLayer(sky, stage === 'explore' ? pick : null, draft.fov)
   // JPL SBIdent takes about a minute per time: one time per epoch, its first frame's.
   // A stack mixes exposures from up to 30 days: moving asteroids are looked up for single exposures.
@@ -474,7 +476,7 @@ export default function App() {
   const tabs: InspectorTab<InspectId>[] = [
     { id: 'quality', label: 'Quality', count: checks.length, alert: blocking, content: evidence || pending('lines', 'Loading the checks…') },
     { id: 'candidate', label: 'Candidate', count: candidate.marks.length, content: manifest && hasFrames ? <>
-      <CandidatePanel candidate={candidate} blocked={markBlocked} track={possible && { ...possible, predictions }}
+      <CandidatePanel candidate={candidate} blocked={markBlocked} track={possible && { ...possible, predictions }} distant={distant}
         known={{ epochs: smallBodies.epochs, motion, detector: manifest.detector, target: targetText(query) }}
         visits={summary && { observations: summary.observations, inBlink: [...manifest.frames.map((f) => f.obs_id),
           ...manifest.differences.flatMap((d) => [...d.obs_ids_a, ...d.obs_ids_b])] }}>
