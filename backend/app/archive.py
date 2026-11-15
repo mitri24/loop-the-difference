@@ -26,6 +26,10 @@ _SPHEREX_COLLECTION = re.compile(r"^spherex_(dr|qr)\d+(_deep)?$")
 COLLECTIONS_MAX_AGE_S = 86400
 COLLECTIONS_RETRY_S = 3600
 COLLECTIONS_TIMEOUT_S = 15.0
+# IRSA's search answers 502/503 under load or in an outage: ask twice more, then say so.
+SEARCH_ATTEMPTS = 3
+SEARCH_RETRY_S = 1.5
+_SEARCH_RETRY_STATUS = {429, 500, 502, 503, 504}
 _REQUIRED = ("obs_id", "energy_bandpassname", "em_min", "em_max", "t_min", "t_max", "access_url")
 
 
@@ -74,16 +78,48 @@ def _search_collection(
     if cached.is_file():
         return parse_sia_votable(cached.read_bytes(), collection), None
     params = {"COLLECTION": collection, "POS": f"CIRCLE {ra} {dec} 0.0005", "MAXREC": "5000"}
-    try:
-        response = httpx.get(settings.irsa_sia_url, params=params, timeout=settings.http_timeout_s)
-        response.raise_for_status()
-    except httpx.HTTPError as exc:
-        raise ArchiveError("SPHEREx archive (IRSA) is not reachable") from exc
+    response = _search(settings, params)
     observations = parse_sia_votable(response.content, collection)
     if not observations:
         return [], response.content
     _write_cached(cached, response.content)
     return observations, None
+
+
+def _search(settings: Settings, params: dict[str, str]) -> httpx.Response:
+    """One SIA2 query, asked again on a busy or failing gateway; the error names IRSA's answer."""
+    for attempt in range(1, SEARCH_ATTEMPTS + 1):
+        try:
+            response = httpx.get(
+                settings.irsa_sia_url, params=params, timeout=settings.http_timeout_s
+            )
+            response.raise_for_status()
+            return response
+        except httpx.HTTPError as exc:
+            retry = (
+                exc.response.status_code in _SEARCH_RETRY_STATUS
+                if isinstance(exc, httpx.HTTPStatusError)
+                else isinstance(exc, httpx.TransportError)
+            )
+            if attempt < SEARCH_ATTEMPTS and retry:
+                time.sleep(SEARCH_RETRY_S * attempt)
+                continue
+            raise ArchiveError(unreachable_text(exc)) from exc
+    raise AssertionError("unreachable")
+
+
+def unreachable_text(exc: httpx.HTTPError) -> str:
+    """What the user reads when IRSA's search fails: its own answer, and what still works."""
+    if isinstance(exc, httpx.HTTPStatusError):
+        answer = f"its search answered HTTP {exc.response.status_code} {exc.response.reason_phrase}"
+    elif isinstance(exc, httpx.TimeoutException):
+        answer = "its search did not answer in time"
+    else:
+        answer = "the connection failed"
+    return (
+        f"SPHEREx archive (IRSA) is not reachable: {answer}. "
+        "Targets loaded before (the examples) still work; try a new position again later."
+    )
 
 
 def spherex_collections(settings: Settings) -> list[str]:

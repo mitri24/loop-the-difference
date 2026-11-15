@@ -257,6 +257,7 @@ def test_an_empty_release_is_cached_when_another_release_has_data(settings, monk
 
 
 def test_one_failing_collection_does_not_fail_the_search(settings, monkeypatch):
+    monkeypatch.setattr("app.archive.SEARCH_RETRY_S", 0)
     monkeypatch.setattr(
         "app.archive.httpx.get",
         _per_collection({"spherex_dr1": FIXTURE.read_bytes(), "spherex_qr3": None}),
@@ -269,12 +270,43 @@ def test_one_failing_collection_does_not_fail_the_search(settings, monkeypatch):
 
 
 def test_search_fails_when_every_collection_fails(settings, monkeypatch):
+    monkeypatch.setattr("app.archive.SEARCH_RETRY_S", 0)
     monkeypatch.setattr(
         "app.archive.httpx.get", _per_collection({"spherex_dr1": None, "spherex_qr3": None})
     )
 
     with pytest.raises(ArchiveError, match="not reachable"):
         search_observations(1.0, 2.0, settings, ["spherex_dr1", "spherex_qr3"])
+
+
+def test_search_asks_again_on_a_gateway_error_and_names_irsas_answer(settings, monkeypatch):
+    monkeypatch.setattr("app.archive.SEARCH_RETRY_S", 0)
+    request = httpx.Request("GET", "https://irsa.example/SIA")
+    calls = []
+
+    def bad_gateway(url, params, timeout):
+        calls.append(params["COLLECTION"])
+        response = httpx.Response(502, request=request)
+        return response
+
+    monkeypatch.setattr("app.archive.httpx.get", bad_gateway)
+    with pytest.raises(ArchiveError) as caught:
+        search_observations(1.0, 2.0, settings, ["spherex_dr1"])
+    assert len(calls) == 3
+    assert "HTTP 502 Bad Gateway" in str(caught.value)
+    assert "examples" in str(caught.value)
+
+    # A gateway that recovers on the second try answers normally.
+    answers = iter([httpx.Response(503, request=request), _Answer(FIXTURE.read_bytes())])
+
+    def flaky(url, params, timeout):
+        answer = next(answers)
+        return answer
+
+    monkeypatch.setattr("app.archive.httpx.get", flaky)
+    found, failed = search_observations(1.0, 2.0, settings, ["spherex_dr1"])
+    assert len(found) == 6
+    assert failed == []
 
 
 @pytest.mark.parametrize(

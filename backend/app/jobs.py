@@ -1,5 +1,6 @@
 import hashlib
 import json
+import re
 from collections.abc import Callable
 from contextlib import suppress
 from functools import lru_cache
@@ -208,9 +209,18 @@ def status(redis: Redis, settings: Settings, job_id: str) -> FrameJob:
     return FrameJob(job_id=job_id, status=running, progress=progress, total=total, manifest=preview)
 
 
+_EXCEPTION_PREFIX = re.compile(r"^[A-Za-z_][\w.]*(?:Error|Exception): ")
+
+
+def error_text(line: str) -> str:
+    """An exception line without its class: "app.archive.ArchiveError: X" → "X"."""
+    return _EXCEPTION_PREFIX.sub("", line, count=1)
+
+
 def _last_error(job: Job) -> str:
     result = job.latest_result()
     lines = (
         [line for line in (result.exc_string or "").splitlines() if line.strip()] if result else []
     )
-    return lines[-1] if lines else "Frame job failed"
+    # The message, not the traceback's "app.archive.ArchiveError: " in front of it.
+    return error_text(lines[-1]) if lines else "Frame job failed"
