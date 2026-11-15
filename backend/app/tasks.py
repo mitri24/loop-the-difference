@@ -148,7 +148,7 @@ def build_frames(
     observations = [o for o in found if o.detector == detector]
     selected = select_for_stacks(observations) if stack else select_frames(observations, max_frames)
     urls = [cutout_url(o.access_url, ra, dec, size_deg) for o in selected]
-    _report(0, len(selected))
+    report(0, len(selected))
 
     def publish_preview(downloaded, checks):
         # Separate files: a provisional stretch must never overwrite immutable final PNGs.
@@ -356,7 +356,7 @@ def build_spectrum(ra: float, dec: float, collections: list[str] | None = None) 
         star, gaia_down = None, True
     position = {o.obs_id: position_at(star, o.mjd) if star else (ra, dec) for o in selected}
     urls = [cutout_url(o.access_url, *position[o.obs_id], SPECTRUM_SIZE_DEG) for o in selected]
-    _report(0, len(selected))
+    report(0, len(selected))
     downloaded, checks = download_cutouts(selected, urls, settings)
     checks += release_checks([obs for obs, _, _ in downloaded], failed)
     # The quick-look caveat comes first; it needs the fluxes, so it is added below.
@@ -488,9 +488,9 @@ def build_followup(
         return [o for o in found if o.detector == detector], failed
 
     plan, failed = followup.search_and_plan(
-        search, ra, dec, marked, marks, distances, points, report=_report
+        search, ra, dec, marked, marks, distances, points, report=report
     )
-    _report(0, len(plan.cutouts))
+    report(0, len(plan.cutouts))
     downloaded, checks = download_cutouts(
         [cutout.visit for cutout in plan.cutouts], [cutout.url for cutout in plan.cutouts], settings
     )
@@ -540,7 +540,7 @@ def download_cutouts(
                         affects=[f"obs:{obs.obs_id}"],
                     )
                 )
-            _report(done, len(selected))
+            report(done, len(selected))
             if on_ready and downloaded and done < len(selected):
                 on_ready(sorted(downloaded, key=lambda item: item[0].mjd), checks)
     downloaded.sort(key=lambda item: item[0].mjd)
@@ -677,7 +677,7 @@ def release_checks(observations: list[Observation], failed: list[str]) -> list[C
     return checks
 
 
-def _report(done: int, total: int) -> None:
+def report(done: int, total: int) -> None:
     job = get_current_job()
     if job is not None:
         job.meta.update(progress=done, total=total)
