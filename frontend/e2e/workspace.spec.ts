@@ -139,6 +139,8 @@ test('fixture: name search, compare, playback, quality and source metadata stay 
 test('fixture: malformed coordinates surface backend validation and retry', async ({ page }) => {
   await fixtures(page)
   await page.route('**/api/observations?**', route => route.fulfill({ status: 422, json: { detail: 'Invalid right ascension' } }))
+  // The backend parses the coordinates for the frames as well (backend/app/coords.py) and rejects them the same way.
+  await page.route('**/api/frames', route => route.fulfill({ status: 422, json: { detail: 'Invalid right ascension' } }))
   await page.goto('/')
   await openSheet(page, 'target')
   await page.getByText('Enter precise coordinates', { exact: true }).click()
@@ -356,7 +358,7 @@ test('fixture: queued jobs poll through the API and preserve chosen search setti
   await fixtures(page)
   await page.route('**/api/frames', route => route.fulfill({ json: { ...job(), status: 'queued', manifest: null } }))
   await page.goto('/')
-  await page.getByLabel('Observation detector').selectOption('3')
+  await page.getByLabel('Search band').selectOption('3')
   await page.getByTestId('sky-search').fill('Polaris')
   const posted = page.waitForRequest(r => r.url().endsWith('/api/frames') && r.method() === 'POST')
   const polled = page.waitForRequest('**/api/frames/fixture')
@@ -610,6 +612,8 @@ test('fixture: observation history opens beside the comparison and closes withou
       expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(width + 1)
       if (height === 900 && [390, 1440].includes(width)) await page.screenshot({ path: info.outputPath(`history-${width}.png`) })
       await closeInspector(page)
+      // Short phones scroll within the images.
+      await page.locator('.stamp').scrollIntoViewIfNeeded()
       await expect(page.locator('.stamp')).toBeInViewport()
       await expect(page.locator('.stamp')).toHaveText(stamp!)
       await expect(page.locator('.bottom-bar')).toHaveCount(0)
@@ -650,8 +654,8 @@ test('fixture: the target, detector and blocked difference are named once', asyn
   await expect(data.getByRole('region', { name: 'Checks for this view' })).toHaveCount(0)
   // The caveat stands once, with the checks; no permanent line under the images.
   await expect(page.locator('.science-note')).toHaveCount(0)
-  await expect(page.getByText('Changes are candidates', { exact: true })).toHaveCount(1)
   await expect(page.locator('#inspect-panel-quality')).toContainText('Changes are candidates')
+  expect(await page.evaluate(() => document.body.textContent!.split('Changes are candidates').length - 1)).toBe(1)
 })
 
 test('fixture: an unedited search field keeps the comparison position, an edited one is resolved as a name', async ({ page }) => {
@@ -782,6 +786,8 @@ test('fixture: the overview map expands over the page without moving anything, d
   const box = async (selector: string) => (await page.locator(selector).boundingBox())!
   for (const [width, height] of [[800, 700], [1024, 768], [1440, 900]]) {
     await page.setViewportSize({ width, height })
+    // The map takes its width for the new window one render later.
+    await page.evaluate(() => new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve))))
     const docked = (await canvas.boundingBox())!
     const frame = await box('.sky-area.overview')
     const viewer = await box('.viewer')

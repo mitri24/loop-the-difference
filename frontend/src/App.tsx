@@ -147,15 +147,14 @@ export default function App() {
     return () => window.removeEventListener('keydown', onKey)
   }, [closePanel, panel, inspectWide])
 
-  // The inspector hangs under the overview map card and is as wide as it: the card's size as CSS variables on the
-  // shell (styles/shell.css). An expanded map has no card box (0 × 0): the last size stays for when it docks again.
+  // The inspector hangs under the overview map card: the card's height as a CSS variable on the shell
+  // (styles/shell.css). An expanded map has no card box (0 × 0): the last height stays for when it docks again.
   useLayoutEffect(() => {
     const shell = shellRef.current
     const card = shell?.querySelector<HTMLElement>('.sky-area')
     if (!shell || !card) return
     const observer = new ResizeObserver(() => {
       if (!card.offsetWidth) return
-      shell.style.setProperty('--map-card-w', `${card.offsetWidth}px`)
       shell.style.setProperty('--map-card-h', `${card.offsetHeight}px`)
     })
     observer.observe(card)

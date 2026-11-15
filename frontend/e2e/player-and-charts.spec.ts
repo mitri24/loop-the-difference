@@ -92,7 +92,7 @@ test('the inspector: a tab per kind, arrow keys between tabs, the image never mo
   await page.goto(`/?ra=${manifest.ra}&dec=${manifest.dec}&fov=0.2&band=6`)
   await expect(page.locator('.player')).toBeVisible()
   const image = await page.locator('.viewer .viewport').boundingBox()
-  for (const id of ['frame', 'quality', 'candidate', 'spectrum', 'brightness', 'coverage', 'analysis', 'data']) {
+  for (const id of ['frame', 'quality', 'candidate', 'measure', 'coverage', 'analysis', 'data']) {
     await page.getByTestId(`inspect-${id}`).click()
     await expect(page.getByTestId(`inspect-${id}`)).toHaveAttribute('aria-selected', 'true')
     await expect(page.locator(`#inspect-panel-${id}`)).toBeVisible()
@@ -141,8 +141,8 @@ test('charts: tooltip on hover and keyboard focus, Table toggle, width follows t
   await fixtures(page)
   await page.setViewportSize({ width: 1440, height: 900 })
   await page.goto(`/?ra=${manifest.ra}&dec=${manifest.dec}&fov=0.2&band=6`)
-  await page.getByTestId('inspect-spectrum').click()
-  await page.getByRole('button', { name: 'Build quick-look spectrum from all SPHEREx visits' }).click()
+  await page.getByTestId('inspect-measure').click()
+  await page.getByRole('button', { name: 'Measure the target in all SPHEREx visits' }).click()
   const chart = page.locator('.spectrum-chart')
   await expect(chart.locator('svg[role="img"]')).toBeVisible()
   await expect(page.getByRole('figure', { name: 'Flux at the target by wavelength' })).toBeVisible()
