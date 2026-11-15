@@ -47,6 +47,7 @@ export function readEmbed(search: string): boolean {
 // A candidate mark in a link: the frame it was set in and its position. The detection it snapped to is found again
 // from the position when the link opens.
 export interface LinkMark {
+  objectName?: string
   object?: number
   obs_id: string
   ra: number
@@ -61,7 +62,7 @@ export function readMarks(search: string): LinkMark[] {
     const colon = raw.indexOf(':')
     const object = Number(raw.slice(0, colon))
     if (!Number.isSafeInteger(object) || object < 0) return []
-    return readMarks(`?mark=${encodeURIComponent(raw.slice(colon + 1))}`).map((mark) => ({ ...mark, object }))
+    return readMarks(`?mark=${encodeURIComponent(raw.slice(colon + 1))}`).map((mark) => ({ ...mark, object, ...(params.get(`objectname${object}`) ? { objectName: params.get(`objectname${object}`)!.slice(0, 80) } : {}) }))
   })
   return params.getAll('mark').flatMap((raw) => {
     const at = raw.lastIndexOf(':')
@@ -97,6 +98,7 @@ export function toSearch(query: TargetQuery, embed = false, marks: LinkMark[] = 
   if (embed) params.set('embed', '1')
   for (const mark of marks.slice(0, MAX_LINK_MARKS)) params.append('mark', `${mark.obs_id}:${mark.ra.toFixed(6)},${mark.dec.toFixed(6)}`)
   if (marks.some((mark) => mark.object != null)) for (const mark of marks) {
+    if (mark.objectName) params.set(`objectname${mark.object ?? 0}`, mark.objectName.slice(0, 80))
     params.append('objectmark', `${mark.object ?? 0}:${mark.obs_id}:${mark.ra.toFixed(6)},${mark.dec.toFixed(6)}`)
   }
   if (pair) {

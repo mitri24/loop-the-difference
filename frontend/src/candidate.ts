@@ -16,6 +16,7 @@ export interface Mark {
   // 1σ per axis
   sigma_arcsec: number
   source?: DetectedSource
+  objectName?: string
   label?: string
 }
 
@@ -133,7 +134,7 @@ export function placeLinkMarks(manifest: Pick<FrameManifest, 'frames' | 'pixel_s
 
 export type Candidate = ReturnType<typeof useCandidate>
 // The verdict starts at the first choice; `verdictChosen` says whether the user picked it.
-const START = { marks: [] as Mark[], notice: '', verdict: VERDICTS[0] as Verdict, verdictChosen: false }
+const START = { name: '', marks: [] as Mark[], notice: '', verdict: VERDICTS[0] as Verdict, verdictChosen: false }
 
 /** Marks of one comparison: a new job id clears them; `allowed` false disarms clicks. Marks from a shared link
  * belong to the first comparison: they are placed once its final frames are there (`final`), and dropped when
@@ -144,7 +145,7 @@ export function useCandidate(jobId: string | null, allowed: boolean, final: Fram
   if (objects.jobId !== jobId) setObjects({ jobId, active: 0, items: [] })
   const saveCurrent = () => {
     const items = [...objects.items]
-    items[objects.active] = { marks: state.marks, notice: state.notice, verdict: state.verdict, verdictChosen: state.verdictChosen }
+    items[objects.active] = { name: state.name, marks: state.marks, notice: state.notice, verdict: state.verdict, verdictChosen: state.verdictChosen }
     return items
   }
   const selectObject = (index: number) => {
@@ -168,27 +169,28 @@ export function useCandidate(jobId: string | null, allowed: boolean, final: Fram
       const objectIds = [...new Set(pending.marks.map((mark) => mark.object ?? 0))].sort((a, b) => a - b)
       const groups = objectIds.map((index) =>
         placeLinkMarks(final, pending.marks.filter((mark) => (mark.object ?? 0) === index)))
-      const items = groups.map((group) => ({ ...START, marks: group.marks }))
+      const items = groups.map((group, i) => ({ ...START, name: pending.marks.find((mark) => (mark.object ?? 0) === objectIds[i])?.objectName ?? '', marks: group.marks }))
       setObjects({ jobId, active: 0, items })
       placed.marks = items[0].marks
       placed.missing = groups.reduce((sum, group) => sum + group.missing, 0)
     }
-    setState({ jobId, ...START, marks: placed.marks,
+    setState({ jobId, ...START, name: pending.marks[0]?.objectName ?? '', marks: placed.marks,
       notice: placed.missing ? `${placed.missing} ${placed.missing === 1 ? 'mark' : 'marks'} from the link could not be placed in this comparison.` : '' })
   }
   const allMarks = useMemo(() => {
     const items = [...objects.items]
     items[objects.active] = state
-    return items.flatMap((item, index) => item.marks.map((mark, i) => ({ ...mark, label: `${index + 1}${MARK_LETTERS[i]}`, object: index })))
+    return items.flatMap((item, index) => item.marks.map((mark, i) => ({ ...mark, label: `${index + 1}${MARK_LETTERS[i]}`, object: index, objectName: item.name })))
   }, [objects, state])
-  const shareMarks = objectItems.length > 1 ? allMarks : state.marks
+  const shareMarks = objectItems.length > 1 || state.name ? allMarks : state.marks
   const add = (mark: Mark) =>
     setState((old) => {
       const next = addMark(old.marks, mark)
       return 'error' in next ? { ...old, notice: next.error } : { ...old, marks: next.marks, notice: '', verdict: START.verdict, verdictChosen: false }
     })
   return {
-    objects: objectItems.map((item, index) => ({ index, count: item.marks.length })),
+    objects: objectItems.map((item, index) => ({ index, name: item.name, count: item.marks.length })),
+    renameObject: (name: string) => setState((old) => ({ ...old, name: name.slice(0, 80) })),
     activeObject: objects.active,
     selectObject,
     newObject: () => selectObject(objectItems.length),
@@ -209,7 +211,7 @@ export function useCandidate(jobId: string | null, allowed: boolean, final: Fram
       if (!insideFrame(ra, dec, manifest)) return setState((old) => ({ ...old, notice: OUTSIDE_FRAME }))
       add(snapMark(frame, ra, dec, manifest.pixel_scale_arcsec))
     },
-    clear: () => setState((old) => ({ ...old, ...START })),
+    clear: () => setState((old) => ({ ...old, ...START, name: old.name })),
   }
 }
 

@@ -1,4 +1,3 @@
-import { readFile } from 'node:fs/promises'
 import { test, expect, type Page, type Locator } from '@playwright/test'
 import type { FrameJob, FrameManifest, ObservationSummary, PairDifferenceJob } from '../src/types'
 
@@ -629,7 +628,7 @@ test('fixture: Mark detected sources in two frames lists candidate marks A and B
   await expect(panel.getByRole('button', { name: 'Mark in this frame' })).toHaveAttribute('aria-pressed', 'false')
 })
 
-test('fixture: the marks file keeps marks, frames and verdict; its link opens the same marks again', async ({ page }) => {
+test('fixture: sharing includes markers and reopens them without a JSON export', async ({ page }) => {
   const detected = (index: number) => ({ ...frame(index), sources: [{ ra: manifest.ra + 0.05 * (index + 1), dec: manifest.dec - 0.02,
     x: 40, y: 50, peak_mjy_sr: 2, snr: 122, match: 'none' as const, catalog_id: null, separation_arcsec: null,
     catalog_mag: null, catalog_band: null }] })
@@ -647,17 +646,20 @@ test('fixture: the marks file keeps marks, frames and verdict; its link opens th
   const marks = [/^◎ A · 2026-03-10 12:00 UTC .*\(S\/N 122\)$/, /^◎ B · 2026-09-10 12:00 UTC · .* · position as clicked$/]
   await expect(panel.locator('.candidate-marks li')).toHaveText(marks)
   await panel.getByRole('radio', { name: 'possible artifact' }).check()
-  const [download] = await Promise.all([page.waitForEvent('download'), panel.getByRole('button', { name: 'Export evidence (JSON)' }).click()])
-  expect(download.suggestedFilename()).toMatch(/^candidate-marks-.+-\d{4}-\d{2}-\d{2}\.json$/)
-  const file = JSON.parse(await readFile(await download.path(), 'utf8'))
-  // The address bar carries the marks too: a reload or a copied address keeps them.
-  expect(new URL(page.url()).searchParams.getAll('mark')).toHaveLength(2)
-  expect(file).toMatchObject({ format: 'loop-the-difference/candidate-marks@1', verdict: 'possible artifact', verdict_chosen: true,
-    marks: [{ letter: 'A', position: 'detection', detection: { snr: 122 }, frame: { obs_id: 'fixture-0', detector: 6, source_url: 'https://example.test/fixture-0' } },
-      { letter: 'B', position: 'as clicked', detection: null, frame: { obs_id: 'fixture-1' } }] })
-  expect(file.link).toContain('mark=fixture-0')
-  // A colleague opens the link from the file: the same comparison, the same marks, on this site.
-  await page.goto(file.link)
+  await panel.getByRole('textbox', { name: 'Object name' }).fill('Moving candidate')
+  await expect(panel.getByText('Share in the top bar copies a link with your markers included.', { exact: false })).toBeVisible()
+  await expect(panel.getByRole('button', { name: /Export/ })).toHaveCount(0)
+  await page.evaluate(() => {
+    Object.defineProperty(navigator, 'clipboard', { configurable: true, value: {
+      writeText: async (value: string) => { (window as Window & { sharedLink?: string }).sharedLink = value },
+    } })
+  })
+  await page.getByRole('button', { name: 'Share', exact: true }).click()
+  const sharedLink = await page.evaluate(() => (window as Window & { sharedLink?: string }).sharedLink)
+  expect(new URL(sharedLink!).searchParams.getAll('mark')).toHaveLength(2)
+  expect(new URL(sharedLink!).searchParams.get('objectname0')).toBe('Moving candidate')
+  await page.goto(sharedLink!)
+  await expect(panel.getByRole('textbox', { name: 'Object name' })).toHaveValue('Moving candidate')
   await expect(panel.locator('.candidate-marks li')).toHaveText(marks)
   await page.reload()
   await expect(panel.locator('.candidate-marks li')).toHaveText(marks)

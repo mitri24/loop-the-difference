@@ -686,3 +686,6 @@ summary { cursor:pointer; min-height:32px; padding:5px 0; font-size:13px; }
 .pair-col-head { display:grid; grid-template-columns:minmax(0,1fr); justify-items:start; align-items:start; gap:8px; }
 .pair-table thead th { vertical-align:top; }
 .pair-pick { max-width:100%; }
+
+.object-name { display:grid; gap:6px; margin:12px 0; }
+.object-name input { width:100%; min-width:0; box-sizing:border-box; }

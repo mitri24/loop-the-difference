@@ -12,7 +12,7 @@ import { DistantTrackCheck } from './TrackCheck'
 import { TrackSummary } from './TrackSummary'
 
 interface Props {
-  candidate: Pick<Candidate, 'marks' | 'notice' | 'armed' | 'setArmed' | 'clear'> & Partial<Pick<Candidate, 'verdict' | 'setVerdict' | 'objects' | 'activeObject' | 'selectObject' | 'newObject'>>
+  candidate: Pick<Candidate, 'marks' | 'notice' | 'armed' | 'setArmed' | 'clear'> & Partial<Pick<Candidate, 'verdict' | 'setVerdict' | 'objects' | 'activeObject' | 'selectObject' | 'newObject' | 'renameObject'>>
   // Why marking on the sky is off right now; null when it is possible.
   blocked: string | null
   track: PossibleTrack | null
@@ -24,22 +24,24 @@ interface Props {
   visits?: { observations: Observation[]; inBlink: string[] } | null
   // Positions for assumed distances in the images beyond the straight-line window (useDistantTrack).
   distant?: DistantTrackState
-  // Saves the marks with their frames, detections, track and verdict, and the link that opens them again.
-  onDownload?: () => void
   // Forced photometry along the track at every other visit, started on request (useFollowup).
   followup?: FollowupState
 }
 
 // Beside the image: what to do next, the marks so far and what they still need.
-export function CandidatePanel({ candidate: { marks, notice, armed, setArmed, clear, verdict, setVerdict, objects, activeObject, selectObject, newObject }, blocked, track, known, visits, distant, followup, sources = true, onDownload, children }: Props) {
+export function CandidatePanel({ candidate: { marks, notice, armed, setArmed, clear, verdict, setVerdict, objects, activeObject, selectObject, newObject, renameObject }, blocked, track, known, visits, distant, followup, sources = true, children }: Props) {
   return (
     <section className="candidate-check" aria-labelledby="candidate-heading">
       <h3 id="candidate-heading">3 · Your objects</h3>
       {objects && <div className="object-chooser" role="group" aria-label="Marked objects">
         {objects.map((object) => <button key={object.index} type="button" aria-pressed={activeObject === object.index}
-          onClick={() => selectObject?.(object.index)}>Object {object.index + 1} · {object.count}/2</button>)}
+          onClick={() => selectObject?.(object.index)}>{object.name || `Object ${object.index + 1}`} · {object.count}/2</button>)}
         <button type="button" onClick={newObject}>+ Add object</button>
       </div>}
+      {objects && renameObject && <label className="object-name">Object name
+        <input type="text" maxLength={80} value={objects.find((object) => object.index === activeObject)?.name ?? ''}
+          placeholder={`Object ${(activeObject ?? 0) + 1}`} onChange={(event) => renameObject(event.target.value)} />
+      </label>}
       <p className="candidate-hint">One object at a time: mark it in two images. Add another object to keep a separate pair.</p>
       {marks.length < 2 && (
         <p className="candidate-next">
@@ -73,11 +75,8 @@ export function CandidatePanel({ candidate: { marks, notice, armed, setArmed, cl
           </KnownObjectCheck>
           {visits && <Precovery track={track} marks={marks} {...visits} detector={known.detector}
             followsTarget={followsTarget(known.motion, marks) ? known.target : null} />}
-          {onDownload && <p className="candidate-hint">To reopen or share your work, use Share in the top bar. The JSON export is a technical record of this object’s marks, images and assessment.</p>}
+          <p className="candidate-hint">Share in the top bar copies a link with your markers included. Anyone opening it sees the same comparison and marked positions once the images load.</p>
           <div className="candidate-actions">
-            {onDownload && <button type="button" onClick={onDownload} title="A JSON file with the marks, their frames and detections, the possible track, your verdict and a link that opens them here again">
-              <span aria-hidden="true">↓</span> Export evidence (JSON)
-            </button>}
             <button type="button" onClick={clear}>Clear this object’s marks</button>
           </div>
         </>

@@ -50,7 +50,6 @@ import { countSources, useSourceLayer } from './sourceLayer'
 import { targetText } from './targets'
 import type { DetectedSource, FrameJob, ObservationSummary, ProperMotion } from './types'
 import { POLARIS, readEmbed, readMarks, readPair, readQuery, toSearch, type TargetQuery, type ViewMode } from './url'
-import { downloadMarks } from './markExport'
 import { PHONE, useMedia } from './useMedia'
 
 const INITIAL = readQuery(window.location.search)
@@ -575,8 +574,6 @@ export default function App() {
   const candidateSide = manifest && hasFrames && <div className="candidate-side">
     <CandidatePanel candidate={candidate} blocked={markBlocked} track={possible && { ...possible, predictions }} distant={distant} sources={!skyUnavailable}
       followup={followup}
-      onDownload={() => downloadMarks({ link: link(), target: targetText(query), manifest, marks: candidate.marks, track: possible,
-        verdict: candidate.verdict, verdictChosen: candidate.verdictChosen, exported: new Date(), base: window.location.href })}
       known={{ epochs: smallBodies.epochs, motion, detector: manifest.detector, target: targetText(query) }}
       visits={summary && { observations: summary.observations, inBlink: [...manifest.frames.map((f) => f.obs_id),
         ...manifest.differences.flatMap((d) => [...d.obs_ids_a, ...d.obs_ids_b])] }}>
@@ -690,7 +687,7 @@ export default function App() {
     <div className="shell" data-testid="planet-x-shell" ref={shellRef}>
       <a className="skip-link" href="#sky-map">Skip to the sky map</a>
       <SearchBar tools={<HeaderTools items={PANELS} open={panel} onToggle={togglePanel}
-        actions={[{ id: 'share', label: 'Share', title: 'Copy this comparison link', onClick: () => void share() }]} />} onDraftChange={setDraft} value={name} onChange={(value) => { searchShows.current = null; setName(value) }} draft={draft} busy={busy} onShow={show} onFind={find} onSurprise={() => void surpriseMe()} />
+        actions={[{ id: 'share', label: 'Share', title: 'Copy this comparison link with your markers included', onClick: () => void share() }]} />} onDraftChange={setDraft} value={name} onChange={(value) => { searchShows.current = null; setName(value) }} draft={draft} busy={busy} onShow={show} onFind={find} onSurprise={() => void surpriseMe()} />
 
       <div className={`stage ${stage}`}>
         <section className="viewer" aria-label="SPHEREx images of the region" hidden={stage !== 'investigate'}>
