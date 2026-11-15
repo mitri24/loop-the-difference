@@ -1,6 +1,4 @@
-import { DAYS_PER_YEAR, REGIMES, SEARCH_AREA_LABEL, type PossibleTrack } from '../track'
-
-const num = (value: number, digits = 3) => Number(value.toPrecision(digits)).toString()
+import { DAYS_PER_YEAR, REGIMES, SEARCH_AREA_LABEL, num, type PossibleTrack } from '../track'
 
 // What the marks say about motion: rate ± 1σ, direction and whether a straight line is valid.
 export function TrackSummary({ track: { fit, regime, predictions } }: { track: PossibleTrack }) {
