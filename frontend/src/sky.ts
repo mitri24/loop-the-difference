@@ -8,16 +8,18 @@ export interface Survey {
   url: string
 }
 
-// Mirrors that answer with CORS headers; SPHEREx first.
+// Mirrors that answer with CORS headers; SPHEREx first. IRSA hosts SPHEREx and copies of the CDS colour surveys
+// (CDS IDs CDS/P/allWISE/color, CDS/P/2MASS/color, CDS/P/DSS2/color), so every layer comes from one archive. The ESA
+// mirror (skies.esac.esa.int) did not answer at all on 15.11.2026, and AllWISE is the fallback when SPHEREx fails.
 export const SURVEYS: Survey[] = [
   {
     id: 'spherex-dr1',
     name: 'SPHEREx DR1 all-sky (NASA/IPAC)',
     url: 'https://irsa.ipac.caltech.edu/data/hips/SPHEREx/spherex_allsky_cube',
   },
-  { id: 'allwise', name: 'AllWISE colour (ESA mirror)', url: 'https://skies.esac.esa.int/AllWISEColor' },
-  { id: '2mass', name: '2MASS colour (ESA mirror)', url: 'https://skies.esac.esa.int/2MASSColor' },
-  { id: 'dss2', name: 'DSS2 colour (ESA mirror)', url: 'https://skies.esac.esa.int/DSSColor' },
+  { id: 'allwise', name: 'AllWISE colour (IRSA mirror)', url: 'https://irsa.ipac.caltech.edu/data/hips/CDS/AllWISE/RGB-W4-W2-W1' },
+  { id: '2mass', name: '2MASS colour (IRSA mirror)', url: 'https://irsa.ipac.caltech.edu/data/hips/CDS/2MASS/Color' },
+  { id: 'dss2', name: 'DSS2 colour (IRSA mirror)', url: 'https://irsa.ipac.caltech.edu/data/hips/CDS/DSS2/color' },
 ]
 export const SPHEREX = SURVEYS[0]
 export const ALLWISE = SURVEYS[1]
