@@ -64,3 +64,12 @@ Follow-up QA: 341 unit tests, typecheck, lint and build PASS. Three affected bro
 Menu/export follow-up: inspector uses the same bordered, orange-selected segmented style as the image toggle, with equal columns and responsive wrapping. Export is labelled Export evidence (JSON), with guidance to use Share for reopening or sharing. Five affected browser checks PASS, including export readback, keyboard and ten-width checks. Typecheck, lint, 341 component tests and production build PASS.
 
 Compact-menu correction: retained segmented appearance while restoring a single compact row with 30px controls. Narrow rails scroll internally rather than increasing header height. Five responsive/short-height browser checks and production build PASS; local container updated.
+
+
+## Integration into main
+
+The compact demo interface from port 4173 is combined with pair-difference analysis, measured detection limits, CatWISE matching, the direct cache entry, archive POST fallback and the extended 3D intro. The difference disclosure keeps the current pair analysis; source and provenance details remain folded. Multiple marked objects and selected-object follow-up are retained.
+
+Validation of the combined interface: 425 frontend tests, TypeScript, ESLint and production build pass; all 66 browser checks pass, including real local image display. The backend is unchanged by the UI merge and its preceding complete run passed 396 tests; the analysis service passed 121 tests. The supplied comparison link at RA 27.198635, Dec 89.314570 restores the same marked location and A/B observations on ports 4173 and 18081, with an explicit URL round-trip regression.
+
+External service limitation remains: IRSA GET searches returned HTTP 502 during verification. A small POST query succeeded, but a complete POST search also failed. The transport fallback improves recovery; it cannot guarantee archive availability. Existing downloads remain persistent and reusable.
