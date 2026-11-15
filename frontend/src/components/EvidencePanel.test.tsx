@@ -93,7 +93,7 @@ describe('EvidencePanel', () => {
   })
 
   it('offers a check’s action only where the workspace wires it', () => {
-    expect(panel({ checks: [mismatch], onAction: () => undefined })).toContain('class="check-item__action">Choose a compatible pair</button>')
+    expect(panel({ checks: [mismatch], onAction: () => undefined })).toContain('class="check-item__action" data-action="choose-compatible-pair">Choose a compatible pair</button>')
   })
 
   it('names what the checks refer to, adds the caveat and keeps passed checks in one closed row', () => {

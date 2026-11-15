@@ -76,21 +76,25 @@ function CheckItem({ item, onAction }: { item: ExplainedCheck; onAction?: Props[
     <li className={`check-item check-item--${tone}`}>
       <span className="check-item__icon" aria-hidden="true">{icon}</span>
       <div>
+        {/* The title, and its severity as a pill on the right (read once, before the title, by screen readers). */}
         <div className="check-item__title">
-          <span className="sr-only">{word}: </span>
-          {item.title}
+          <span><span className="sr-only">{word}: </span>{item.title}</span>
           <span className="check-item__label" aria-hidden="true">{word}</span>
         </div>
         {item.text && <p className="check-item__text">{item.text}</p>}
-        {item.action && onAction && (
-          <button type="button" className="check-item__action" onClick={() => onAction(item.action!.id)}>{item.action.label}</button>
-        )}
-        {item.details.length > 0 && (
-          <details className="check-item__more">
-            <summary>Technical details</summary>
-            <ul>{item.details.map((detail, i) => <li key={i}>{detail}</li>)}</ul>
-            <CheckDocsLink code={item.code} />
-          </details>
+        {((item.action && onAction) || item.details.length > 0) && (
+          <div className="check-item__foot">
+            {item.action && onAction && (
+              <button type="button" className="check-item__action" data-action={item.action.id} onClick={() => onAction(item.action!.id)}>{item.action.label}</button>
+            )}
+            {item.details.length > 0 && (
+              <details className="check-item__more">
+                <summary>Technical details</summary>
+                <ul>{item.details.map((detail, i) => <li key={i}>{detail}</li>)}</ul>
+                <CheckDocsLink code={item.code} />
+              </details>
+            )}
+          </div>
         )}
       </div>
     </li>
