@@ -232,12 +232,15 @@ export interface TrackMark {
   sigma_arcsec?: number // default 1.5
 }
 
-export interface DistantTrackRequest {
-  marks: [TrackMark, TrackMark]
-  target_mjds: number[]
+export interface DistanceGrid {
+  marks: [TrackMark, TrackMark] // 1.5 minutes to 400 days apart
   d_min_au?: number // default 20
   d_max_au?: number // default 2000
   steps?: number // default 64, uniform in 1/d
+}
+
+export interface DistantTrackRequest extends DistanceGrid {
+  target_mjds: number[]
 }
 
 export interface TrackPoint {
@@ -245,6 +248,7 @@ export interface TrackPoint {
   ra: number
   dec: number
   radius_arcsec: number // 2σ search radius from the mark uncertainties alone
+  model_error_arcsec?: number | null // how far a bound object can stray from the distance model
 }
 
 export interface DistanceHypothesis {
@@ -257,4 +261,82 @@ export interface DistantTrack {
   model: string
   assumptions: string[]
   hypotheses: DistanceHypothesis[]
+}
+
+// A straight-line position at one visit time (track.ts `predict`, stellar or fast regime).
+export type FollowupPoint = TrackPoint
+
+// A frame a mark was set on (pass Frame.obs_id, date, date_end): its visits are never measured,
+// they would confirm the mark itself; a stack covers every visit from date to date_end.
+export interface MarkedFrame {
+  obs_id: string
+  date?: string | null // ISO time with zone, e.g. Frame.date
+  date_end?: string | null
+}
+
+// Forced photometry along a possible track at the other visits of one detector (backend/app/followup.py).
+export interface FollowupRequest {
+  ra: string // field whose visits are searched, e.g. the blink's centre
+  dec: string
+  detector: number
+  marked: MarkedFrame[] // the marks' frames, one or two
+  // Either the distance grid of two marks ...
+  grid?: DistanceGrid | null
+  // ... or one straight line at each visit time.
+  points?: FollowupPoint[] | null
+}
+
+export interface FollowupMeasurement {
+  obs_id: string
+  date: string
+  mjd: number
+  // Predicted position and its 2σ search radius from the mark uncertainties alone.
+  ra: number
+  dec: number
+  radius_arcsec: number
+  model_error_arcsec: number // bound on the distance model's own error (orbits up to e = 0.5); 0 for a line
+  position_uncertain: boolean // radius plus model error exceed the aperture radius; the flux still counts
+  // Aperture flux without aperture correction (quick-look); null when skipped.
+  flux_ujy: number | null
+  flux_err_ujy: number | null
+  snr: number | null
+  flagged: boolean // unusable pixels in the aperture: left out of the combination
+  skipped: string | null // why there is no flux
+  wavelength_um: number | null
+  bandwidth_um: number | null
+  source_url: string
+}
+
+export interface FollowupHypothesis {
+  distance_au: number | null // null for a straight line
+  // Inverse-variance weighted mean of the usable (unflagged) fluxes.
+  flux_ujy: number | null
+  flux_err_ujy: number | null
+  snr: number | null
+  visits: number
+  measurements: FollowupMeasurement[]
+}
+
+// Flux along a possible track combined per hypothesis: it tests a candidate, it never confirms one.
+export interface Followup {
+  collection: string
+  ra: number
+  dec: number
+  detector: number
+  model: string
+  complete: boolean
+  best: number | null // index into hypotheses: highest S/N over at least two visits
+  significant: boolean // the best S/N reaches 5
+  distance_determined: boolean // false: do not name a distance, the visits cannot tell them apart
+  hypotheses: FollowupHypothesis[]
+  checks: Check[]
+}
+
+export interface FollowupJob {
+  job_id: string
+  status: FrameJob['status']
+  progress: number
+  total: number
+  followup: Followup | null
+  error: string | null
 }

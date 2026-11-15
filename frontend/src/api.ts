@@ -1,6 +1,8 @@
 import type {
   DistantTrack,
   DistantTrackRequest,
+  FollowupJob,
+  FollowupRequest,
   FrameJob,
   FrameRequest,
   NeossatCoverage,
@@ -86,3 +88,13 @@ export const createDistantTrack = (body: DistantTrackRequest, signal?: AbortSign
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(body),
   })
+
+// Forced photometry along a possible track at the other visits, measured by the worker.
+export const createFollowup = (body: FollowupRequest) =>
+  request<FollowupJob>('/api/followup', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  })
+
+export const getFollowupJob = (jobId: string) => request<FollowupJob>(`/api/followup/${jobId}`)
