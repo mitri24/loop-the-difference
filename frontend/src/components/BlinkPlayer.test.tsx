@@ -24,38 +24,35 @@ const frame = (epoch: number, date: string): Frame => ({
 const grid = { ra: 10, dec: 20, size_deg: 0.05, pixel_scale_arcsec: 6.15, collection: 'spherex_dr1' }
 
 describe('BlinkPlayer', () => {
-  it('opens in Blink A↔B with the pair as the image header: A, Swap, B', () => {
+  it('blinks A and B: the comparison table beside the image, Play for the pair, no separate A↔B / All switch', () => {
     const frames = [frame(0, '2025-11-10T07:08:30Z'), frame(1, '2026-05-01T10:00:00Z')]
     const html = renderToStaticMarkup(<BlinkPlayer frames={frames} grid={grid} motion={null} />)
-    expect(html).toContain('aria-pressed="true" aria-label="Blink A↔B"')
     expect(html).toContain('A · 2025-11-10 07:08 UTC')
-    // Header order: A, Swap, B – and before the image.
-    const head = html.indexOf('class="pair-head"')
-    expect(head).toBeGreaterThan(-1)
-    expect(head).toBeLessThan(html.indexOf('class="viewport"'))
-    expect(html.indexOf('Show frame A')).toBeLessThan(html.indexOf('Swap A and B'))
-    expect(html.indexOf('Swap A and B')).toBeLessThan(html.indexOf('Show frame B'))
-    // B is named by its date (grouped by epoch) and wavelength; the rest of a frame's story is in the Frame tab.
+    expect(html).toContain('title="Blink A and B"')
+    expect(html).not.toContain('Blink A↔B')
+    expect(html).not.toContain('Step through all')
+    // The table comes after the image: image left, A and B beside it.
+    expect(html.indexOf('class="viewport"')).toBeLessThan(html.indexOf('class="pair-table"'))
+    expect(html.indexOf('Show frame A')).toBeLessThan(html.indexOf('Show frame B'))
     expect(html).toContain('<optgroup label="Epoch 2"><option value="1" selected="">2026-05-01 10:00 UTC</option></optgroup>')
-    expect(html).toContain('<span class="pair-detail">λ 1.65 ± 0.02 µm</span>')
-    expect(html).not.toContain('player-side')
+    // "All" at the thumbnails plays every frame.
+    expect(html).toContain('title="Play every frame in time order">▶ All</button>')
     expect(html).not.toMatch(/Before|After/)
   })
 
-  it('names each release in the pair only when A and B differ', () => {
-    const same = [frame(0, '2025-11-10T07:08:30Z'), frame(1, '2026-05-01T10:00:00Z')].map((f) => ({ ...f, release: 'DR1' }))
-    expect(renderToStaticMarkup(<BlinkPlayer frames={same} grid={grid} motion={null} />)).not.toContain('µm · DR1')
-    const mixed = [{ ...same[0] }, { ...same[1], release: 'QR3' }]
-    const html = renderToStaticMarkup(<BlinkPlayer frames={mixed} grid={grid} motion={null} />)
-    expect(html).toContain('λ 1.65 ± 0.02 µm · DR1</span>')
-    expect(html).toContain('λ 1.65 ± 0.02 µm · QR3</span>')
+  it('shows what is passed above and below the table', () => {
+    const frames = [frame(0, '2025-11-10T07:08:30Z'), frame(1, '2026-05-01T10:00:00Z')]
+    const html = renderToStaticMarkup(<BlinkPlayer frames={frames} grid={grid} motion={null}
+      controls={<p>images choice</p>} changes={<p>difference image</p>} />)
+    expect(html.indexOf('images choice')).toBeLessThan(html.indexOf('class="pair-table"'))
+    expect(html.indexOf('difference image')).toBeGreaterThan(html.indexOf('class="pair-table"'))
   })
 
-  it('keeps one frame in the plain player with Play disabled and no pair', () => {
+  it('keeps one frame in the plain player with Play disabled and says there is nothing to blink against', () => {
     const html = renderToStaticMarkup(<BlinkPlayer frames={[frame(0, '2025-11-10T07:08:30Z')]} grid={grid} motion={null} />)
-    expect(html).not.toContain('Blink A↔B')
-    expect(html).not.toContain('pair-head')
-    expect(html).toContain('disabled="">Play')
+    expect(html).not.toContain('pair-table')
+    expect(html).toContain('disabled="" title="Play every frame">Play')
+    expect(html).toContain('Only one image here: nothing to blink against.')
     expect(html).toContain('>2025-11-10 07:08 UTC<')
   })
 
