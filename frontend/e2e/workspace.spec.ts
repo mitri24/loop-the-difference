@@ -233,6 +233,39 @@ test('fixture: Stop waiting ends a slow wait; Retry picks up the images the serv
   await expect(page.locator('.viewer-body .notice', { hasText: 'Stopped waiting' })).toHaveCount(0)
 })
 
+test('fixture: Swipe shows A left and B right of a line that keys and the pointer move; Play returns to Blink', async ({ page }) => {
+  await fixtures(page)
+  await page.route('**/api/frames**', route => {
+    if (new URL(route.request().url()).pathname.endsWith('.png')) return route.fallback()
+    return route.fulfill({ json: job() })
+  })
+  await page.setViewportSize({ width: 1440, height: 900 })
+  await page.goto('/?ra=37.954542&dec=89.264111')
+  await expect(page.locator('.viewer .viewport img').first()).toBeVisible()
+  await page.getByRole('radio', { name: 'Swipe' }).click()
+  const handle = page.getByRole('slider', { name: 'Swipe line: A left, B right' })
+  await expect(handle).toHaveAttribute('aria-valuenow', '50')
+  await expect(page.locator('.viewer .viewport .stamp')).toHaveCount(2)
+  await expect(page.locator('.viewer .player > .notice')).toContainText('Swipe shows A and B only')
+  await handle.focus()
+  await page.keyboard.press('ArrowRight')
+  await expect(handle).toHaveAttribute('aria-valuenow', '55')
+  // The arrow moved the line, not the frames: Swipe is still on.
+  await expect(page.getByRole('radio', { name: 'Swipe' })).toHaveAttribute('aria-checked', 'true')
+  const box = (await page.locator('.viewer .viewport').boundingBox())!
+  const grip = (await handle.boundingBox())!
+  await page.mouse.move(grip.x + grip.width / 2, grip.y + grip.height / 2)
+  await page.mouse.down()
+  await page.mouse.move(box.x + box.width * 0.2, grip.y + grip.height / 2, { steps: 5 })
+  await page.mouse.up()
+  await expect(handle).toHaveAttribute('aria-valuenow', '20')
+  // At 1× the image under the line is the line: B is cut at 20 % of its width.
+  expect(await page.locator('.swipe-b').evaluate((el) => getComputedStyle(el).clipPath)).toMatch(/inset\(0px 0px 0px 20(\.\d+)?%\)/)
+  await page.getByRole('button', { name: 'Play' }).click()
+  await expect(page.getByRole('radio', { name: 'Blink' })).toHaveAttribute('aria-checked', 'true')
+  await expect(page.locator('.swipe-line')).toHaveCount(0)
+})
+
 test('keyboard: panel focus, Escape, About panel and reduced motion', async ({ page }) => {
   await fixtures(page)
   await page.emulateMedia({ reducedMotion: 'reduce' })
@@ -463,7 +496,8 @@ test('fixture: a shared link with a name adds the Gaia marker; new coordinates d
   await expect(page).toHaveURL(/ra=37\.9&/)
   await expect(page.getByRole('button', { name: 'Play', exact: true })).toBeVisible()
   expect(page.url()).not.toContain('name=')
-  await expect(page.locator('.pair-table')).not.toContainText('Gaia DR3')
+  // The A/B table and its "All metadata" table (#86): neither names Gaia DR3 any more.
+  await expect(page.locator('.pair-table', { hasText: 'Gaia DR3' })).toHaveCount(0)
   await expect(page.locator('.player .marker')).toHaveCount(0)
 })
 

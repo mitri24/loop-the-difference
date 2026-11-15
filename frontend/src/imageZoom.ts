@@ -56,5 +56,8 @@ export function viewTransform(view: ImageView): { transform: string; unzoom: str
   }
 }
 
+/** The image point (fraction of its width) under a viewport x (fraction of the viewport): where Swipe cuts B. */
+export const imageX = (view: ImageView, viewportX: number) => clamp(view.cx + (viewportX - 0.5) / view.z, 0, 1)
+
 /** "1×", "1.5×", "8×" */
 export const zoomText = (z: number) => `${Number(z.toFixed(1))}×`

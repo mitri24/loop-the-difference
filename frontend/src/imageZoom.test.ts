@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { FIT, MAX_ZOOM, clampView, panBy, viewTransform, zoomAt, zoomText } from './imageZoom'
+import { FIT, MAX_ZOOM, clampView, imageX, panBy, viewTransform, zoomAt, zoomText } from './imageZoom'
 
 // Where an image point (u, v) lands in the viewport, as fractions: the inverse of the view.
 const screenOf = (view: { z: number; cx: number; cy: number }, u: number, v: number) => ({
@@ -47,6 +47,14 @@ describe('image zoom', () => {
       transform: 'translate(-100%, 0%) scale(2)',
       unzoom: 'scale(0.5) translate(100%, 0%)',
     })
+  })
+
+  it('finds the image point under a viewport position, where Swipe cuts B', () => {
+    expect(imageX(FIT, 0.3)).toBeCloseTo(0.3, 9)
+    const view = { z: 2, cx: 0.75, cy: 0.5 }
+    expect(imageX(view, 0.5)).toBeCloseTo(0.75, 9)
+    expect(imageX(view, 0)).toBeCloseTo(0.5, 9)
+    expect(imageX(view, 1)).toBe(1)
   })
 
   it('names the zoom briefly', () => {
