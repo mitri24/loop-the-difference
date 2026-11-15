@@ -1,6 +1,6 @@
 import type { AladinInstance } from 'aladin-lite'
 import { type ReactNode, useEffect, useState } from 'react'
-import { type LayerKey, MAX_SOURCES, NEAR_DEG, type SkyMark, useCatalogLayers } from '../catalogLayers'
+import { ALLWISE_EPOCH_YR, type LayerKey, MAX_SOURCES, NEAR_DEG, type SkyMark, useCatalogLayers } from '../catalogLayers'
 
 interface Props {
   aladin: AladinInstance | null
@@ -23,7 +23,17 @@ const KEYS = Object.keys(LABELS) as LayerKey[]
 // Catalogue overlays, all off by default: every marker is a known source, nothing more.
 export function CatalogLegend({ aladin, sizeDeg, frameMjd, children, onMarks }: Props) {
   const [enabled, setEnabled] = useState({ gaia: false, wise: false, simbad: false, skybot: false })
-  const { status, skybotDate, marks } = useCatalogLayers(aladin, enabled, sizeDeg, frameMjd)
+  const { status, layerDate, wiseMotion, marks } = useCatalogLayers(aladin, enabled, sizeDeg, frameMjd)
+  // The time each layer's markers apply to: the shown frame's date, or the catalogue's own epoch where they do not
+  // move (SIMBAD without frames, AllWISE without frames or without CatWISE2020 motions).
+  const when = (key: LayerKey) => {
+    if (key === 'wise') {
+      if (!layerDate || wiseMotion === false) return ` @ ${ALLWISE_EPOCH_YR}${wiseMotion === false ? ' · CatWISE2020 motions unavailable' : ''}`
+      return ` @ ${layerDate}${wiseMotion ? ' · moved with CatWISE2020 motions' : ''}`
+    }
+    if (key === 'simbad') return ` @ ${layerDate ?? 'J2000'}`
+    return layerDate ? ` @ ${layerDate}` : ''
+  }
   useEffect(() => onMarks?.(marks), [marks, onMarks])
   return (
     <div className="catalog-legend">
@@ -47,7 +57,7 @@ export function CatalogLegend({ aladin, sizeDeg, frameMjd, children, onMarks }: 
             ) : (
               <>
                 {name} <span style={{ color: `var(--cat-${key})` }}>{shape}</span> {what}
-                {key === 'skybot' && skybotDate && ` @ ${skybotDate}`}
+                {when(key)}
                 {status[key] === 'loading' && ' …'}
               </>
             )}
