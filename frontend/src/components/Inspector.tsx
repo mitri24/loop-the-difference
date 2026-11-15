@@ -54,9 +54,10 @@ export function Inspector<T extends string>({ id, tabs, active, onSelect, hidden
             </button>
           ))}
         </div>
+        {/* An icon, so the tabs keep their rows; the name says what it does. */}
         {onExpand && <button type="button" className="inspector-expand" aria-label={expanded ? 'Dock inspector' : 'Expand inspector'}
-          title={expanded ? 'Back under the map (Esc)' : 'Show wider over the images'} onClick={() => onExpand(!expanded)}>
-          {expanded ? 'Dock' : 'Expand'}
+          title={expanded ? 'Dock: back under the map (Esc)' : 'Expand: wider over the images'} onClick={() => onExpand(!expanded)}>
+          <span aria-hidden="true">{expanded ? '⤡' : '⤢'}</span>
         </button>}
         {onClose && <button type="button" className="inspector-close" aria-label="Close inspect" onClick={onClose}>✕</button>}
       </div>
