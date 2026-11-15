@@ -50,8 +50,9 @@ test('preview is usable before metadata and final data; inactive full-size frame
   await expect(page.locator('.loading-state')).toHaveCount(0)
   await expect(page.getByRole('progressbar', { name: 'SPHEREx images' })).toHaveCount(0)
   expect(await page.locator('.observation-gallery img[src]').count()).toBeLessThan(12)
+  // The arrows step through every frame in time order (Play blinks A and B).
   await page.getByRole('button', { name: 'Next frame', exact: true }).click()
-  await expect(page.locator('.viewport img:visible')).toHaveAttribute('src', /\/frame_11.png$/)
+  await expect(page.locator('.viewport img:visible')).toHaveAttribute('src', /\/frame_1.png$/)
   await expect(page.locator('.viewport img')).toHaveCount(2)
   releaseSummary()
 })

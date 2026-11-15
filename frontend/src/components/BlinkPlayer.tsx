@@ -1,9 +1,8 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useRef, useState, type ReactNode } from 'react'
 import {
   REDUCED_DELAY_MS,
   REDUCED_MAX_SWAPS,
   defaultBlinkPair,
-  frameRelease,
   lambdaText,
   letterOf,
   nextIndex,
@@ -18,8 +17,10 @@ import { frameToSky, gridExtentDeg, markerPosition, skyToFrame } from '../motion
 import { SEARCH_AREA_LABEL, type Prediction } from '../track'
 import type { Check, Frame, FrameManifest, ProperMotion } from '../types'
 import { CheckBadge, checksForFrame } from './EvidencePanel'
+import { ImageMarks, type ImageMark } from './ImageMarks'
 import { LazyThumbnail } from './LazyThumbnail'
 import { ObservationImage } from './ObservationImage'
+import { PairTable } from './PairTable'
 
 interface Props {
   frames: Frame[]
@@ -36,19 +37,27 @@ interface Props {
   showShare?: boolean
   // Pauses and shows this frame; a new object each time, so the same frame can be asked for again.
   seek?: { index: number } | null
-  // Sets A and/or B (Set A / Set B in the frame details, "Choose a compatible pair" in the checks) and blinks
-  // the pair; a new object each time.
+  // Sets A and/or B ("Choose a compatible pair" in the checks) and blinks the pair; a new object each time.
   pairRequest?: { pair: Partial<BlinkPair> } | null
-  // Candidate check: while marking is armed, a click on the image marks that position in the frame shown.
+  // Above and below the A/B table beside the image: which images (exposures or stacks), and what the change finder
+  // says about the pair.
+  controls?: ReactNode
+  changes?: ReactNode
+  // What the layers show on the sky for the shown frame (catalogues, detected sources, known asteroids), drawn on
+  // the image as well.
+  marks?: ImageMark[]
+  // Candidate check: while marking is armed, a click on the shown image marks that position in that frame. The
+  // user's marks A and B stand on the image; the check itself goes under the A/B table (candidate).
   marking?: boolean
   onMark?: (frame: Frame, ra: number, dec: number) => void
-  // The user's marks A and B, drawn where they are on the image.
-  marks?: Mark[]
+  candidateMarks?: Mark[]
+  candidate?: ReactNode
 }
 
-// One layout without page scrolling: the A/B pair as the image's header (with Swap), thumbnails | image, one
-// transport bar under the image. What the shown frame is stands in the Frame tab of the inspector; the stamp
-// labels the image itself. Remount with a new key for new frames: playback state then starts fresh.
+// One layout without page scrolling, left-aligned: thumbnails | image | A and B as a comparison table, one transport
+// bar under the image. Play blinks A and B; the arrows, the slider and the thumbnails step through every frame;
+// "All" at the thumbnails plays every frame in time order. Remount with a new key for new frames: playback state
+// then starts fresh.
 export function BlinkPlayer({
   frames,
   checks = [],
@@ -61,13 +70,18 @@ export function BlinkPlayer({
   showShare = true,
   seek = null,
   pairRequest = null,
+  controls = null,
+  changes = null,
+  marks = [],
   marking = false,
   onMark,
-  marks = [],
+  candidateMarks = [],
+  candidate = null,
 }: Props) {
   const [reduced] = useState(prefersReducedMotion)
   const [pair, setPair] = useState<BlinkPair | null>(() => defaultBlinkPair(frames))
-  const [mode, setMode] = useState<'ab' | 'all'>(pair ? 'ab' : 'all')
+  // What Play plays: A and B, or every frame ("All" at the thumbnails).
+  const [scope, setScope] = useState<'ab' | 'all'>(pair ? 'ab' : 'all')
   const [index, setIndex] = useState(pair?.a ?? 0)
   const [playing, setPlaying] = useState(false)
   // Arming the mark pauses: a click must land on the frame the user aimed at.
@@ -85,8 +99,9 @@ export function BlinkPlayer({
   const playerRef = useRef<HTMLDivElement>(null)
   const swaps = useRef(0)
   const count = frames.length
-  const blinkPair = mode === 'ab' ? pair : null
-  const letter = letterOf(index, blinkPair)
+  const blinkPair = scope === 'ab' ? pair : null
+  // A and B are always named, whatever plays.
+  const letter = letterOf(index, pair)
 
   useEffect(() => onIndexChange?.(index, letter), [index, letter, onIndexChange])
   useEffect(() => onPairChange?.(pair), [pair, onPairChange])
@@ -96,7 +111,6 @@ export function BlinkPlayer({
     setLastSeek(seek)
     if (seek) {
       setPlaying(false)
-      setMode('all')
       setIndex(seek.index)
     }
   }
@@ -106,7 +120,7 @@ export function BlinkPlayer({
     const next = pair && pairRequest ? { ...pair, ...pairRequest.pair } : null
     if (next && next.a !== next.b && [next.a, next.b].every((i) => i >= 0 && i < count)) {
       setPair(next)
-      setMode('ab')
+      setScope('ab')
       setPlaying(false)
       // Set A / Set B keep the shown frame; a new pair starts at its A.
       setIndex((i) => (i === next.a || i === next.b ? i : next.a))
@@ -126,29 +140,36 @@ export function BlinkPlayer({
     return () => window.clearInterval(timer)
   }, [active, playing, delayMs, count, blinkPair, reduced])
 
-  const togglePlay = () => {
+  const togglePlay = (next: 'ab' | 'all' = pair ? 'ab' : 'all') => {
     swaps.current = 0
     setAutoPaused(false)
-    setPlaying((p) => !p)
+    if (playing && scope === next) return setPlaying(false)
+    setScope(next)
+    setPlaying(true)
   }
   const show = (target: number) => {
     setPlaying(false)
     setIndex(target)
   }
+  // Stepping goes through every frame in time order.
   const step = (delta: number) => {
     setPlaying(false)
-    setIndex((i) => nextIndex(i, count, blinkPair, delta))
+    setIndex((i) => nextIndex(i, count, null, delta))
   }
   const choose = (which: 'a' | 'b', value: number) => {
     if (!pair) return
     setPair({ ...pair, [which]: value })
     show(value)
   }
-  // A and B always mean the blink pair: showing one of them returns to the A↔B mode, like the A/B keys.
   const showLetter = (which: 'a' | 'b') => {
     if (!pair) return
-    setMode('ab')
+    setScope('ab')
     show(pair[which])
+  }
+  const setShown = (which: 'a' | 'b') => {
+    if (!pair || pair[which === 'a' ? 'b' : 'a'] === index) return
+    setPair({ ...pair, [which]: index })
+    setScope('ab')
   }
   // The image stays; its letter changes with the pair.
   const swap = () => pair && setPair({ a: pair.b, b: pair.a })
@@ -161,7 +182,7 @@ export function BlinkPlayer({
       if (target?.closest('input, textarea, select, [contenteditable="true"]')) return
       if (event.key === ' ') {
         if (target?.closest('button, a')) return
-        if (!event.repeat) togglePlay()
+        if (!event.repeat) togglePlay(scope)
       } else if (event.key === 'ArrowLeft' || event.key === 'ArrowRight') {
         step(event.key === 'ArrowLeft' ? -1 : 1)
       } else if (pair && (event.key.toLowerCase() === 'a' || event.key.toLowerCase() === 'b')) {
@@ -180,10 +201,6 @@ export function BlinkPlayer({
   const marker = motion && markerPosition(motion, frame.mjd, grid.ra, grid.dec, extentDeg)
   const predicted = predictions.find((p) => p.mjd === frame.mjd)
   const searchArea = predicted && skyToFrame(predicted.ra, predicted.dec, grid.ra, grid.dec, extentDeg)
-  // Releases name the calibration: different ones for A and B are a comparison caveat, so the pair shows them.
-  const mixedReleases = pair && frameRelease(frames[pair.a], grid.collection) !== frameRelease(frames[pair.b], grid.collection)
-  const epochGroups = [...new Set(frames.map((f) => f.epoch))].map((epoch) =>
-    [epoch, frames.flatMap((f, i) => (f.epoch === epoch ? [i] : []))] as const)
   const copyLink = async () => {
     try {
       await navigator.clipboard.writeText(window.location.href)
@@ -191,38 +208,6 @@ export function BlinkPlayer({
     } catch {
       setCopyState('failed')
     }
-  }
-
-  const pairSide = (which: 'a' | 'b', current: BlinkPair) => {
-    const f = frames[current[which]]
-    const other = current[which === 'a' ? 'b' : 'a']
-    const name = which.toUpperCase()
-    return (
-      <div className={`pair-side ${which}${letter === name ? ' current' : ''}`}>
-        {/* Pressed only while the image shows this letter (A↔B mode), like the stamp. */}
-        <button type="button" className="pair-letter" aria-pressed={letter === name}
-          onClick={() => showLetter(which)} aria-label={`Show frame ${name}`}>
-          {name}
-        </button>
-        {/* The date names the frame; the list groups the frames by epoch. */}
-        <select aria-label={`Frame ${name}`} value={current[which]} onChange={(event) => choose(which, Number(event.target.value))}>
-          {epochGroups.map(([epoch, members]) => (
-            <optgroup key={epoch} label={`Epoch ${epoch + 1}`}>
-              {members.map((i) => (
-                <option key={frames[i].url} value={i} disabled={i === other}>
-                  {utcMinute(frames[i].date)}
-                </option>
-              ))}
-            </optgroup>
-          ))}
-        </select>
-        {/* λ and, when A and B differ, the release say whether the pair is comparable; the Frame tab has the rest. */}
-        <span className="pair-detail">
-          {lambdaText(f)}
-          {mixedReleases && ` · ${f.release ?? frameRelease(f, grid.collection)}`}
-        </span>
-      </div>
-    )
   }
 
   return (
@@ -235,6 +220,8 @@ export function BlinkPlayer({
     >
       {count > 1 && (
         <section className="observation-gallery" aria-label="Observation images">
+          <button type="button" className="play-all" aria-pressed={playing && scope === 'all'} title="Play every frame in time order"
+            onClick={() => togglePlay('all')}>{playing && scope === 'all' ? '❚❚ All' : '▶ All'}</button>
           <div className="observation-strip" tabIndex={0} aria-label="Scrollable observation images" onKeyDown={(event) => {
             const buttons = [...event.currentTarget.querySelectorAll<HTMLButtonElement>('.observation-preview')]
             const focused = buttons.indexOf(event.target as HTMLButtonElement)
@@ -245,34 +232,28 @@ export function BlinkPlayer({
             if (next === null) return
             event.preventDefault()
             event.stopPropagation()
-            setMode('all')
             show(next)
             buttons[next]?.focus()
           }}>
-            {frames.map((f, i) => (
-              <article className={`observation-card${i === index ? ' current' : ''}`} key={`${f.url}-${i}`}>
-                <button type="button" className="observation-preview" aria-pressed={i === index}
-                  aria-label={`Show observation ${i + 1}, ${utcMinute(f.date)}`}
-                  title={`${utcMinute(f.date)} · D${f.detector} · ${lambdaText(f)}`}
-                  onClick={() => { setMode('all'); show(i) }}>
-                  <LazyThumbnail src={f.url} alt={`SPHEREx observation ${i + 1}`} />
-                  <i className="thumbnail-centre" aria-hidden="true" />
-                  <span>{i + 1}{pair?.a === i ? ' · A' : ''}{pair?.b === i ? ' · B' : ''}</span>
-                </button>
-              </article>
-            ))}
+            {frames.map((f, i) => {
+              // A and B wear their letter as a badge and a frame in their colour, as in the table and on the image.
+              const role = pair?.a === i ? 'A' : pair?.b === i ? 'B' : null
+              return (
+                <article className={`observation-card${i === index ? ' current' : ''}${role ? ` is-${role.toLowerCase()}` : ''}`} key={`${f.url}-${i}`}>
+                  <button type="button" className="observation-preview" aria-pressed={i === index}
+                    aria-label={`Show observation ${i + 1}, ${utcMinute(f.date)}${role ? `, ${role}` : ''}`}
+                    title={`${role ? `${role} · ` : ''}${utcMinute(f.date)} · D${f.detector} · ${lambdaText(f)}`}
+                    onClick={() => show(i)}>
+                    <LazyThumbnail src={f.url} alt={`SPHEREx observation ${i + 1}`} />
+                    <i className="thumbnail-centre" aria-hidden="true" />
+                    {role && <b className={`ab-badge ${role.toLowerCase()}`} aria-hidden="true">{role}</b>}
+                    <span>{i + 1}</span>
+                  </button>
+                </article>
+              )
+            })}
           </div>
         </section>
-      )}
-
-      {pair && (
-        <div className="pair-head" role="group" aria-label="Blink pair">
-          {pairSide('a', pair)}
-          <button type="button" className="pair-swap" onClick={swap} aria-label="Swap A and B" title="Swap A and B">
-            <span aria-hidden="true">⇄</span>
-          </button>
-          {pairSide('b', pair)}
-        </div>
       )}
 
       <div
@@ -303,6 +284,7 @@ export function BlinkPlayer({
           )
         })}
         <div className="reticle" aria-hidden="true" />
+        <ImageMarks marks={marks} grid={{ ...grid, size_deg: extentDeg }} />
         {marker && (
           <div
             className="marker"
@@ -317,17 +299,18 @@ export function BlinkPlayer({
             title={`Possible track, search area ${SEARCH_AREA_LABEL}`}
           />
         )}
-        {marks.map((mark, i) => {
+        {candidateMarks.map((mark, i) => {
           const at = skyToFrame(mark.ra, mark.dec, grid.ra, grid.dec, extentDeg)
           const here = mark.obs_id === frame.obs_id
           return at && (
-            <span key={mark.obs_id} className={here ? 'image-mark current' : 'image-mark'}
+            <span key={mark.obs_id} className={here ? 'candidate-mark current' : 'candidate-mark'}
               style={{ left: `${at.x * 100}%`, top: `${at.y * 100}%` }} title={`Your mark ${MARK_LETTERS[i]}${here ? ', set in this frame' : ''}`}>
-              <span className="image-mark-letter">{MARK_LETTERS[i]}</span>
+              <span className="candidate-mark-letter">{MARK_LETTERS[i]}</span>
             </span>
           )
         })}
-        <span className="stamp">{stampText(frame, letter)}</span>
+        {/* The letter in its colour, as on the thumbnails and in the table; the text reads "A · date". */}
+        <span className="stamp">{letter ? <><b className={`stamp-letter ${letter.toLowerCase()}`}>{letter}</b> · {utcMinute(frame.date)}</> : stampText(frame, null)}</span>
         <CheckBadge checks={checksForFrame(checks, frame)} />
       </div>
 
@@ -336,8 +319,9 @@ export function BlinkPlayer({
           <button type="button" onClick={() => step(-1)} aria-label="Previous frame">
             ‹
           </button>
-          <button type="button" className="primary" disabled={count < 2} onClick={togglePlay}>
-            {playing ? 'Pause' : 'Play'}
+          <button type="button" className="primary" disabled={count < 2} onClick={() => togglePlay()}
+            title={pair ? 'Blink A and B' : 'Play every frame'}>
+            {playing && scope === (pair ? 'ab' : 'all') ? 'Pause' : 'Play'}
           </button>
           <button type="button" onClick={() => step(1)} aria-label="Next frame">
             ›
@@ -366,18 +350,6 @@ export function BlinkPlayer({
             onChange={(event) => setDelayMs(1650 - Number(event.target.value))}
           />
         </label>
-        {pair && (
-          <div className="blink-mode" role="group" aria-label="Comparison">
-            <button type="button" aria-pressed={mode === 'ab'} aria-label="Blink A↔B" title="Blink between frames A and B"
-              onClick={() => setMode('ab')}>
-              A↔B
-            </button>
-            <button type="button" aria-pressed={mode === 'all'} aria-label="Step through all" title="Step through every frame in time order"
-              onClick={() => setMode('all')}>
-              All
-            </button>
-          </div>
-        )}
         {showShare && <button type="button" onClick={() => void copyLink()} onBlur={() => setCopyState('idle')}>
           {copyState === 'copied'
             ? 'Link copied'
@@ -388,6 +360,19 @@ export function BlinkPlayer({
       </div>
 
       {autoPaused && <p className="notice">Paused after 20 swaps (reduced motion) – press Play to continue</p>}
+
+      <div className="player-side">
+        {controls}
+        {pair ? (
+          <PairTable frames={frames} pair={pair} index={index} letter={letter} grid={grid} motion={motion} predictions={predictions}
+            onShow={showLetter} onChoose={choose} onSwap={swap} onSetShown={setShown} />
+        ) : (
+          <p className="pair-shown">Only one image here: nothing to blink against. {utcMinute(frame.date)} · {lambdaText(frame)} ·{' '}
+            <a href={frame.source_url} target="_blank" rel="noreferrer">{frame.obs_id}</a></p>
+        )}
+        {changes}
+        {candidate}
+      </div>
     </div>
   )
 }

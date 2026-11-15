@@ -1,10 +1,12 @@
 import type { ReactNode } from 'react'
 import { MARK_LETTERS, markText, type Candidate } from '../candidate'
+import type { DistantTrackState } from '../distantTrack'
 import { trackEvidence, type PossibleTrack } from '../track'
 import { followsTarget } from '../knownObjects'
 import type { Observation } from '../types'
 import { KnownObjectCheck, type KnownContext } from './KnownObjectCheck'
 import { Precovery } from './Precovery'
+import { DistantTrackCheck } from './TrackCheck'
 import { TrackSummary } from './TrackSummary'
 
 interface Props {
@@ -18,12 +20,14 @@ interface Props {
   sources?: boolean
   // Every SPHEREx visit of the field and the obs_ids in the blink (stack members included); null until the archive answered.
   visits?: { observations: Observation[]; inBlink: string[] } | null
+  // Positions for assumed distances in the images beyond the straight-line window (useDistantTrack).
+  distant?: DistantTrackState
   // Saves the marks with their frames, detections, track and verdict, and the link that opens them again.
   onDownload?: () => void
 }
 
 // Beside the image: what to do next, the marks so far and what they still need.
-export function CandidatePanel({ candidate: { marks, notice, armed, setArmed, clear, verdict, setVerdict }, blocked, track, known, visits, sources = true, onDownload, children }: Props) {
+export function CandidatePanel({ candidate: { marks, notice, armed, setArmed, clear, verdict, setVerdict }, blocked, track, known, visits, distant, sources = true, onDownload, children }: Props) {
   return (
     <section className="candidate-check" aria-labelledby="candidate-heading">
       <h3 id="candidate-heading">Candidate check</h3>
@@ -54,6 +58,7 @@ export function CandidatePanel({ candidate: { marks, notice, armed, setArmed, cl
             evidence={trackEvidence(track)} verdict={verdict} onVerdict={setVerdict}>
             {track && <TrackSummary track={track} />}
             {children}
+            {distant && <DistantTrackCheck state={distant} />}
           </KnownObjectCheck>
           {visits && <Precovery track={track} marks={marks} {...visits} detector={known.detector}
             followsTarget={followsTarget(known.motion, marks) ? known.target : null} />}
