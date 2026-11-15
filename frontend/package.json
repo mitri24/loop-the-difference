@@ -16,7 +16,8 @@
   "dependencies": {
     "aladin-lite": "^3.9.2-beta",
     "react": "^19.3.1",
-    "react-dom": "^19.3.1"
+    "react-dom": "^19.3.1",
+    "umap-js": "1.4.0"
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",

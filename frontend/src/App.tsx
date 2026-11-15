@@ -31,6 +31,7 @@ import { SmallBodies, useSmallBodies } from './components/SmallBodies'
 import { SourceList } from './components/SourceList'
 import { PositionChart } from './components/PositionChart'
 import { followPosition } from './positionTrack'
+import { SourceMap } from './components/SourceMap'
 import { SpectrumChart, useQuickSpectrum } from './components/SpectrumChart'
 import { TargetForm } from './components/TargetForm'
 import { useFrameLayers } from './frameLayers'
@@ -99,6 +100,8 @@ export default function App() {
   // The player's A/B pair, and requests to change it (Set A / Set B, "Choose a compatible pair").
   const [pair, setPair] = useState<BlinkPair | null>(null)
   const [pairRequest, setPairRequest] = useState<{ pair: Partial<BlinkPair> } | null>(null)
+  // The source map runs UMAP in the browser: only while its section is open.
+  const [sourceMapOpen, setSourceMapOpen] = useState(false)
   const [analysisSkyCaption, setAnalysisSkyCaption] = useState<string | null>(null)
   const [framesOnSky, setFramesOnSky] = useState(true)
   const [sourcesOnSky, setSourcesOnSky] = useState(true)
@@ -556,6 +559,11 @@ export default function App() {
     {!skyUnavailable && frame && !showDifference && <details className="disclosure">
       <summary>Detected sources{sourceSummary}</summary>
       <SourceList frame={frame} onSelect={(ra, dec) => { sky?.gotoRaDec(ra, dec); if (job) setFollowed({ ra, dec, job: job.job_id }) }} onMark={(source) => candidate.markSource(frame, source)} />
+    </details>}
+    {!skyUnavailable && !showDifference && manifest.frames.length >= 2 && <details className="disclosure" onToggle={(event) => setSourceMapOpen(event.currentTarget.open)}>
+      <summary>Source map · unusual sources first</summary>
+      {sourceMapOpen && <SourceMap frames={manifest.frames} pixelScaleArcsec={manifest.pixel_scale_arcsec} marks={candidate.marks}
+        onSelect={(ra, dec) => sky?.gotoRaDec(ra, dec)} />}
     </details>}
     {manifest.stacked
       ? <p className="muted">Known asteroids and comets (JPL SBIdent) are looked up for single exposures: switch the view to Exposures.</p>

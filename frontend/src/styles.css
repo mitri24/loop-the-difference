@@ -327,6 +327,8 @@ summary { cursor:pointer; min-height:32px; padding:5px 0; font-size:13px; }
 .viz a:focus-visible { outline:none; }
 .viz a:focus-visible .viz-mark { stroke:var(--focus-ring); stroke-width:2.5; }
 .viz a:hover .viz-mark { stroke:var(--text-primary); }
+.source-map-point { cursor:pointer; }
+.source-map-point:hover .viz-mark { stroke:var(--text-primary); }
 
 /* Tooltip: value first (strong), then where and when; flips to the left of marks on the right half. */
 .viz-tooltip { position:absolute; z-index:2; display:flex; flex-direction:column; gap:1px; max-width:260px; padding:var(--space-1) var(--space-2);
