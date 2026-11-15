@@ -27,7 +27,7 @@ from photutils.centroids import centroid_com, centroid_sources
 from photutils.detection import find_peaks
 from scipy import ndimage
 
-from . import imaging
+from . import imaging, psf
 from .astrometry import angular_sep_arcsec, mjd_to_iso, mjd_to_jyear, propagate
 from .catalogs import allwise_cone, gaia_cone, sbident_field
 from .comparability import compare_frames
@@ -81,6 +81,7 @@ class StoredFrame:
     grid: imaging.Grid
     target: Target
     flag_names: dict[int, str]
+    psf: np.ndarray | None = None  # PSF stamp on the grid (imaging.grid_psf), None without ePSF
 
 
 class _LRU(OrderedDict):
@@ -220,6 +221,7 @@ class _Single:
     bw: float
     flags_at_target: list[str]
     target_px: tuple[float, float]
+    psf: np.ndarray | None
 
 
 def _measure_single(o: Observation, cut: Cutout, grid: imaging.Grid, t: Target) -> _Single:
@@ -229,7 +231,8 @@ def _measure_single(o: Observation, cut: Cutout, grid: imaging.Grid, t: Target) 
     lam, bw = cut.wavelength_at(float(cx), float(cy))
     flags = cut.flags_in(float(cx), float(cy), APERTURE_PX)
     gx, gy = grid.wcs.world_to_pixel_values(ra_t, dec_t)
-    return _Single(o, cut, aligned, lam, bw, flags, to_display(grid, gx, gy))
+    stamp = imaging.grid_psf(cut, grid)
+    return _Single(o, cut, aligned, lam, bw, flags, to_display(grid, gx, gy), stamp)
 
 
 async def run_sequence(req: SequenceRequest, progress: Progress) -> SequenceResult:
@@ -397,7 +400,9 @@ def _single_frame(s: _Single, grid: imaging.Grid, t: Target, band: str, label: s
             target_px=s.target_px,
         )
     )
-    return StoredFrame(meta, a.image, a.variance, a.hard_mask, a.flags, grid, t, s.cut.flag_names)
+    return StoredFrame(
+        meta, a.image, a.variance, a.hard_mask, a.flags, grid, t, s.cut.flag_names, s.psf
+    )
 
 
 def _stack_frame(
@@ -420,6 +425,9 @@ def _stack_frame(
     ra_t, dec_t = target_at(t, mjd_to_jyear(mjd))
     gx, gy = grid.wcs.world_to_pixel_values(ra_t, dec_t)
     fwhms = [v for s in group if (v := _float_or_none(s.cut.header.get("PSF_FWHM")))]
+    # A point source in the stack has the weighted mean PSF of its exposures.
+    stamps = [s.psf for s in group]
+    stack_psf = None if any(p is None for p in stamps) else np.average(stamps, axis=0, weights=w)
     fid = _frame_id(
         "stack", sorted(s.obs.obs_publisher_did for s in group), grid.ra, grid.dec, grid.npix
     )
@@ -451,7 +459,7 @@ def _stack_frame(
             target_px=to_display(grid, gx, gy),
         )
     )
-    return StoredFrame(meta, img, var, hard, flag_or, grid, t, group[0].cut.flag_names)
+    return StoredFrame(meta, img, var, hard, flag_or, grid, t, group[0].cut.flag_names, stack_psf)
 
 
 def _render_frames(frames: list[StoredFrame], stretch: str) -> None:
@@ -536,8 +544,10 @@ async def difference(frame_a: str, frame_b: str, force: bool) -> DifferenceResul
                 detail="For inspection only. Do not interpret residuals.",
             ),
         )
-    b, reg_check = register(a, b)
+    b, reg_check, reg_error = register(a, b)
     checks.append(reg_check)
+    matched = a.psf is not None and b.psf is not None
+    checks += _method_checks(a, b, matched)
     scale, n_scale = photometric_scale(a, b)
     checks.append(
         Check(
@@ -551,15 +561,29 @@ async def difference(frame_a: str, frame_b: str, force: bool) -> DifferenceResul
         )
     )
     diff = a.image - scale * b.image
-    with np.errstate(invalid="ignore", divide="ignore"):
-        # Noise model: photon/read variance of both frames PLUS a systematic floor
-        # proportional to the local brightness (PSF mismatch between stacks and single
-        # exposures, flux calibration). Without it every bright star is a ">5σ" residual.
-        local = np.maximum(np.abs(a.image), np.abs(scale * b.image))
-        sig = diff / np.sqrt(
-            a.variance + scale**2 * b.variance + (SYSTEMATIC_FRACTION * local) ** 2
+    bad = a.hard_mask | b.hard_mask
+    if matched:
+        sig = psf.zogy(
+            np.where(bad, 0.0, np.nan_to_num(a.image)),
+            np.where(bad, 0.0, np.nan_to_num(b.image)),
+            _filled(a.variance, bad),
+            _filled(b.variance, bad),
+            a.psf,
+            b.psf,
+            flux_ratio=scale,
+            sigma_ast=reg_error,
+            floor=SYSTEMATIC_FRACTION,
         )
-    bad = a.hard_mask | b.hard_mask | ~np.isfinite(sig)
+    else:
+        with np.errstate(invalid="ignore", divide="ignore"):
+            # Noise model: photon/read variance of both frames PLUS a systematic floor
+            # proportional to the local brightness (PSF mismatch between stacks and single
+            # exposures, flux calibration). Without it every bright star is a ">5σ" residual.
+            local = np.maximum(np.abs(a.image), np.abs(scale * b.image))
+            sig = diff / np.sqrt(
+                a.variance + scale**2 * b.variance + (SYSTEMATIC_FRACTION * local) ** 2
+            )
+    bad = bad | ~np.isfinite(sig)
     diff = np.where(bad, np.nan, diff)
     sig = np.where(bad, np.nan, sig)
     # Empirical renormalisation: pipeline variances ignore the pixel covariance created
@@ -591,15 +615,22 @@ async def difference(frame_a: str, frame_b: str, force: bool) -> DifferenceResul
             checks += ref_checks
         residuals = _vet_residuals(peaks, a, b, refs)
     n_unknown = sum(1 for r in residuals if r.known_source is None)
+    noise_model = (
+        "ZOGY S_corr: pixel variance of both frames through the matching kernels "
+        f"(source noise included), registration noise {reg_error:.2f} px and 5% of the "
+        "PSF-matched flux (the resampled PSF differs from star to star with the sub-pixel "
+        "position; ePSF model and calibration errors)"
+        if matched
+        else "pixel variance + 5% of the local flux (PSF/calibration systematics)"
+    )
     checks.append(
         Check(
             code="residuals",
             severity="info" if residuals else "ok",
             title=f"{len(residuals)} residual(s) above {RESIDUAL_SIGMA:g}σ, "
             f"{n_unknown} unexplained",
-            detail="Noise model: pixel variance + 5% of the local flux (PSF/calibration "
-            f"systematics), rescaled ×{noise_rescale:.2f} to the empirical scatter. "
-            "Residuals are candidates to inspect, not discoveries: known proper-motion "
+            detail=f"Noise model: {noise_model}, rescaled ×{noise_rescale:.2f} to the empirical "
+            "scatter. Residuals are candidates to inspect, not discoveries: known proper-motion "
             "stars, PSF differences, saturation and artefacts explain most of them.",
         )
     )
@@ -614,9 +645,50 @@ async def difference(frame_a: str, frame_b: str, force: bool) -> DifferenceResul
         residuals=residuals,
         delta_days=dt,
         delta_lambda_um=dlam,
+        significance_method="zogy" if matched else "direct",
     )
     DIFFS.put(did, DiffContext(a, b, peaks, refs, result))
     return result
+
+
+def _method_checks(a: StoredFrame, b: StoredFrame, matched: bool) -> list[Check]:
+    if matched:
+        return [
+            Check(
+                code="difference_method",
+                severity="ok",
+                title="Significance: PSF-matched difference (ZOGY)",
+                detail="Zackay, Ofek & Gal-Yam 2016 (ApJ 830, 27): A and B are matched with "
+                "their SPHEREx ePSFs (the zone at the target, resampled onto the grid like the "
+                "frames; a stack uses the weighted mean of its exposures). That removes most of "
+                "what a PSF difference leaves at stars, not all: the resampled PSF changes from "
+                "star to star with the sub-pixel position, which the 5% floor in S_corr absorbs, "
+                "so very bright stars can still leave residuals. S is the corrected score S_corr.",
+            )
+        ]
+    missing = " and ".join(n for n, f in (("A", a), ("B", b)) if f.psf is None)
+    return [
+        Check(
+            code="difference_method",
+            severity="info",
+            title="Significance: direct difference A − sB, no PSF matching",
+            detail="S is the pixel difference over its noise with a 5% systematic floor; a PSF "
+            "difference between the frames leaves residuals at bright stars.",
+        ),
+        Check(
+            code="psf_unavailable",
+            severity="info",
+            title=f"No ePSF for {missing}",
+            detail="The archive sent no usable EPSF extension with the cutout, or the frame was "
+            "built before ePSFs were kept: rebuilding the sequence fetches them again.",
+        ),
+    ]
+
+
+def _filled(variance: np.ndarray, bad: np.ndarray) -> np.ndarray:
+    """Variance with masked or missing pixels set to the median of the rest."""
+    good = ~bad & np.isfinite(variance)
+    return np.where(good, variance, np.median(variance[good]) if good.any() else 1.0)
 
 
 @dataclass
@@ -921,6 +993,10 @@ def _match_gaia(
 
 
 REGISTRATION_MIN_STARS = 5
+# Registration noise for ZOGY when too few stars measure it: 0.2 px (1.2″), a conservative guess
+# for a WCS-only alignment. The term only lowers S next to bright sources, so overestimating it
+# costs little sensitivity; underestimating it turns every star into a dipole residual.
+UNMEASURED_REGISTRATION_PX = 0.2
 
 
 def measure_offset(a: StoredFrame, b: StoredFrame) -> tuple[float, float, float, int]:
@@ -954,27 +1030,39 @@ def measure_offset(a: StoredFrame, b: StoredFrame) -> tuple[float, float, float,
     return float(mx), float(my), float(math.hypot(sx, sy) / math.sqrt(ok.sum())), int(ok.sum())
 
 
-def register(a: StoredFrame, b: StoredFrame) -> tuple[StoredFrame, Check]:
+def register(a: StoredFrame, b: StoredFrame) -> tuple[StoredFrame, Check, float]:
     """Refine the WCS alignment of B onto A with a sub-pixel shift measured on field stars.
 
     SPHEREx pixels (6.15") barely sample the PSF (~7" FWHM), so small WCS differences
     between releases or detector positions leave dipoles on every star after
-    subtraction. We measure and remove the residual shift, and report it."""
+    subtraction. We measure and remove the residual shift, and report it, with the
+    registration noise for ZOGY in pixels: the per-axis scatter of single stars' offsets (it
+    holds centroid noise and local distortion that one shift cannot remove), or
+    UNMEASURED_REGISTRATION_PX without enough stars."""
     dx, dy, err, n = measure_offset(a, b)
     if n < REGISTRATION_MIN_STARS:
-        return b, Check(
-            code="registration",
-            severity="info",
-            title=f"Alignment from WCS only ({n} reference stars)",
-            detail="Too few bright isolated stars to verify the alignment.",
+        return (
+            b,
+            Check(
+                code="registration",
+                severity="info",
+                title=f"Alignment from WCS only ({n} reference stars)",
+                detail="Too few bright isolated stars to verify the alignment.",
+            ),
+            UNMEASURED_REGISTRATION_PX,
         )
+    scatter = err * math.sqrt(n / 2)  # err is the error of the mean of both axes
     shift = math.hypot(dx, dy)
     if shift < 0.05:
-        return b, Check(
-            code="registration",
-            severity="ok",
-            title=f"WCS alignment verified: {shift:.2f} px residual",
-            detail=f"Measured on {n} field stars (±{err:.2f} px).",
+        return (
+            b,
+            Check(
+                code="registration",
+                severity="ok",
+                title=f"WCS alignment verified: {shift:.2f} px residual",
+                detail=f"Measured on {n} field stars (±{err:.2f} px).",
+            ),
+            math.hypot(shift, scatter),
         )
     shifted_img = ndimage.shift(np.nan_to_num(b.image), (-dy, -dx), order=3, mode="nearest")
     shifted_var = ndimage.shift(
@@ -992,30 +1080,51 @@ def register(a: StoredFrame, b: StoredFrame) -> tuple[StoredFrame, Check]:
         b.grid,
         b.target,
         b.flag_names,
+        b.psf,
     )
     sev = "ok" if shift <= 0.5 else "warn"
-    return b2, Check(
-        code="registration",
-        severity=sev,
-        title=f"B re-aligned by ({dx:+.2f}, {dy:+.2f}) px",
-        detail=f"Residual WCS offset measured on {n} field stars (±{err:.2f} px) and "
-        "removed before subtraction."
-        + (" Offset above 0.5 px: check the astrometry of these frames." if sev == "warn" else ""),
+    return (
+        b2,
+        Check(
+            code="registration",
+            severity=sev,
+            title=f"B re-aligned by ({dx:+.2f}, {dy:+.2f}) px",
+            detail=f"Residual WCS offset measured on {n} field stars (±{err:.2f} px) and "
+            "removed before subtraction."
+            + (
+                " Offset above 0.5 px: check the astrometry of these frames."
+                if sev == "warn"
+                else ""
+            ),
+        ),
+        scatter,
     )
 
 
 def photometric_scale(a: StoredFrame, b: StoredFrame) -> tuple[float, int]:
-    """Robust A/B flux ratio from pixels detected at >10σ in both frames."""
+    """Robust A/B flux ratio from pixels detected at >10σ in both frames. With a PSF for
+    both, each frame is first convolved with the other one's PSF: a PSF difference would
+    otherwise bias the pixel ratios of stars."""
+    img_a, var_a, img_b, var_b = a.image, a.variance, b.image, b.variance
+    if a.psf is not None and b.psf is not None:
+        img_a, var_a = _convolved(a, b.psf)
+        img_b, var_b = _convolved(b, a.psf)
     with np.errstate(invalid="ignore", divide="ignore"):
-        snr_a = a.image / np.sqrt(a.variance)
-        snr_b = b.image / np.sqrt(b.variance)
+        snr_a = img_a / np.sqrt(var_a)
+        snr_b = img_b / np.sqrt(var_b)
         ok = (~a.hard_mask) & (~b.hard_mask) & (snr_a > 10) & (snr_b > 10)
-        ratios = a.image[ok] / b.image[ok]
+        ratios = img_a[ok] / img_b[ok]
     ratios = ratios[np.isfinite(ratios)]
     if ratios.size < 20:
         return 1.0, int(ratios.size)
     _, med, _ = sigma_clipped_stats(ratios, sigma=3.0)
     return float(med), int(ratios.size)
+
+
+def _convolved(f: StoredFrame, kernel: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
+    image = ndimage.convolve(np.nan_to_num(f.image), kernel, mode="constant")
+    variance = ndimage.convolve(np.nan_to_num(f.variance), kernel**2, mode="constant")
+    return image, variance
 
 
 def _flags_here(fa: np.ndarray, fb: np.ndarray, x: int, y: int, names: dict[int, str]) -> list[str]:
@@ -1028,7 +1137,9 @@ def _flags_here(fa: np.ndarray, fb: np.ndarray, x: int, y: int, names: dict[int,
 # ------------------------------------------------------------------------ spectrum --
 def aperture_flux(
     cut: Cutout, ra: float, dec: float
-) -> tuple[float, float, float, float, list[str], str] | None:
+) -> tuple[float, float, float, float, list[str], str, float | None] | None:
+    """Aperture flux and error (mJy), wavelength, bandwidth, flags, quality, and the
+    aperture correction to total flux (None without an ePSF)."""
     x, y = (float(v) for v in cut.wcs.world_to_pixel_values(ra, dec))
     ny, nx = cut.image.shape
     r_out = ANNULUS_PX[1]
@@ -1059,7 +1170,12 @@ def aperture_flux(
     else:
         quality = "good"
     lam, bw = cut.wavelength_at(x, y)
-    return total * to_mjy, math.sqrt(max(var, 0.0)) * to_mjy, lam, bw, flags, quality
+    correction = None
+    if cut.psf is not None:
+        # Share of a point source in this aperture, at the target's sub-pixel position.
+        point = psf.pixel_psf(cut.psf, x, y, cut.image.shape)
+        correction = 1.0 / float(np.sum(apm.to_image(cut.image.shape) * point))
+    return total * to_mjy, math.sqrt(max(var, 0.0)) * to_mjy, lam, bw, flags, quality, correction
 
 
 async def run_spectrum(t: Target, max_frames: int, progress: Progress) -> SpectrumResult:
@@ -1081,14 +1197,21 @@ async def run_spectrum(t: Target, max_frames: int, progress: Progress) -> Spectr
         )
     pairs, failed = await download_all(selected, ra_s, dec_s, 0.03, progress, 0.05, 0.92)
     progress(0.94, "Aperture photometry")
-    points: list[SpectrumPoint] = []
+    measured = []
     for o, cut in pairs:
         ra_t, dec_t = target_at(t, mjd_to_jyear(cut.mjd))
         res = aperture_flux(cut, ra_t, dec_t)
         if res is None:
             failed.append({"obs_id": o.obs_id, "band": o.band, "error": "target too near edge"})
             continue
-        flux, err, lam, bw, flags, quality = res
+        measured.append((o, cut, res))
+    # Corrected and uncorrected fluxes are not comparable: all points or none.
+    factors = [res[6] for _, _, res in measured]
+    corrected = bool(factors) and None not in factors
+    points: list[SpectrumPoint] = []
+    for o, cut, (flux, err, lam, bw, flags, quality, factor) in measured:
+        if corrected:
+            flux, err = flux * factor, err * factor
         points.append(
             SpectrumPoint(
                 obs_id=o.obs_id,
@@ -1129,22 +1252,44 @@ async def run_spectrum(t: Target, max_frames: int, progress: Progress) -> Spectr
                 "hollow.",
             )
         )
-    checks.append(
-        Check(
-            code="spectrum_method",
-            severity="info",
-            title=f'Aperture photometry, r = {APERTURE_PX * 6.15:.0f}"',
-            detail="Background from a sigma-clipped annulus. No aperture "
-            "correction: absolute fluxes are underestimated by a smooth, "
-            "wavelength-dependent factor; relative changes between visits at the "
-            "same wavelength are meaningful.",
+    if corrected:
+        checks.append(
+            Check(
+                code="spectrum_method",
+                severity="info",
+                title=f'Aperture photometry, r = {APERTURE_PX * 6.15:.0f}", corrected to '
+                "total flux",
+                detail="Background from a sigma-clipped annulus. Each flux is divided by the "
+                "share of the SPHEREx ePSF inside the aperture at the target's detector "
+                f"position and sub-pixel phase: ×{min(factors):.3f}–{max(factors):.3f}. "
+                'Total means within the ePSF model (±3.2 px, ±20"); wings beyond it are '
+                "not included.",
+            )
         )
-    )
+    else:
+        missing = sum(f is None for f in factors)
+        checks.append(
+            Check(
+                code="spectrum_method",
+                severity="info",
+                title=f'Aperture photometry, r = {APERTURE_PX * 6.15:.0f}"',
+                detail="Background from a sigma-clipped annulus. No aperture "
+                "correction: absolute fluxes are underestimated by a smooth, "
+                "wavelength-dependent factor; relative changes between visits at the "
+                "same wavelength are meaningful."
+                + (
+                    f" {missing} exposure(s) came without an ePSF, so none is corrected."
+                    if missing
+                    else ""
+                ),
+            )
+        )
     progress(1.0, "Done")
     return SpectrumResult(
         target_ra=ra_s,
         target_dec=dec_s,
         aperture_arcsec=APERTURE_PX * settings.native_pixel_arcsec,
+        aperture_corrected=corrected,
         points=points,
         checks=checks,
         failed=failed,

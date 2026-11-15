@@ -122,7 +122,7 @@ export function DifferencePanel({ frames, grid, onResult, initialResult = null }
           <div className="seg" role="tablist" aria-label="Difference view">
             {(["diff", "sig", "blink"] as View[]).map((v) => (
               <button key={v} role="tab" aria-selected={view === v} className={`seg__btn ${view === v ? "is-active" : ""}`} onClick={() => setView(v)}>
-                {v === "diff" ? "A − B (MJy/sr)" : v === "sig" ? "Significance (σ)" : "Blink A ↔ B"}
+                {v === "diff" ? "A − B (MJy/sr)" : v === "sig" ? `Significance (${res.significance_method === "zogy" ? "ZOGY" : "σ"})` : "Blink A ↔ B"}
               </button>
             ))}
           </div>

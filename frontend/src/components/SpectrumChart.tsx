@@ -135,7 +135,7 @@ export function SpectrumChart({ quick, centerUm, detector }: { quick: QuickSpect
       {points.length > 0 && <Plot points={points} />}
       {quick.spectrum && (
         <p className="caveat">
-          Quick-look only: aperture flux at the target without aperture correction, one point per
+          Quick-look only: aperture flux at the target, one point per
           visit, colour = detector, marker shape = epoch, bars = 1σ from the VARIANCE extension. Changes are candidates that
           need checking. {notes.join(' · ')}
         </p>
