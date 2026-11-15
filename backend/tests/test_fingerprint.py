@@ -297,7 +297,38 @@ def test_the_verdict_needs_three_sigma_in_two_bands():
         "none",
         "No CH₄ absorption (0.9σ) – smooth within the errors",
     )
-    assert "water ice" in fingerprint._methane_detail(one)
+    assert "water ice" in fingerprint._methane_detail(one).lower()
+
+
+@pytest.mark.parametrize(
+    ("kelvin", "heat", "error"),
+    [(300, 1.0, 0.01), (300, 3.0, 0.01), (250, 1.0, 0.01), (300, 1.0, 0.03), (200, 0.5, 0.01)],
+)
+def test_a_warm_surface_is_no_methane(kelvin, heat, error):
+    # Sunlight reflected by an asteroid plus its own heat, `heat` times the sunlight at 4 µm:
+    # no CH₄, but the 4 µm window both outer bands are measured against is lifted.
+    def planck(temperature):
+        return lambda w: 1 / (w**3 * math.expm1(14388 / (w * temperature)))
+
+    sun, warm = planck(5800), planck(kelvin)
+    scale = heat * sun(4.0) / warm(4.0)
+    points = [
+        (w, sun(w) + scale * warm(w), error * (sun(w) + scale * warm(w)), f"{window.code}{k}")
+        for window in fingerprint.WINDOWS
+        for k, w in enumerate(np.linspace(window.lo_um + 0.005, window.hi_um - 0.005, 6))
+    ]
+
+    index = fingerprint.methane_index(points)
+
+    sigmas = {band.band: band.sigma for band in index.bands}
+    assert sigmas["ch4_2.25"] >= 1 and sigmas["ch4_3.3"] >= 1 > sigmas["ch4_1.7"]
+    assert (index.verdict, index.sigma >= fingerprint.ABSORPTION_SIGMA) == ("hint", True)
+    assert index.summary == (
+        "Dips at 2.25 and 3.3 µm only – a warm surface brightening 4 µm does the same; CH₄ needs "
+        "the 1.7 µm band too; check with more visits"
+    )
+    assert _bands(0.0, 3.0, 3.0).verdict == "hint"
+    assert _bands(3.0, 0.0, 3.0).verdict == "absorption"
 
 
 def test_without_any_flux_there_are_not_enough_channels(tmp_path):

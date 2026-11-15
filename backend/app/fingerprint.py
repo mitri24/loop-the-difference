@@ -44,8 +44,11 @@ MIN_POINTS = 2
 MIN_CONTINUUM_SNR = 3.0
 ABSORPTION_SIGMA = 3.0
 HINT_SIGMA = 2.0
-# CH₄ absorbs in every band: one band below its continuum (water ice, an asteroid's heat) is no
-# CH₄. A band counts at this σ.
+# CH₄ absorbs in every band, so one band below its continuum is no CH₄ (water ice deepens the
+# 3.3 µm window alone). Nor are the 2.25 and 3.3 µm bands together: both are measured against the
+# 4 µm window, which a warm surface's heat brightens (sunlight plus 200–300 K deepens them by
+# tens of σ), while the 1.7 µm band's H and K peaks stay clear of it. CH₄ needs the 1.7 µm band
+# and one more at this σ.
 DIP_SIGMA = 1.0
 
 
@@ -366,11 +369,18 @@ def methane_index(points: list[IndexPoint], total: bool = True) -> MethaneIndex:
         return MethaneIndex(verdict=verdict, summary=SUMMARY[verdict], bands=bands)
     sigma = round(_combined(terms), 2)
     dips = [band for band in bands if band.sigma is not None and band.sigma >= DIP_SIGMA]
-    if sigma >= ABSORPTION_SIGMA and len(dips) >= 2:
+    clear = any(band.band == CH4_1_7.code for band in dips)
+    if sigma >= ABSORPTION_SIGMA and len(dips) >= 2 and clear:
         verdict = "absorption"
         summary = (
             f"CH₄ absorption {sigma:.1f}σ in {len(dips)} bands – as in T/Y brown dwarfs or a cold "
             "giant planet; a candidate to check with more visits, not an identification"
+        )
+    elif sigma >= ABSORPTION_SIGMA and len(dips) >= 2:
+        verdict = "hint"
+        summary = (
+            "Dips at 2.25 and 3.3 µm only – a warm surface brightening 4 µm does the same; CH₄ "
+            "needs the 1.7 µm band too; check with more visits"
         )
     elif sigma >= ABSORPTION_SIGMA:
         verdict = "hint"
@@ -618,10 +628,11 @@ def _methane_detail(methane: MethaneIndex) -> str:
         "Depth = 1 − band flux / continuum, the continuum a power law through the windows on "
         "either side, so a smooth spectrum such as a star's gives none; the σ test the band "
         "against that continuum and combine with their shared windows taken into account. "
-        "Methane ice on a dwarf planet (Pluto, Eris) absorbs in the same bands; water ice (its "
-        "3 µm band, common on Kuiper-belt objects) and an asteroid's own heat beyond 3.5 µm "
-        "deepen the 3.3 µm window, so CH₄ needs two bands below their continuum. A very cold "
-        "planet can lose its methane to clouds (Fortney et al. 2016, ApJL 824, L25): no dip "
-        "rules nothing out"
+        "Methane ice on a dwarf planet (Pluto, Eris) absorbs in the same bands. Water ice (its "
+        "3 µm band, common on Kuiper-belt objects) deepens the 3.3 µm window, and an asteroid's "
+        "own heat brightens the 4 µm window, which deepens the 2.25 and 3.3 µm bands together; "
+        "so CH₄ needs the 1.7 µm band, measured against the H and K peaks, and one more band "
+        "below their continuum. A very cold planet can lose its methane to clouds (Fortney et "
+        "al. 2016, ApJL 824, L25): no dip rules nothing out"
     )
     return "; ".join(parts) + (". " if parts else "") + method
