@@ -279,7 +279,8 @@ export default function App() {
         : 'No usable images for this region and detector.')
     } catch (cause) {
       if (!stale()) {
-        const detail = cause instanceof Error ? cause.message : String(cause)
+        // The message, never a Python class name in front of it ("app.archive.ArchiveError: …").
+        const detail = (cause instanceof Error ? cause.message : String(cause)).replace(/^[A-Za-z_][\w.]*(?:Error|Exception): /, '')
         setError(cause instanceof DOMException && cause.name === 'TimeoutError'
           ? 'The data service timed out. Retry or choose another target.' : detail)
         setStatus('Could not load this comparison.')
@@ -416,6 +417,7 @@ export default function App() {
       {/* Shown as the loading bar on the viewer head; the words are for screen readers. */}
       <p className="comparison-status sr-only" role="status" aria-live="polite">{status}</p>
       {error && <div className="notice error" role="alert"><strong>Comparison unavailable</strong><p>{error}</p>
+        {/IRSA/.test(error) && !EMBED && <p>This is the archive, not Loop the Difference. The examples beside the search are stored and work now.</p>}
         {!EMBED && (centred.ra !== query.ra || centred.dec !== query.dec) && <p>The map still shows the previous position.</p>}</div>}
       {(!busy && (error || (!hasFrames && job))) && (
         <div className="recovery-actions">
