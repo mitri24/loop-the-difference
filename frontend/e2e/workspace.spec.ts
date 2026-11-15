@@ -472,6 +472,11 @@ test('fixture: Explore picks a region on the sky, Investigate shows its images, 
   await expect(page.locator('#evidence-panel')).toBeVisible()
   await page.getByRole('button', { name: /^Back to / }).click()
   await expect(page.locator('.stamp')).toContainText('2026-09-10')
+  // A reading panel takes the overview map's width; closing the panel brings the map back.
+  await expect(page.locator('.sky-area.overview')).toBeHidden()
+  await page.keyboard.press('Escape')
+  await expect(page.locator('#evidence-panel')).toBeHidden()
+  await expect(page.locator('.sky-area.overview')).toBeVisible()
   await page.getByRole('button', { name: 'Hide map' }).click()
   await expect(page.locator('.sky-area.overview .sky-stage')).toBeHidden()
   await page.getByRole('button', { name: 'Observation history' }).click()

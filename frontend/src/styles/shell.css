@@ -110,6 +110,9 @@
   .viewer .player > .player-side { max-height:none; overflow:visible; }
 }
 
+/* The science note sits under the images; while Evidence & checks (which repeats it) is open, it shows once, there. */
+.shell:has(#evidence-panel:not([hidden])) .viewer-body > .science-note { display:none; }
+
 /* While a reading panel is open (evidence, spectrum, data, observations, about) the images need the width more than
    the overview map; panels that work on the sky (target, candidate, layers) keep it. Aladin stays mounted. */
 @media (min-width:1024px) {
