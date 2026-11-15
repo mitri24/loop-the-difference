@@ -7,8 +7,8 @@ import type { Mark } from './candidate'
 import { distanceGrid, errorText } from './distantTrack'
 import { num, predict, type PossibleTrack } from './track'
 import type {
-  Check, Followup, FollowupHypothesis, FollowupJob, FollowupMeasurement, FollowupPoint, FollowupRequest, Frame, FrameManifest,
-  MarkedFrame, Observation,
+  Followup, FollowupHypothesis, FollowupJob, FollowupMeasurement, FollowupPoint, FollowupRequest, Frame, FrameManifest, MarkedFrame,
+  NotCoveredReason, Observation,
 } from './types'
 
 const POLL_MS = 3000
@@ -190,32 +190,29 @@ export interface Significance {
   trials: number
 }
 
-// The look-elsewhere correction exists only as words in FOLLOWUP_SIGNIFICANCE (backend/app/followup.py `_significance`):
-// "…; the best of 12 independent hypotheses is inflated by chance: 7.2σ local ≈ 4.1σ global".
-const GLOBAL = /best of (\d+) independent hypotheses is inflated by chance: -?[\d.]+σ local ≈ (-?[\d.]+)σ global/
+/** The look-elsewhere corrected significance, when more than one independent distance was tried. */
+export const globalSignificance = ({ global_sigma, independent_trials }: Followup): Significance | null =>
+  independent_trials > 1 && global_sigma != null ? { sigma: global_sigma, trials: independent_trials } : null
 
-export function globalSignificance(checks: Check[]): Significance | null {
-  const match = GLOBAL.exec(checks.find((c) => c.code === 'FOLLOWUP_SIGNIFICANCE')?.detail ?? '')
-  return match ? { trials: Number(match[1]), sigma: Number(match[2]) } : null
+// Why visits or positions gave no usable flux, one phrase per code of Followup.not_covered_reasons.
+const SHORTFALLS: Record<NotCoveredReason, string> = {
+  outside_image: 'positions outside the images',
+  search_circle_too_wide: 'positions too uncertain',
+  model_error_too_large: 'positions too uncertain',
+  image_edge: 'positions at the image edge',
+  flagged_pixels: 'flagged pixels',
+  cutout_missing: 'cutouts not delivered',
+  search_unanswered: 'archive searches unanswered',
+  release_unavailable: 'a SPHEREx release not searchable',
+  no_flux: 'no flux at some positions',
+  thinned: 'visits left out for the 48-cutout budget',
+  not_searched: 'positions not searched',
+  beyond_window: 'other visits more than 400 days from the marks',
+  no_prediction: 'visits without a predicted position',
+  unmatched_prediction: 'positions matching no visit',
 }
 
-// Why visits gave too little flux, each from the check that says so (backend/app/followup.py `plan`, `_checks`,
-// tasks.py `download_cutouts`); `phrase` is part of the check's detail.
-const SHORTFALLS: { code: string; phrase?: string; reason: string }[] = [
-  { code: 'FOLLOWUP_NOT_COVERED', phrase: "outside the visit's image", reason: 'positions outside the images' },
-  { code: 'FOLLOWUP_NOT_COVERED', phrase: 'search circle wider than', reason: 'positions too uncertain' },
-  { code: 'FOLLOWUP_NOT_COVERED', phrase: 'distance model can be off', reason: 'positions too uncertain' },
-  { code: 'FOLLOWUP_EDGE', reason: 'positions at the image edge' },
-  { code: 'FOLLOWUP_FLAGGED', reason: 'flagged pixels' },
-  { code: 'CUTOUT_MISSING', reason: 'cutouts not delivered' },
-  { code: 'FOLLOWUP_SEARCHED', phrase: 'got no answer from the archive', reason: 'archive searches unanswered' },
-  { code: 'FOLLOWUP_SKIPPED', reason: 'no flux at some positions' },
-  { code: 'FOLLOWUP_NOT_COVERED', phrase: 'days from the marks', reason: 'other visits more than 400 days from the marks' },
-]
-
-export const shortfalls = (checks: Check[]) => [...new Set(SHORTFALLS
-  .filter(({ code, phrase }) => checks.some((c) => c.code === code && (!phrase || c.detail.includes(phrase))))
-  .map(({ reason }) => reason))]
+export const shortfalls = (reasons: NotCoveredReason[]) => [...new Set(reasons.map((reason) => SHORTFALLS[reason]))]
 
 export type FollowupResult =
   // Best S/N ≥ 5: at a distance the visits tell apart, or along the straight line (distance null).
@@ -223,8 +220,8 @@ export type FollowupResult =
   // Best S/N ≥ 5, but at every visit the tested distances lie within one aperture.
   | { kind: 'undetermined'; snr: number; visits: number }
   | { kind: 'nothing'; snr: number; visits: number }
-  // No hypothesis with usable flux from two visits. usable: most visits of one hypothesis; measured: visits with a cutout.
-  | { kind: 'notCovered'; usable: number; measured: number; reasons: string[] }
+  // No hypothesis with usable flux from two visits: `measured` of the `total` visits in the window gave a flux.
+  | { kind: 'notCovered'; measured: number; total: number; line: boolean; reasons: string[] }
 
 /** The outcome in the backend's terms: best, significant, distance_determined, the hypotheses and the checks. */
 export function followupResult(followup: Followup): FollowupResult {
@@ -232,15 +229,16 @@ export function followupResult(followup: Followup): FollowupResult {
   if (best?.snr == null) {
     return {
       kind: 'notCovered',
-      usable: Math.max(0, ...followup.hypotheses.map((h) => h.visits)),
-      measured: new Set(followup.hypotheses.flatMap((h) => h.measurements.map((m) => m.obs_id))).size,
-      reasons: shortfalls(followup.checks),
+      measured: followup.visits_measured,
+      total: followup.visits_total,
+      line: followup.hypotheses.every((h) => h.distance_au == null),
+      reasons: shortfalls(followup.not_covered_reasons),
     }
   }
   const { snr, visits, distance_au } = best
   if (!followup.significant) return { kind: 'nothing', snr, visits }
   if (distance_au != null && !followup.distance_determined) return { kind: 'undetermined', snr, visits }
-  return { kind: 'signal', snr, visits, distance_au, global: distance_au == null ? null : globalSignificance(followup.checks) }
+  return { kind: 'signal', snr, visits, distance_au, global: distance_au == null ? null : globalSignificance(followup) }
 }
 
 export const visitsText = (n: number) => `${n} ${n === 1 ? 'visit' : 'visits'}`
@@ -259,7 +257,9 @@ export function followupResultText(result: FollowupResult): string {
     case 'nothing':
       return `Follow-up: no significant flux along the track in ${visitsText(result.visits)} (best S/N ${result.snr.toFixed(1)})`
     case 'notCovered': {
-      const covered = result.measured === 0 ? 'no visit measured' : `${result.usable} of ${visitsText(result.measured)} usable`
+      const covered = result.total === 0 ? 'no other visit in the window'
+        : result.measured === 0 ? `no flux in ${visitsText(result.total)}`
+        : `flux in ${result.measured} of ${visitsText(result.total)}, too few ${result.line ? 'to stack' : 'at any one distance'}`
       return `Follow-up: not enough visits covered (${covered})${result.reasons.length > 0 ? ` – ${result.reasons.join(', ')}` : ''}`
     }
   }

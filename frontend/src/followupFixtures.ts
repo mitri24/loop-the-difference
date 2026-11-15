@@ -15,5 +15,6 @@ export const hypothesis = (
 
 export const followupOf = (change: Partial<Followup>): Followup => ({
   collection: 'spherex_dr1', ra: 150, dec: 20, detector: 3, model: 'straight-line heliocentric motion + Earth parallax', complete: true,
-  best: null, significant: false, distance_determined: false, psf_photometry: false, hypotheses: [], checks: [], ...change,
+  best: null, significant: false, distance_determined: false, psf_photometry: false, hypotheses: [], checks: [],
+  global_sigma: null, independent_trials: 0, visits_total: 0, visits_measured: 0, not_covered_reasons: [], ...change,
 })

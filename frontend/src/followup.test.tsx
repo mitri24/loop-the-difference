@@ -9,7 +9,7 @@ import {
 } from './followup'
 import { followupOf as result, hypothesis, measurement } from './followupFixtures'
 import { possibleTrack, predict, type PossibleTrack } from './track'
-import type { Check, FollowupJob, Frame, Observation } from './types'
+import type { FollowupJob, Frame, Observation } from './types'
 
 const CENTRE = { ra: 150, dec: 20 }
 const mark = (obs_id: string, mjd: number, dec: number, sigma = 1): Mark => ({
@@ -134,18 +134,11 @@ describe('follow-up run', () => {
   })
 })
 
-const check = (code: string, detail: string, message = code): Check => ({ code, severity: 'info', message, detail, affects: [] })
-// The backend's words (backend/app/followup.py `_significance`, `plan`; backend/tests/test_followup.py).
-const SIGNIFICANCE = check('FOLLOWUP_SIGNIFICANCE', 'Inverse-variance weighted flux over 6 visits; the best of 12 independent hypotheses is inflated '
-  + 'by chance: 7.2σ local ≈ 4.1σ global. A low S/N does not rule out an object fainter than the noise', 'Flux along the track at 308 AU (S/N 7.2): a candidate to check, not a detection')
-const OUTSIDE = check('FOLLOWUP_NOT_COVERED', "16 predictions left out: 16 outside the visit's image", 'Not every visit is measured')
-const UNCERTAIN = check('FOLLOWUP_NOT_COVERED', '1 visits left out: 1 listed again by another release (counted once); '
-  + '5 predictions left out: 5 with a 2σ search circle wider than 25″', 'Not every visit is measured')
 const GRID = [hypothesis(20, 1.2, 6), hypothesis(40, 2.1, 6), hypothesis(307.6, 7.24, 6), hypothesis(2000, 0.4, 5)]
 
 describe('follow-up result line', () => {
   it('names the S/N, the distance and the visits of a signal, with the look-elsewhere correction, as a candidate', () => {
-    const found = result({ best: 2, significant: true, distance_determined: true, hypotheses: GRID, checks: [SIGNIFICANCE] })
+    const found = result({ best: 2, significant: true, distance_determined: true, hypotheses: GRID, global_sigma: 4.1, independent_trials: 12 })
     expect(followupResult(found)).toEqual({ kind: 'signal', snr: 7.24, visits: 6, distance_au: 307.6, global: { sigma: 4.1, trials: 12 } })
     expect(followupResultText(followupResult(found)))
       .toBe('Follow-up: S/N 7.2 at 310 AU in 6 visits (4.1σ after 12 independent distances) – a candidate to check')
@@ -164,27 +157,29 @@ describe('follow-up result line', () => {
     expect(followupResultText(followupResult(noise))).toBe('Follow-up: no significant flux along the track in 9 visits (best S/N 2.1)')
   })
 
-  it('says how many visits were covered and why the rest were not', () => {
+  it('says how many visits gave a flux, of how many in the window, and why the rest did not', () => {
     const few = result({
       hypotheses: [hypothesis(20, 3, 1, [measurement('v1'), measurement('v2', { flagged: true })]), hypothesis(40, null, 0, [measurement('v2', { flagged: true })])],
-      checks: [OUTSIDE, check('FOLLOWUP_FLAGGED', '1 of 2 fluxes have pixels the archive marks unusable')],
+      visits_total: 5, visits_measured: 2, not_covered_reasons: ['outside_image', 'flagged_pixels'],
     })
-    expect(followupResult(few)).toEqual({ kind: 'notCovered', usable: 1, measured: 2, reasons: ['positions outside the images', 'flagged pixels'] })
+    expect(followupResult(few)).toEqual({ kind: 'notCovered', measured: 2, total: 5, line: false, reasons: ['positions outside the images', 'flagged pixels'] })
     expect(followupResultText(followupResult(few)))
-      .toBe('Follow-up: not enough visits covered (1 of 2 visits usable) – positions outside the images, flagged pixels')
-    const none = result({ hypotheses: [hypothesis(20, null, 0), hypothesis(2000, null, 0)], checks: [UNCERTAIN] })
-    expect(followupResultText(followupResult(none))).toBe('Follow-up: not enough visits covered (no visit measured) – positions too uncertain')
-    expect(followupResultText(followupResult(result({})))).toBe('Follow-up: not enough visits covered (no visit measured)')
+      .toBe('Follow-up: not enough visits covered (flux in 2 of 5 visits, too few at any one distance) – positions outside the images, flagged pixels')
+    const line = result({ hypotheses: [hypothesis(null, null, 1)], visits_total: 3, visits_measured: 1, not_covered_reasons: ['cutout_missing'] })
+    expect(followupResultText(followupResult(line)))
+      .toBe('Follow-up: not enough visits covered (flux in 1 of 3 visits, too few to stack) – cutouts not delivered')
+    const none = result({ hypotheses: [hypothesis(20, null, 0), hypothesis(2000, null, 0)], visits_total: 4,
+      not_covered_reasons: ['search_circle_too_wide', 'model_error_too_large'] })
+    expect(followupResultText(followupResult(none))).toBe('Follow-up: not enough visits covered (no flux in 4 visits) – positions too uncertain')
+    expect(followupResultText(followupResult(result({ not_covered_reasons: ['beyond_window'] }))))
+      .toBe('Follow-up: not enough visits covered (no other visit in the window) – other visits more than 400 days from the marks')
   })
 
-  it('reads the reasons and the global significance only from the checks that say so', () => {
-    expect(shortfalls([check('FOLLOWUP_NOT_COVERED', '3 visits left out: 2 marked (their pixels made the marks), 1 more than 400 days from the marks')]))
-      .toEqual(['other visits more than 400 days from the marks'])
-    expect(shortfalls([check('CUTOUT_MISSING', 'v1: archive sent no readable FITS'), check('CUTOUT_MISSING', 'v2: archive sent no readable FITS')]))
-      .toEqual(['cutouts not delivered'])
-    expect(shortfalls([check('FOLLOWUP_SEARCHED', '4 more searches found 2 more visits of this detector')])).toEqual([])
-    expect(globalSignificance([check('FOLLOWUP_SIGNIFICANCE', 'Inverse-variance weighted flux over 4 visits. A low S/N does not rule out an object fainter than the noise')]))
-      .toBeNull()
+  it('corrects for the tried distances only when there was more than one', () => {
+    expect(globalSignificance(result({ global_sigma: 4.1, independent_trials: 12 }))).toEqual({ sigma: 4.1, trials: 12 })
+    expect(globalSignificance(result({ global_sigma: 7.2, independent_trials: 1 }))).toBeNull()
+    expect(globalSignificance(result({ global_sigma: null, independent_trials: 0 }))).toBeNull()
+    expect(shortfalls(['thinned', 'release_unavailable', 'thinned'])).toEqual(['visits left out for the 48-cutout budget', 'a SPHEREx release not searchable'])
   })
 
   it('lists the visits of the best hypothesis, else of the one with the most usable visits', () => {

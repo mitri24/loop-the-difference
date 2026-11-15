@@ -26,7 +26,7 @@ const CHECKS = [
     'Inverse-variance weighted flux over 2 visits; the best of 12 independent hypotheses is inflated by chance: 7.2σ local ≈ 4.1σ global'),
 ]
 const FOUND = followupOf({
-  best: 2, significant: true, distance_determined: true, checks: CHECKS,
+  best: 2, significant: true, distance_determined: true, checks: CHECKS, global_sigma: 4.1, independent_trials: 12,
   hypotheses: [hypothesis(20, 1.2, 2), hypothesis(40, 2.1, 1), hypothesis(307.6, 7.24, 2, VISITS), hypothesis(2000, -0.4, 2)],
 })
 
