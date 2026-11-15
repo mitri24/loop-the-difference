@@ -520,6 +520,8 @@ test('fixture: Explore picks a region on the sky, Investigate shows its images, 
 test('panel width: keyboard and double-click resize within limits and persist per viewport class', async ({ page }) => {
   await page.setViewportSize({ width: 1440, height: 900 })
   await page.goto('/')
+  // Sheets open on demand; the width is kept across a reload.
+  await openSheet(page, 'target')
   const handle = page.getByRole('separator', { name: 'Panel width' })
   const width = async () => (await page.locator('.fpanel').boundingBox())!.width
   const start = await width()
@@ -528,6 +530,7 @@ test('panel width: keyboard and double-click resize within limits and persist pe
   await page.keyboard.press('ArrowLeft')
   expect(await width()).toBeCloseTo(start + 32, 0)
   await page.reload()
+  await openSheet(page, 'target')
   expect(await width()).toBeCloseTo(start + 32, 0)
   await handle.focus()
   for (let i = 0; i < 80; i++) await page.keyboard.press('ArrowLeft')
@@ -682,7 +685,7 @@ test('fixture: a failed name search is resolved again on Enter', async ({ page }
   expect(attempts).toBe(2)
 })
 
-test('fixture: a panel narrows the search bar without overlapping or clipping its neighbours', async ({ page }) => {
+test('fixture: the search bar keeps its parts apart and unclipped, with and without a sheet', async ({ page }) => {
   await fixtures(page)
   await page.goto('/?ra=37.954542&dec=89.264111&band=6&fov=0.2')
   await expect(page.locator('.stamp')).toBeVisible()
@@ -690,7 +693,7 @@ test('fixture: a panel narrows the search bar without overlapping or clipping it
     await page.setViewportSize({ width, height })
     for (const open of [false, true]) {
       if (open) await openSheet(page, 'layers')
-      const parts = await page.locator('.brand, .global-search, .examples-toggle, .share-button').evaluateAll(els => els
+      const parts = await page.locator('.brand, .global-search, .examples-toggle, .header-actions').evaluateAll(els => els
         .filter(e => getComputedStyle(e).display !== 'none' && e.getClientRects().length > 0)
         .map(e => { const r = e.getBoundingClientRect(); return { left: r.left, right: r.right, clipped: e.scrollWidth > e.clientWidth + 1 } })
         .sort((a, b) => a.left - b.left))
@@ -703,6 +706,97 @@ test('fixture: a panel narrows the search bar without overlapping or clipping it
       if (open) await page.keyboard.press('Escape')
     }
   }
+})
+
+test('fixture: the overview map holds the top-right corner – nothing above it or to its right, a sheet opens beside it', async ({ page }) => {
+  await fixtures(page)
+  await page.goto('/?ra=37.954542&dec=89.264111&band=6&fov=0.2')
+  await expect(page.locator('.stamp')).toBeVisible()
+  const map = page.locator('.sky-area.overview')
+  for (const [width, height] of [[701, 700], [800, 700], [1024, 768], [1440, 900], [1920, 1080]]) {
+    await page.setViewportSize({ width, height })
+    for (const open of [false, true]) {
+      if (open) await openSheet(page, 'layers')
+      await expect(map).toBeVisible()
+      const corner = (await map.boundingBox())!
+      // Nothing lies over the map: points just inside its four rounded corners hit the map itself.
+      const covered = await map.evaluate((el) => {
+        const r = el.getBoundingClientRect()
+        return [[r.left + 12, r.top + 12], [r.right - 12, r.top + 12], [r.left + 12, r.bottom - 12], [r.right - 12, r.bottom - 12]]
+          .filter(([x, y]) => !el.contains(document.elementFromPoint(x, y))).length
+      })
+      expect(covered, `${width}px, sheet ${open}: map corners covered`).toBe(0)
+      // Each control's visible part, cut by the window and the scrolling or clipping boxes around it (a scrolled-away
+      // section link or the unfocused skip link is not on screen), stays at or below the map's top and at or left of
+      // its right edge.
+      const outside = await page.locator('.shell button, .shell input, .shell select, .shell a, .shell summary, .shell h2, .fpanel').evaluateAll((els, m) => els
+        .filter(e => !e.closest('.sky-area') && e.getClientRects().length > 0)
+        .map(e => {
+          const r = e.getBoundingClientRect()
+          let [top, right, bottom, left] = [Math.max(r.top, 0), Math.min(r.right, innerWidth), Math.min(r.bottom, innerHeight), Math.max(r.left, 0)]
+          for (let a = e.parentElement; a; a = a.parentElement) {
+            const style = getComputedStyle(a)
+            if (style.display === 'contents' || (style.overflowX === 'visible' && style.overflowY === 'visible')) continue
+            const c = a.getBoundingClientRect()
+            top = Math.max(top, c.top); right = Math.min(right, c.right); bottom = Math.min(bottom, c.bottom); left = Math.max(left, c.left)
+          }
+          return { text: (e.textContent ?? '').trim().slice(0, 30), shown: right > left && bottom > top, top, right }
+        })
+        .filter(({ shown, top, right }) => shown && (top < m.y - 1 || right > m.x + m.width + 1))
+        .map(({ text }) => text), corner)
+      expect(outside, `${width}px, sheet ${open}`).toEqual([])
+      if (open) {
+        const sheet = (await page.locator('.fpanel').boundingBox())!
+        expect(sheet.x + sheet.width, `${width}px: the sheet opens beside the map, not over it`).toBeLessThanOrEqual(corner.x + 1)
+        await page.keyboard.press('Escape')
+        await expect(page.locator('.fpanel')).toBeHidden()
+      }
+    }
+  }
+  // Examples open from beside the search field; Share stays in the header, left of the map.
+  const search = (await page.locator('.global-search').boundingBox())!
+  const examples = (await page.getByRole('button', { name: 'Examples' }).boundingBox())!
+  expect(examples.x).toBeGreaterThanOrEqual(search.x + search.width - 1)
+  await expect(page.locator('.hud').getByRole('button', { name: 'Share', exact: true })).toBeVisible()
+})
+
+test('fixture: header menus close on Escape or a press outside, open above a sheet and never together', async ({ page }) => {
+  await fixtures(page)
+  await page.setViewportSize({ width: 800, height: 700 })
+  await page.goto('/?ra=37.954542&dec=89.264111&band=6&fov=0.2')
+  await expect(page.locator('.stamp')).toBeVisible()
+  const examples = page.getByRole('button', { name: 'Examples' })
+  const more = page.getByTestId('header-more')
+  await examples.click()
+  await expect(page.locator('.hud-chips')).toBeVisible()
+  await more.click()
+  await expect(page.locator('.hud-chips')).toBeHidden()
+  await expect(page.locator('.header-more-menu')).toBeVisible()
+  await page.keyboard.press('Escape')
+  await expect(page.locator('.header-more-menu')).toBeHidden()
+  // With a sheet open the menu lies above it, switches the sheet, and Escape closes the menu before the sheet.
+  await openSheet(page, 'target')
+  await more.click()
+  await page.getByTestId('menu-layers').click()
+  await expect(page.locator('.fpanel-header h2')).toHaveText('Sky layers')
+  await more.click()
+  await page.keyboard.press('Escape')
+  await expect(page.locator('.header-more-menu')).toBeHidden()
+  await expect(page.locator('.fpanel')).toBeVisible()
+  await page.keyboard.press('Escape')
+  await expect(page.locator('.fpanel')).toBeHidden()
+  await examples.click()
+  await page.locator('.science-note').click()
+  await expect(page.locator('.hud-chips')).toBeHidden()
+  // Moving the focus away (keyboard) closes it as well.
+  await examples.click()
+  await page.getByTestId('sky-search').focus()
+  await expect(page.locator('.hud-chips')).toBeHidden()
+  // Share folds into the menu on a narrow header; the focus goes back to ⋯.
+  await more.click()
+  await page.getByTestId('menu-share').click()
+  await expect(page.locator('.share-feedback')).toBeVisible()
+  await expect(more).toBeFocused()
 })
 
 test('fixture: an example shown by coordinates keeps its label in the search field and takes a new detector', async ({ page }) => {
