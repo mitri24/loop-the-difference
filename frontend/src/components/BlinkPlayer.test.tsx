@@ -40,6 +40,22 @@ describe('BlinkPlayer', () => {
     expect(html).not.toMatch(/Before|After/)
   })
 
+  it('zooms the image and what stands on it in one layer; the stamp, the checks and the zoom buttons stay outside', () => {
+    const frames = [frame(0, '2025-11-10T07:08:30Z'), frame(1, '2026-05-01T10:00:00Z')]
+    const html = renderToStaticMarkup(<BlinkPlayer frames={frames} grid={grid} motion={null} />)
+    const sky = html.slice(html.indexOf('class="viewport-sky"'), html.indexOf('class="stamp"'))
+    expect(sky).toContain('<img')
+    expect(sky).toContain('class="reticle"')
+    expect(html).toContain('transform:translate(0%, 0%) scale(1)')
+    expect(html).toContain('--mark-scale:1')
+    // At 1× there is nothing to zoom out of or to fit.
+    expect(html).toContain('aria-label="Zoom the image"')
+    expect(html).toContain('<button type="button" disabled="" aria-label="Zoom out" title="Zoom out (−)">−</button>')
+    expect(html).toContain('aria-label="Zoom 1×, fit the whole image"')
+    expect(html).toContain('<button type="button" aria-label="Zoom in" title="Zoom in (+)">+</button>')
+    expect(html).toContain('plus and minus zoom the image, 0 fits it')
+  })
+
   it('shows what is passed above and below the table', () => {
     const frames = [frame(0, '2025-11-10T07:08:30Z'), frame(1, '2026-05-01T10:00:00Z')]
     const html = renderToStaticMarkup(<BlinkPlayer frames={frames} grid={grid} motion={null}

@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type ReactNode } from 'react'
+import { useEffect, useRef, useState, type CSSProperties, type PointerEvent as ReactPointerEvent, type ReactNode } from 'react'
 import {
   REDUCED_DELAY_MS,
   REDUCED_MAX_SWAPS,
@@ -13,6 +13,7 @@ import {
   type BlinkPair,
 } from '../blink'
 import { MARK_LETTERS, type Mark } from '../candidate'
+import { FIT, MAX_ZOOM, PAN_STEP, ZOOM_STEP, panBy, viewTransform, zoomAt, zoomText, type ImageView } from '../imageZoom'
 import { frameToSky, gridExtentDeg, markerPosition, skyToFrame } from '../motion'
 import { SEARCH_AREA_LABEL, type Prediction } from '../track'
 import type { Check, Frame, FrameManifest, ProperMotion } from '../types'
@@ -101,6 +102,17 @@ export function BlinkPlayer({
   const [autoPaused, setAutoPaused] = useState(false)
   const [copyState, setCopyState] = useState<'idle' | 'copied' | 'failed'>('idle')
   const playerRef = useRef<HTMLDivElement>(null)
+  // Zoom and pan of the image; it stays while the frames change, so a shift between two frames stays in view.
+  const [view, setView] = useState<ImageView>(FIT)
+  const zoomed = view.z > 1
+  const viewportRef = useRef<HTMLDivElement>(null)
+  const viewNow = useRef(view)
+  useEffect(() => { viewNow.current = view })
+  // Pointers on the image: one drags the zoomed image, two pinch. A drag must not also mark.
+  const pointers = useRef(new Map<number, { x: number; y: number }>())
+  const dragged = useRef(false)
+  // Buttons and keys zoom around the middle of the view.
+  const zoomBy = (factor: number) => setView((current) => zoomAt(current, factor))
   const swaps = useRef(0)
   const count = frames.length
   const blinkPair = scope === 'ab' ? pair : null
@@ -184,7 +196,16 @@ export function BlinkPlayer({
       if (event.altKey || event.ctrlKey || event.metaKey) return
       const target = event.target instanceof Element ? event.target : null
       if (target?.closest('input, textarea, select, [contenteditable="true"]')) return
-      if (event.key === ' ') {
+      const pan = event.shiftKey && zoomed && { ArrowLeft: [1, 0], ArrowRight: [-1, 0], ArrowUp: [0, 1], ArrowDown: [0, -1] }[event.key]
+      if (pan) {
+        setView((current) => panBy(current, (pan[0] * PAN_STEP), (pan[1] * PAN_STEP)))
+      } else if (event.key === '+' || event.key === '=') {
+        zoomBy(ZOOM_STEP)
+      } else if (event.key === '-' || event.key === '_') {
+        zoomBy(1 / ZOOM_STEP)
+      } else if (event.key === '0') {
+        setView(FIT)
+      } else if (event.key === ' ') {
         if (target?.closest('button, a')) return
         if (!event.repeat) togglePlay(scope)
       } else if (event.key === 'ArrowLeft' || event.key === 'ArrowRight') {
@@ -200,6 +221,72 @@ export function BlinkPlayer({
     player.addEventListener('keydown', onKey)
     return () => player.removeEventListener('keydown', onKey)
   })
+
+  useEffect(() => {
+    const element = viewportRef.current
+    if (!element) return
+    const onWheel = (event: WheelEvent) => {
+      if (event.ctrlKey && event.deltaY === 0) return
+      const box = element.getBoundingClientRect()
+      const factor = Math.exp(-event.deltaY * (event.deltaMode === 1 ? 0.12 : 0.004))
+      // Zooming out at 1× belongs to the page: let it scroll.
+      if (viewNow.current.z <= 1 && factor <= 1) return
+      event.preventDefault()
+      const px = (event.clientX - box.left) / box.width
+      const py = (event.clientY - box.top) / box.height
+      setView((current) => zoomAt(current, factor, px, py))
+    }
+    element.addEventListener('wheel', onWheel, { passive: false })
+    return () => element.removeEventListener('wheel', onWheel)
+  }, [])
+  const viewportPoint = (event: { clientX: number; clientY: number }) => {
+    const box = viewportRef.current?.getBoundingClientRect()
+    return box && box.width > 0 ? { x: (event.clientX - box.left) / box.width, y: (event.clientY - box.top) / box.height } : null
+  }
+  const pointerHandlers = {
+    onPointerDown: (event: ReactPointerEvent<HTMLDivElement>) => {
+      if (event.pointerType === 'mouse' && event.button !== 0) return
+      const at = viewportPoint(event)
+      if (!at) return
+      pointers.current.set(event.pointerId, at)
+      dragged.current = false
+      // The pointer is taken only once a drag or a pinch starts: a plain click must still reach the image (marking).
+      if (pointers.current.size === 2) event.currentTarget.setPointerCapture?.(event.pointerId)
+    },
+    onPointerMove: (event: ReactPointerEvent<HTMLDivElement>) => {
+      // A button released outside the image: that pointer no longer drags.
+      if (event.pointerType === 'mouse' && event.buttons === 0) {
+        pointers.current.delete(event.pointerId)
+        return
+      }
+      const before = pointers.current.get(event.pointerId)
+      const at = viewportPoint(event)
+      if (!before || !at) return
+      if (pointers.current.size === 2) {
+        const [other] = [...pointers.current].filter(([id]) => id !== event.pointerId).map(([, point]) => point)
+        const span = (a: { x: number; y: number }, b: { x: number; y: number }) => Math.hypot(a.x - b.x, a.y - b.y)
+        const previous = span(before, other)
+        if (previous > 0) {
+          setView((current) => zoomAt(current, span(at, other) / previous, (at.x + other.x) / 2, (at.y + other.y) / 2))
+          dragged.current = true
+        }
+      } else if (zoomed) {
+        const box = viewportRef.current!.getBoundingClientRect()
+        // A few screen pixels of jitter are still a click.
+        if (!dragged.current) {
+          if (Math.hypot((at.x - before.x) * box.width, (at.y - before.y) * box.height) < 4) return
+          event.currentTarget.setPointerCapture?.(event.pointerId)
+          dragged.current = true
+        }
+        setView((current) => panBy(current, at.x - before.x, at.y - before.y))
+      } else return
+      pointers.current.set(event.pointerId, at)
+    },
+    onPointerUp: (event: ReactPointerEvent<HTMLDivElement>) => { pointers.current.delete(event.pointerId) },
+    onPointerCancel: (event: ReactPointerEvent<HTMLDivElement>) => { pointers.current.delete(event.pointerId) },
+  }
+  const zoom = viewTransform(view)
+  const skyStyle = { transform: zoom.transform, '--unzoom': zoom.unzoom, '--mark-scale': 1 / view.z } as CSSProperties
 
   const frame = frames[index]
   const marker = motion && markerPosition(motion, frame.mjd, grid.ra, grid.dec, extentDeg)
@@ -220,7 +307,7 @@ export function BlinkPlayer({
       className="player observation-player"
       role="group"
       tabIndex={0}
-      aria-label="Observation player. Space to play, arrow keys to step, A and B show those frames."
+      aria-label="Observation player. Space to play, arrow keys to step, A and B show those frames, plus and minus zoom the image, 0 fits it, Shift and the arrow keys move a zoomed image."
     >
       {count > 1 && (
         <section className="observation-gallery" aria-label="Observation images">
@@ -261,9 +348,16 @@ export function BlinkPlayer({
       )}
 
       <div
-        className={marking ? 'viewport marking' : 'viewport'}
+        ref={viewportRef}
+        className={`viewport${marking ? ' marking' : ''}${zoomed ? ' zoomed' : ''}`}
         title={marking ? 'Click the object to mark it in this frame' : undefined}
+        {...pointerHandlers}
         onClick={(event) => {
+          // The end of a drag or pinch is not a click.
+          if (dragged.current) {
+            dragged.current = false
+            return
+          }
           // Only the shown, loaded image marks: not the stamp, the checks badge, a placeholder or an error message.
           const image = event.target
           if (!marking || !onMark || !(image instanceof HTMLImageElement) || !image.naturalWidth || image.style.visibility === 'hidden') return
@@ -274,45 +368,50 @@ export function BlinkPlayer({
           onMark(frame, at.ra, at.dec)
         }}
       >
-        {/* Load only the visible frame and its next playback partner. */}
-        {[index, nextIndex(index, count, blinkPair)].filter((i, n, all) => all.indexOf(i) === n).map((i) => {
-          const f = frames[i]
-          return (
-            <ObservationImage
-              key={f.url}
-              src={f.url}
-              alt={`SPHEREx detector ${f.detector}, ${f.date.slice(0, 10)}`}
-              visible={i === index}
-              onSize={setPixels}
-            />
-          )
-        })}
-        <div className="reticle" aria-hidden="true" />
-        <ImageMarks marks={marks} grid={{ ...grid, size_deg: extentDeg }} />
-        {marker && (
-          <div
-            className="marker"
-            style={{ left: `${marker.x * 100}%`, top: `${marker.y * 100}%` }}
-            title="Predicted position from Gaia DR3 proper motion"
-          />
-        )}
-        {searchArea && predicted && (
-          <div
-            className="search-area"
-            style={{ left: `${searchArea.x * 100}%`, top: `${searchArea.y * 100}%`, width: `${(predicted.radius_arcsec / 1800 / extentDeg) * 100}%` }}
-            title={`Possible track, search area ${SEARCH_AREA_LABEL}`}
-          />
-        )}
-        {candidateMarks.map((mark, i) => {
-          const at = skyToFrame(mark.ra, mark.dec, grid.ra, grid.dec, extentDeg)
-          const here = mark.obs_id === frame.obs_id
-          return at && (
-            <span key={mark.obs_id} className={here ? 'candidate-mark current' : 'candidate-mark'}
-              style={{ left: `${at.x * 100}%`, top: `${at.y * 100}%` }} title={`Your mark ${MARK_LETTERS[i]}${here ? ', set in this frame' : ''}`}>
-              <span className="candidate-mark-letter">{MARK_LETTERS[i]}</span>
-            </span>
-          )
-        })}
+        {/* The image and everything placed on the sky zoom and pan together; the stamp and the badge stay. */}
+        <div className="viewport-clip">
+          <div className="viewport-sky" style={skyStyle}>
+            {/* Load only the visible frame and its next playback partner. */}
+            {[index, nextIndex(index, count, blinkPair)].filter((i, n, all) => all.indexOf(i) === n).map((i) => {
+              const f = frames[i]
+              return (
+                <ObservationImage
+                  key={f.url}
+                  src={f.url}
+                  alt={`SPHEREx detector ${f.detector}, ${f.date.slice(0, 10)}`}
+                  visible={i === index}
+                  onSize={setPixels}
+                />
+              )
+            })}
+            <div className="reticle" aria-hidden="true" />
+            <ImageMarks marks={marks} grid={{ ...grid, size_deg: extentDeg }} zoom={view.z} />
+            {marker && (
+              <div
+                className="marker"
+                style={{ left: `${marker.x * 100}%`, top: `${marker.y * 100}%` }}
+                title="Predicted position from Gaia DR3 proper motion"
+              />
+            )}
+            {searchArea && predicted && (
+              <div
+                className="search-area"
+                style={{ left: `${searchArea.x * 100}%`, top: `${searchArea.y * 100}%`, width: `${(predicted.radius_arcsec / 1800 / extentDeg) * 100}%` }}
+                title={`Possible track, search area ${SEARCH_AREA_LABEL}`}
+              />
+            )}
+            {candidateMarks.map((mark, i) => {
+              const at = skyToFrame(mark.ra, mark.dec, grid.ra, grid.dec, extentDeg)
+              const here = mark.obs_id === frame.obs_id
+              return at && (
+                <span key={mark.obs_id} className={here ? 'candidate-mark current' : 'candidate-mark'}
+                  style={{ left: `${at.x * 100}%`, top: `${at.y * 100}%` }} title={`Your mark ${MARK_LETTERS[i]}${here ? ', set in this frame' : ''}`}>
+                  <span className="candidate-mark-letter">{MARK_LETTERS[i]}</span>
+                </span>
+              )
+            })}
+          </div>
+        </div>
         {/* The letter in its colour, as on the thumbnails and in the table; the text reads "A · date". */}
         <span className="stamp">{letter ? <><b className={`stamp-letter ${letter.toLowerCase()}`}>{letter}</b> · {utcMinute(frame.date)}</> : stampText(frame, null)}</span>
         <CheckBadge checks={checksForFrame(checks, frame)} />
@@ -342,6 +441,12 @@ export function BlinkPlayer({
         <span className="frame-count">
           {index + 1}/{count}
         </span>
+        <div className="zoom-buttons" role="group" aria-label="Zoom the image">
+          <button type="button" onClick={() => zoomBy(1 / ZOOM_STEP)} disabled={!zoomed} aria-label="Zoom out" title="Zoom out (−)">−</button>
+          <button type="button" onClick={() => setView(FIT)} disabled={!zoomed} aria-label={`Zoom ${zoomText(view.z)}, fit the whole image`}
+            title="Fit the whole image (0). Wheel or pinch zooms at the pointer, drag moves a zoomed image.">{zoomText(view.z)}</button>
+          <button type="button" onClick={() => zoomBy(ZOOM_STEP)} disabled={view.z >= MAX_ZOOM} aria-label="Zoom in" title="Zoom in (+)">+</button>
+        </div>
         <label className="speed">
           Speed
           {/* Reduced motion: never faster than one swap a second. */}
