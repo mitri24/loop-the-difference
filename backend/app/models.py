@@ -249,6 +249,73 @@ Frame.model_rebuild()
 FrameManifest.model_rebuild()
 FrameJob.model_rebuild()
 
+FRAMES_JOB_ID = r"^[0-9a-f]{16}$"
+
+
+class PairDifferenceRequest(BaseModel):
+    """Frames a (A) and b (B) of a finished frames job. small_bodies_job: a JPL SBIdent lookup
+    (/api/smallbodies) of the same comparison; once finished, known asteroids explain residuals."""
+
+    job_id: str = Field(pattern=FRAMES_JOB_ID)
+    a: int = Field(ge=0, le=99)
+    b: int = Field(ge=0, le=99)
+    small_bodies_job: str | None = Field(default=None, pattern=FRAMES_JOB_ID)
+
+    @model_validator(mode="after")
+    def _two_frames(self) -> "PairDifferenceRequest":
+        if self.a == self.b:
+            raise ValueError("A and B must be two different frames")
+        return self
+
+
+class Residual(BaseModel):
+    """A peak of |S| ≥ 5 between A and B (app/difference.py): a candidate, never a discovery."""
+
+    # 0-based pixel centre in the frame PNGs, as DetectedSource; ra/dec are the reliable fields.
+    x: float
+    y: float
+    ra: float
+    dec: float
+    # S at the peak in σ: positive where B is brighter, negative where A is.
+    significance: float
+    # What lies there: a known asteroid or comet (JPL SBIdent), a bright star's PSF wings or
+    # saturated core, a catalogue source of the frames (Gaia DR3, AllWISE), or nothing known.
+    kind: Literal["asteroid", "bright_star", "known_star", "unknown"]
+    # The asteroid's name or the catalogue id.
+    known: str | None = None
+    explanation: str
+
+
+class PairDifference(BaseModel):
+    """Changes between frames a (A) and b (B) of a frames job: B registered onto A, then the
+    PSF-matched significance S (ZOGY) or, without an ePSF, the direct one."""
+
+    job_id: str
+    a: int
+    b: int
+    # False: the checks block the comparison (reason); the images are for inspection only and no
+    # residuals are listed.
+    comparable: bool
+    reason: str | None = None
+    method: Literal["zogy", "direct"]
+    # S on a diverging scale of ±7σ, and B − s·A (s: the fitted flux ratio) at ±5 of its scatter;
+    # red: brighter in A, blue: brighter in B.
+    significance_url: str
+    difference_url: str
+    delta_days: float
+    delta_lambda_pct: float | None = None
+    # Known asteroids and comets of a finished SBIdent lookup took part in the explanation.
+    small_bodies_checked: bool = False
+    residuals: list[Residual] = []
+    checks: list[Check] = []
+
+
+class PairDifferenceJob(BaseModel):
+    job_id: str
+    status: Literal["queued", "started", "finished", "failed", "not_found"]
+    difference: PairDifference | None = None
+    error: str | None = None
+
 
 # One time per epoch; 1995–2077, because SBIdent times out for dates decades back.
 SmallBodyMjd = Annotated[float, Field(ge=50000, le=80000)]

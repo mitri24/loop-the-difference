@@ -31,6 +31,8 @@
   --cat-gaia:var(--overlay-gaia); --cat-wise:#ff8a65; --cat-simbad:#ffd54f; --cat-skybot:#c5a3ff; --cat-sbident:#8fd694;
   --src-gaia:var(--overlay-gaia); --src-allwise:#ff8a65; --src-none:#ff79c6; --src-unknown:#cfd8dc;
   --candidate:#ffb454; --possible-track:#4dffd2;
+  /* A change of ≥ 5σ between A and B: no catalogue, A (amber) or B (light grey) colour, bright on dark sky. */
+  --mark-residual:#c6ff3d;
 
   /* Type: numbers and coordinates in mono. */
   --font-sans:system-ui,-apple-system,'Segoe UI',Roboto,sans-serif;

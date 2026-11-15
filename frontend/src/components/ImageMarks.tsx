@@ -2,6 +2,7 @@ import { skyToFrame } from '../motion'
 import type { FrameManifest } from '../types'
 
 export type MarkKind = 'gaia' | 'wise' | 'simbad' | 'skybot' | 'sbident' | 'source-match' | 'source-none' | 'source-unknown'
+  | 'residual'
 
 export interface ImageMark {
   ra: number
@@ -12,6 +13,10 @@ export interface ImageMark {
 
 // Half size in % of the image: about 10 px on a 600 px image.
 const R = 1.6
+// A change between A and B (pairDifference.ts): corner brackets round the spot, wider than the other symbols, so a
+// catalogue or source marker on the same spot stays visible inside.
+const F = R * 1.5
+const ARM = R * 0.6
 
 // The same symbols and colours as on the overview map (CatalogLegend, LayersSection, sourceLayer).
 function Shape({ kind }: { kind: MarkKind }) {
@@ -27,6 +32,8 @@ function Shape({ kind }: { kind: MarkKind }) {
       return <path d={`M0 ${-R * 1.3} L${R * 1.3} 0 L0 ${R * 1.3} L${-R * 1.3} 0 Z`} />
     case 'source-match':
       return <path d={`M${-R} 0 H${R} M0 ${-R} V${R}`} />
+    case 'residual':
+      return <path d={`M${-F} ${-F + ARM} V${-F} H${-F + ARM} M${F - ARM} ${-F} H${F} V${-F + ARM} M${F} ${F - ARM} V${F} H${F - ARM} M${-F + ARM} ${F} H${-F} V${F - ARM}`} />
     default:
       return <path d={`M${-R} ${-R} L${R} ${R} M${R} ${-R} L${-R} ${R}`} />
   }

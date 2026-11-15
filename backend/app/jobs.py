@@ -13,7 +13,17 @@ from rq.job import Job, JobStatus
 from app import fingerprint, followup
 from app.archive import collection_key, spherex_collections
 from app.config import Settings
-from app.models import FingerprintJob, FollowupJob, FrameJob, FrameManifest, SpectrumJob
+from app.difference import DIFFERENCE_VERSION, build_difference, result_path
+from app.models import (
+    FingerprintJob,
+    FollowupJob,
+    FrameJob,
+    FrameManifest,
+    PairDifference,
+    PairDifferenceJob,
+    SmallBodiesJob,
+    SpectrumJob,
+)
 from app.tasks import (
     PIPELINE_VERSION,
     SPECTRUM_VERSION,
@@ -30,6 +40,8 @@ SLOW_QUEUE = "slow"
 JOB_TIMEOUT_S = 900
 # A cold spectrum downloads up to MAX_SPECTRUM_POINTS cutouts; IRSA alone took ~30 min for 200.
 SPECTRUM_TIMEOUT_S = 1800
+# The changes between A and B read stored frames and cached cutouts: seconds, no download.
+DIFFERENCE_TIMEOUT_S = 300
 
 
 class QueueFull(Exception):
@@ -235,6 +247,64 @@ def status(redis: Redis, settings: Settings, job_id: str) -> FrameJob:
         return FrameJob(job_id=job_id, status="not_found")
     running = "started" if state == JobStatus.STARTED else "queued"
     return FrameJob(job_id=job_id, status=running, progress=progress, total=total, manifest=preview)
+
+
+def difference_job_id(job_id: str, a: int, b: int, small_bodies_job: str | None) -> str:
+    key = f"difference|{job_id}|{a}|{b}|{small_bodies_job or '-'}|v{DIFFERENCE_VERSION}"
+    return hashlib.sha256(key.encode()).hexdigest()[:16]
+
+
+def submit_difference(
+    redis: Redis,
+    settings: Settings,
+    job_id: str,
+    a: int,
+    b: int,
+    small_bodies: SmallBodiesJob | None = None,
+) -> PairDifferenceJob:
+    """The changes between frames a and b of a finished frames job, on the frames queue: they are
+    part of the comparison the user waits for. A finished small-body lookup goes into the job and
+    its key, so the residuals are explained again once it is there."""
+    looked_up = small_bodies if small_bodies and small_bodies.status == "finished" else None
+    key = difference_job_id(job_id, a, b, looked_up.job_id if looked_up else None)
+    current = difference_status(redis, settings, key)
+    if current.status in ("queued", "started", "finished"):
+        return current
+    queue = Queue(QUEUE_NAME, connection=redis)
+    if queue.count > settings.max_queued:
+        raise QueueFull()
+    with suppress(NoSuchJobError):
+        Job.fetch(key, connection=redis).delete()
+    epochs = [epoch.model_dump() for epoch in looked_up.epochs] if looked_up else None
+    queue.enqueue(
+        build_difference,
+        kwargs={"key": key, "job_id": job_id, "a": a, "b": b, "small_bodies": epochs},
+        job_id=key,
+        job_timeout=DIFFERENCE_TIMEOUT_S,
+        result_ttl=3600,
+        failure_ttl=600,
+    )
+    return PairDifferenceJob(job_id=key, status="queued")
+
+
+def difference_status(redis: Redis, settings: Settings, key: str) -> PairDifferenceJob:
+    """From the cache once finished, like the frames; a failed job is started again."""
+    cached = result_path(settings.cache_dir, key)
+    if cached.is_file():
+        difference = PairDifference.model_validate_json(cached.read_text())
+        return PairDifferenceJob(job_id=key, status="finished", difference=difference)
+    try:
+        job = Job.fetch(key, connection=redis)
+    except NoSuchJobError:
+        return PairDifferenceJob(job_id=key, status="not_found")
+    state = job.get_status()
+    if state in (JobStatus.QUEUED, JobStatus.STARTED):
+        running = "started" if state == JobStatus.STARTED else "queued"
+        return PairDifferenceJob(job_id=key, status=running)
+    if state == JobStatus.FAILED:
+        return PairDifferenceJob(job_id=key, status="failed", error=_last_error(job))
+    # Finished without a cached result (removed since), stopped or cancelled: start it again.
+    return PairDifferenceJob(job_id=key, status="not_found")
 
 
 _EXCEPTION_PREFIX = re.compile(r"^[A-Za-z_][\w.]*(?:Error|Exception): ")

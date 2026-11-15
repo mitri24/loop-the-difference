@@ -18,6 +18,14 @@ describe('ImageMarks', () => {
     expect(html).toContain('aria-hidden="true"')
   })
 
+  it('frames a change between A and B in brackets of its own, its σ and class on hover', () => {
+    const html = renderToStaticMarkup(<ImageMarks grid={grid} marks={[
+      { ra: 10, dec: 20, name: 'Change +7.5σ · brighter in B · needs verification', kind: 'residual' },
+    ]} />)
+
+    expect(html).toContain('<g class="image-mark residual" transform="translate(50.00 50.00)"><title>Change +7.5σ · brighter in B · needs verification</title><path d="M-2.4')
+  })
+
   it('leaves out markers outside the image and draws nothing without markers', () => {
     expect(renderToStaticMarkup(<ImageMarks grid={grid} marks={[{ ra: 10, dec: 21, name: 'far', kind: 'wise' }]} />)).toBe('')
     expect(renderToStaticMarkup(<ImageMarks grid={grid} marks={[]} />)).toBe('')
