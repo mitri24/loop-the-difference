@@ -72,9 +72,9 @@
    bar under the image. --img is the largest square that leaves room for the status line above, the science
    note below (--reserve) and the bar; the viewer body is the size container. */
 .viewer .player {
-  --rail:64px; --gap:var(--space-3); --bar:44px; --reserve:88px;
+  --rail:64px; --gap:var(--space-3); --bar:44px; --reserve:80px;
   --side:clamp(220px, 30cqw, 340px); --pair:136px;
-  --img:clamp(160px, min(100cqw - var(--rail) - var(--side) - 2 * var(--gap), 100cqh - var(--reserve) - var(--bar) - var(--gap)), 1100px);
+  --img:clamp(160px, min(100cqw - var(--rail) - var(--side) - 2 * var(--gap), 100cqh - var(--reserve) - var(--bar) - 2 * var(--gap)), 1100px);
   display:grid; grid-template-columns:var(--rail) var(--img) var(--side); grid-template-rows:var(--img) auto auto;
   grid-template-areas:'rail view side' 'bar bar side' 'note note side'; gap:var(--gap); justify-content:center; align-items:start;
 }
@@ -85,7 +85,8 @@
 .viewer .player:not(:has(> .observation-gallery)) {
   --rail:0px; grid-template-columns:var(--img) var(--side); grid-template-areas:'view side' 'bar side' 'note side';
 }
-.viewer .diff-player {
+/* After the rule above, and as specific: the difference view has no thumbnails and no bar rows. */
+.viewer .player.diff-player {
   --img:clamp(160px, min(100cqw - var(--side) - var(--gap), 100cqh - var(--reserve)), 1100px);
   grid-template-columns:var(--img) var(--side); grid-template-rows:auto; grid-template-areas:'view side';
 }
@@ -97,15 +98,22 @@
 .viewer .diff-player > .player-side { max-height:var(--img); }
 /* Narrow viewers (a wide panel open, phones): image, bar and the A/B pair stay in view; the shown-frame
    details follow below them (scrolling allowed there). */
-@container (max-width:519px) {
+@container (max-width:479px) {
   .viewer .player {
-    --img:clamp(160px, min(100cqw - var(--rail) - var(--gap), 100cqh - var(--reserve) - var(--bar) - var(--pair) - 3 * var(--gap)), 1100px);
+    /* The pair stays in view when that leaves the image at least 280 px; on phones the image wins. */
+    --img:max(160px, min(100cqw - var(--rail) - var(--gap), max(280px, 100cqh - var(--reserve) - var(--bar) - var(--pair) - 4 * var(--gap)), 1100px));
     grid-template-columns:var(--rail) var(--img); grid-template-rows:var(--img) auto auto auto;
     grid-template-areas:'rail view' 'bar bar' 'note note' 'side side';
   }
   .viewer .player:not(:has(> .observation-gallery)) { grid-template-columns:var(--img); grid-template-areas:'view' 'bar' 'note' 'side'; }
-  .viewer .diff-player { --img:clamp(160px, 100cqw, 1100px); grid-template-columns:var(--img); grid-template-areas:'view' 'side'; }
+  .viewer .player.diff-player { --img:clamp(160px, 100cqw, 1100px); grid-template-columns:var(--img); grid-template-rows:auto auto; grid-template-areas:'view' 'side'; }
   .viewer .player > .player-side { max-height:none; overflow:visible; }
+}
+
+/* While a reading panel is open (evidence, spectrum, data, observations, about) the images need the width more than
+   the overview map; panels that work on the sky (target, candidate, layers) keep it. Aladin stays mounted. */
+@media (min-width:1024px) {
+  .shell:has(:is(#evidence-panel,#spectrum-panel,#data-panel,#timeline-panel,#about-panel):not([hidden])) .stage.investigate > .sky-area.overview { display:none; }
 }
 
 /* Timeline under the viewer: height from its top edge, collapsible to its heading. */
