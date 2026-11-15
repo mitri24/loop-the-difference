@@ -20,13 +20,6 @@
 .reference-analysis .diff__pickers .field { width:100%; }
 .reference-analysis .diff__pickers > .btn { align-self:stretch; }
 
-/* The reference science plots lead their menu panels; legacy tools remain below. */
-.fpanel-body:has(> .reference-analysis.chart-first:not([hidden])) { display:flex; flex-direction:column; gap:var(--space-4); }
-.reference-analysis.chart-first { order:-1; flex:none; border-top:0; padding-top:0; }
-@media (min-width:1024px) {
-  .fpanel:has(.reference-analysis.chart-first:not([hidden])) { width:clamp(320px, max(var(--panel-w), 620px), min(60vw, 960px)); }
-}
-.reference-analysis.chart-first .plot { padding:12px 0; border-block:1px solid var(--border); }
 
 /* Image / metadata / thumbnail rail share one selected frame. */
 .reference-analysis { container-type:inline-size; }

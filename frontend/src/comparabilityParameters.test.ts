@@ -7,6 +7,7 @@ import configPy from '../../analysis-service/app/config.py?raw'
 import spectralPy from '../../analysis-service/app/spectral.py?raw'
 import archivePy from '../../backend/app/archive.py?raw'
 import framesPy from '../../backend/app/frames.py?raw'
+import { R_BY_DETECTOR, WAVELENGTH_MATCH_FRACTION } from './spectral'
 import { EPOCH_GAP_DAYS } from './timeAxis'
 
 // The number assigned to a constant or a typed settings field, whatever the spacing.
@@ -35,8 +36,13 @@ describe('one parameter set for comparing frames', () => {
     expect(serviceR(spectralPy)).toEqual(r)
   })
 
+  it('has the same resolving power per detector in the UI (compatible pair, brightness window)', () => {
+    expect(Object.fromEntries(Object.entries(R_BY_DETECTOR).map(([d, r]) => [d, r]))).toEqual(backendR(framesPy))
+  })
+
   it('matches wavelengths within the same share of λ/R and stops at the same limit', () => {
     expect(assigned(configPy, 'wavelength_match_fraction')).toBe(assigned(framesPy, 'WAVELENGTH_MATCH_FRACTION'))
+    expect(WAVELENGTH_MATCH_FRACTION).toBe(assigned(framesPy, 'WAVELENGTH_MATCH_FRACTION'))
     expect(assigned(comparabilityPy, 'WAVELENGTH_LIMIT_FRACTION')).toBe(assigned(framesPy, 'WAVELENGTH_LIMIT_FRACTION'))
   })
 

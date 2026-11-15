@@ -8,7 +8,7 @@ NASA Space Apps 2026, challenge "Planet X and SPHEREx": a public web tool. RA/De
 - Data: IRSA SIA2 over every SPHEREx image release IRSA lists (DR1, QR3, their deep fields; `spherex_collections` in `backend/app/archive.py`); `SKYSHIFT_SPHEREX_COLLECTION` (default `spherex_dr1`) is only the fallback while IRSA cannot list them. Cutouts: `access_url?center=<ra>,<dec>&size=<deg>`; IRSA answers `503 Server busy` under load, so downloads retry.
 - `frontend/src/types.ts` mirrors `backend/app/models.py`: change both together.
 - `backend/app/warm.py` `TARGETS` mirrors `frontend/src/targets.ts`: change both together.
-- Comparison parameters (R per detector, wavelength tolerance, epoch gap) are one set in `backend/app/frames.py` and `archive.py`, `analysis-service/app/` and `frontend/src/timeAxis.ts`; `frontend/src/comparabilityParameters.test.ts` fails when they drift.
+- Comparison parameters (R per detector, wavelength tolerance, epoch gap) are one set in `backend/app/frames.py` and `archive.py`, `analysis-service/app/`, `frontend/src/spectral.ts` and `frontend/src/timeAxis.ts`; `frontend/src/comparabilityParameters.test.ts` fails when they drift.
 
 ## Commands (Docker is the only requirement, on every OS)
 - Run everything: `docker compose up --build` → http://localhost:8080, API docs http://localhost:8000/docs

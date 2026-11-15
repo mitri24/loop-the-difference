@@ -7,8 +7,10 @@ import { DETECTOR_RANGES_UM } from './WavelengthStrip'
 
 export { niceTicks }
 
-// Spectral resolving power per detector, as R_BY_DETECTOR in backend/app/frames.py.
-export const R_BY_DETECTOR: Record<number, number> = { 1: 41, 2: 41, 3: 41, 4: 35, 5: 110, 6: 130 }
+import { R_BY_DETECTOR } from '../spectral'
+
+// Spectral resolving power per detector lives in spectral.ts (one rule for the brightness window and the A/B pair).
+export { R_BY_DETECTOR }
 export const MIN_POINTS = 2
 // Drawn at the measured panel width (ChartFrame); the height stays fixed.
 const H = 200

@@ -9,7 +9,7 @@ const frames = Array.from({ length: 8 }, (_, index) => ({
   detector: 6, wavelength_min_um: 4.41, wavelength_max_um: 5.01, coverage: 0.96,
   source_url: `https://example.test/fixture-${index}`, epoch: Math.floor(index / 2), n_combined: 1,
   date_end: null, masked_fraction: 0.01, wavelength_um: 4.6 + index * 0.01, bandwidth_um: 0.04,
-  release: index < 4 ? 'DR1' : 'QR3',
+  release: index < 2 ? 'DR1' : 'QR3',
 }))
 const manifest: FrameManifest = {
   collection: 'spherex_dr1,spherex_qr3', ra: 269.452, dec: 4.693, size_deg: 0.2, detector: 6,
@@ -57,45 +57,94 @@ async function inView(page: Page, locator: Locator) {
 }
 
 for (const [width, height] of [[1024, 700], [1280, 800], [1440, 900]]) {
-  test(`${width}×${height}: image, transport bar, A/B pair and shown frame fit without scrolling`, async ({ page }) => {
+  test(`${width}×${height}: A/B header, image and transport bar fit without scrolling; the shown frame is in the Frame tab`, async ({ page }) => {
     await fixtures(page)
     await page.setViewportSize({ width, height })
     await page.goto(`/?ra=${manifest.ra}&dec=${manifest.dec}&fov=0.2&band=6&name=Barnard%27s%20Star`)
-    await expect(page.locator('.player-side .meta')).toContainText('4472832130942575872')
+    const details = page.locator('#inspect-panel-frame .frame-details')
+    await expect(details.locator('.meta').first()).toContainText('4472832130942575872')
+    // No page scrolling: the viewer body holds the pair, the image and the bar; the inspector holds the details.
     expect(await overflow(page.locator('.viewer-body'))).toBeLessThanOrEqual(1)
-    expect(await overflow(page.locator('.player-side'))).toBeLessThanOrEqual(1)
+    await inView(page, page.locator('.pair-head'))
+    await inView(page, page.locator('.viewer .viewport'))
     await inView(page, page.locator('.transport'))
-    await inView(page, page.locator('.blink-pair'))
-    await inView(page, page.locator('.selected-observation a'))
-    // A and B are named by date and wavelength; different releases are named because they are a caveat.
-    await expect(page.locator('.blink-pair .pair-detail').first()).toContainText('· DR1')
-    await expect(page.locator('.blink-pair .pair-detail').last()).toContainText('· QR3')
+    // The inspector hangs under the overview map, as wide as it, inside the window.
+    const map = (await page.locator('.sky-area.overview').boundingBox())!
+    const inspector = (await page.locator('.inspector').boundingBox())!
+    expect(Math.abs(inspector.x - map.x)).toBeLessThanOrEqual(1)
+    expect(Math.abs(inspector.width - map.width)).toBeLessThanOrEqual(1)
+    expect(inspector.y).toBeGreaterThan(map.y + map.height)
+    expect(inspector.y + inspector.height).toBeLessThanOrEqual(height)
+    // Provenance stays one click away (All details).
+    await expect(details.locator('a', { hasText: 'fixture-1' })).toHaveAttribute('href', 'https://example.test/fixture-1')
+    // The pair opens compatible (same wavelength, different epochs); A and B are named by date and wavelength, and
+    // different releases are named because they are a caveat.
+    await expect(page.locator('.pair-head .pair-detail').first()).toContainText('λ 4.61')
+    await expect(page.locator('.pair-head .pair-detail').first()).toContainText('· DR1')
+    await expect(page.locator('.pair-head .pair-detail').last()).toContainText('· QR3')
     expect(await page.evaluate(() => document.documentElement.scrollWidth - innerWidth)).toBeLessThanOrEqual(0)
   })
 }
 
-test('a reading panel takes the overview map’s width; images and pair stay in view', async ({ page }) => {
+test('the inspector: a tab per kind, arrow keys between tabs, the image never moves', async ({ page }) => {
   await fixtures(page)
   await page.setViewportSize({ width: 1280, height: 800 })
   await page.goto(`/?ra=${manifest.ra}&dec=${manifest.dec}&fov=0.2&band=6`)
-  await expect(page.locator('.sky-area.overview')).toBeVisible()
-  await page.getByTestId('dock-evidence').click()
-  await expect(page.locator('.sky-area.overview')).toBeHidden()
-  expect(await overflow(page.locator('.viewer-body'))).toBeLessThanOrEqual(1)
-  await inView(page, page.locator('.blink-pair'))
-  expect((await page.locator('.viewer .viewport').boundingBox())!.width).toBeGreaterThan(400)
-  // The science note shows once: in the panel while it is open.
-  await expect(page.locator('.viewer-body > .science-note')).toBeHidden()
-  await page.getByTestId('dock-layers').click()
-  await expect(page.locator('.sky-area.overview')).toBeVisible()
+  await expect(page.locator('.player')).toBeVisible()
+  const image = await page.locator('.viewer .viewport').boundingBox()
+  for (const id of ['frame', 'quality', 'candidate', 'measure', 'coverage', 'analysis', 'data']) {
+    await page.getByTestId(`inspect-${id}`).click()
+    await expect(page.getByTestId(`inspect-${id}`)).toHaveAttribute('aria-selected', 'true')
+    await expect(page.locator(`#inspect-panel-${id}`)).toBeVisible()
+    expect(await page.locator('.viewer .viewport').boundingBox(), id).toEqual(image)
+  }
+  // Arrows move the focus between tabs (not between frames), Home and End jump; Enter opens the focused tab.
+  await page.getByTestId('inspect-frame').click()
+  await page.keyboard.press('ArrowRight')
+  await expect(page.getByTestId('inspect-quality')).toBeFocused()
+  await expect(page.getByTestId('inspect-frame')).toHaveAttribute('aria-selected', 'true')
+  await page.keyboard.press('Enter')
+  await expect(page.getByTestId('inspect-quality')).toHaveAttribute('aria-selected', 'true')
+  await page.keyboard.press('End')
+  await expect(page.getByTestId('inspect-data')).toBeFocused()
+  await page.keyboard.press('Home')
+  await expect(page.getByTestId('inspect-frame')).toBeFocused()
+  await expect(page.locator('.stamp')).toContainText('A ·')
+  // No sidebar, no section page, no permanent caveat line: the caveat stands with the checks.
+  await expect(page.locator('.science-note')).toHaveCount(0)
+  await expect(page.locator('.section-nav')).toHaveCount(0)
+  await expect(page.locator('.dock')).toHaveCount(0)
+  await page.getByTestId('inspect-quality').click()
+  await expect(page.locator('#inspect-panel-quality')).toContainText('Changes are candidates')
+  // Swap exchanges A and B; Set A in the Frame tab makes the shown frame A.
+  const a = page.getByRole('combobox', { name: 'Frame A' })
+  const b = page.getByRole('combobox', { name: 'Frame B' })
+  const [before, after] = [await a.inputValue(), await b.inputValue()]
+  await page.getByRole('button', { name: 'Swap A and B' }).click()
+  await expect(a).toHaveValue(after)
+  await expect(b).toHaveValue(before)
+  await page.getByRole('button', { name: 'Step through all' }).click()
+  await page.getByRole('button', { name: /^Show observation 7,/ }).click()
+  await page.getByTestId('inspect-frame').click()
+  await page.getByRole('region', { name: 'Shown frame' }).getByRole('button', { name: 'Set A', exact: true }).click()
+  await expect(a).toHaveValue('6')
+  await expect(page.getByRole('button', { name: 'Blink A↔B' })).toHaveAttribute('aria-pressed', 'true')
+  await expect(page.locator('.stamp')).toContainText('A · 2026-07-10')
+  // Expand lays the inspector wider over the images without moving them; Escape docks it.
+  const docked = (await page.locator('.inspector').boundingBox())!
+  await page.getByRole('button', { name: 'Expand inspector' }).click()
+  expect((await page.locator('.inspector').boundingBox())!.width).toBeGreaterThan(docked.width * 1.5)
+  expect(await page.locator('.viewer .viewport').boundingBox()).toEqual(image)
+  await page.keyboard.press('Escape')
+  expect(await page.locator('.inspector').boundingBox()).toEqual(docked)
 })
 
 test('charts: tooltip on hover and keyboard focus, Table toggle, width follows the panel after the table', async ({ page }) => {
   await fixtures(page)
   await page.setViewportSize({ width: 1440, height: 900 })
   await page.goto(`/?ra=${manifest.ra}&dec=${manifest.dec}&fov=0.2&band=6`)
-  await page.getByTestId('dock-spectrum').click()
-  await page.getByRole('button', { name: 'Build quick-look spectrum from all SPHEREx visits' }).click()
+  await page.getByTestId('inspect-measure').click()
+  await page.getByRole('button', { name: 'Measure the target in all SPHEREx visits' }).click()
   const chart = page.locator('.spectrum-chart')
   await expect(chart.locator('svg[role="img"]')).toBeVisible()
   await expect(page.getByRole('figure', { name: 'Flux at the target by wavelength' })).toBeVisible()

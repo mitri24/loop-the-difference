@@ -4,7 +4,9 @@ import { useCallback, useEffect, useId, useMemo, useRef, useState, type MouseEve
 // the same anatomy as the analysis ScatterPlot): title row with a Table toggle, legend above the plot,
 // the plot drawn at its measured width (11 px text stays 11 px in any panel width), one tooltip that
 // follows hover and keyboard focus, the table always there for screen readers.
-export const CHART_MIN_W = 260
+// The inspector under the overview map is as narrow as the map (200 px on tablets): charts follow it down to here;
+// narrower, they scroll sideways instead of squeezing their marks.
+export const CHART_MIN_W = 170
 export const CHART_MAX_W = 760
 // A hit area of 24 px around each mark: nobody has to land on an 8 px dot.
 export const HIT_RADIUS = 12

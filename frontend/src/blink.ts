@@ -1,3 +1,4 @@
+import { sameWavelength } from './spectral'
 import type { Frame } from './types'
 
 export type BlinkLetter = 'A' | 'B'
@@ -9,8 +10,32 @@ export interface BlinkPair {
 export const REDUCED_DELAY_MS = 1000
 export const REDUCED_MAX_SWAPS = 20
 
-// A = first frame of the earliest epoch, B = first frame of the latest epoch; one epoch: B = last frame.
+// A compatible pair (§3 of the workspace brief): two epochs at the same wavelength (sameWavelength: within half a
+// resolution element, as the backend's checks), the longest time baseline among them, the earlier one as A.
+// Null when no two frames qualify.
+export function compatiblePair(frames: Pick<Frame, 'epoch' | 'mjd' | 'wavelength_um' | 'detector'>[]): BlinkPair | null {
+  let best: BlinkPair | null = null
+  let span = -1
+  let epochs = -1
+  for (let i = 0; i < frames.length; i++) {
+    for (let j = i + 1; j < frames.length; j++) {
+      const [a, b] = frames[i].mjd <= frames[j].mjd ? [i, j] : [j, i]
+      if (frames[a].epoch === frames[b].epoch) continue
+      if (!sameWavelength(frames[a].wavelength_um, frames[b].wavelength_um, frames[a].detector)) continue
+      const gap = frames[b].mjd - frames[a].mjd
+      // Equal baselines: the epochs further apart.
+      const apart = Math.abs(frames[b].epoch - frames[a].epoch)
+      if (gap > span || (gap === span && apart > epochs)) { span = gap; epochs = apart; best = { a, b } }
+    }
+  }
+  return best
+}
+
+// The pair the player opens with: a compatible pair when there is one, else the first frame of the earliest
+// epoch against the first of the latest (one epoch: the last frame), as before.
 export function defaultBlinkPair(frames: Frame[]): BlinkPair | null {
+  const compatible = frames.length >= 2 ? compatiblePair(frames) : null
+  if (compatible) return compatible
   if (frames.length < 2) return null
   const first = (epoch: number) => frames.findIndex((f) => f.epoch === epoch)
   const epochs = frames.map((f) => f.epoch)
