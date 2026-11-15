@@ -49,7 +49,7 @@ import { changeLine, residualMarks, usePairDifference } from './pairDifference'
 import { countSources, useSourceLayer } from './sourceLayer'
 import { targetText } from './targets'
 import type { DetectedSource, FrameJob, ObservationSummary, ProperMotion } from './types'
-import { POLARIS, readEmbed, readMarks, readPair, readQuery, toSearch, type TargetQuery, type ViewMode } from './url'
+import { addressFor, POLARIS, readEmbed, readMarks, readPair, readQuery, toSearch, type TargetQuery, type ViewMode } from './url'
 import { PHONE, useMedia } from './useMedia'
 
 const INITIAL = readQuery(window.location.search)
@@ -425,7 +425,8 @@ export default function App() {
   }, [manifest, linkComparison])
   useEffect(() => {
     // While the link's comparison loads, its A and B stay in the address.
-    if (!EMBED) window.history.replaceState(null, '', toSearch(query, EMBED, urlMarks, pairIds ?? (linkComparison ? LINKED_PAIR : null)))
+    // The bare address stays bare until the user chooses something (addressFor).
+    if (!EMBED) window.history.replaceState(null, '', addressFor(query, INITIAL, EMBED, urlMarks, pairIds ?? (linkComparison ? LINKED_PAIR : null)) || window.location.pathname)
   }, [query, urlMarks, pairIds, linkComparison])
   useMarkLayer(sky, candidate.allMarks)
   // The link opens this comparison with the marks set in it.
