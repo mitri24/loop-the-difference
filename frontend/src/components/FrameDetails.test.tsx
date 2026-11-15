@@ -32,10 +32,12 @@ describe('FrameDetails', () => {
     expect(html).toContain('<dd>Individual observation</dd>')
     expect(html).toContain('<dd>D3 · λ 1.65 ± 0.02 µm</dd>')
     expect(html).toContain('96 % covered · 1.2 % masked')
-    expect(html).toContain('SPHEREx DR1')
+    // Release, epoch, MJD, field and where λ sits among the detectors stand behind All details.
     const more = html.indexOf('<summary>All details</summary>')
-    expect(more).toBeGreaterThan(html.indexOf('Release'))
-    expect(html.indexOf('MJD')).toBeGreaterThan(more)
+    expect(more).toBeGreaterThan(html.indexOf('Quality'))
+    for (const later of ['SPHEREx DR1', 'MJD', 'Field', 'Where the current frame sits in wavelength']) {
+      expect(html.indexOf(later), later).toBeGreaterThan(more)
+    }
     expect(html).toContain('href="https://irsa.example/obs-1"')
     expect(html).toContain('Level-2 file (AWS S3)')
   })

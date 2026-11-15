@@ -37,8 +37,15 @@ async function fixtures(page:Page) {
     return route.fulfill({json:{job_id:'primary',status:'finished',progress:0,total:0,manifest:null,error:null}})
   })
 }
-// No sidebar: the analysis parts are sections of the investigate page (section bar); controls open as sheets.
-const sections = ['images','checks','candidate','measure','coverage','aligned','data']
+// No sidebar: the analysis parts are tabs of the inspector under the overview map (on phones it opens with Inspect
+// under the images); controls open as sheets.
+const tabs = ['frame','quality','candidate','measure','coverage','analysis','data']
+async function openTab(page:Page, id:string) {
+  const toggle=page.locator('.inspect-toggle')
+  if (await toggle.isVisible() && await toggle.getAttribute('aria-expanded')!=='true') await toggle.click()
+  await page.getByTestId(`inspect-${id}`).click()
+  return page.locator(`#inspect-panel-${id}`)
+}
 const sheets = ['target','layers','about'] as const
 async function openSheet(page:Page, id:(typeof sheets)[number]) {
   const direct=page.getByTestId(`open-${id}`)
@@ -49,19 +56,23 @@ async function openSheet(page:Page, id:(typeof sheets)[number]) {
   return more
 }
 
-test('the page names every section, jumps to it, and opens every control sheet at all widths', async ({page},info) => {
+test('the inspector opens every tab inside the window and every control sheet opens, at all widths', async ({page},info) => {
   test.setTimeout(240_000)
   await fixtures(page)
   await page.goto(url)
   for (const width of [320,375,390,600,768,1024,1280,1366,1440,1920]) {
     for (const height of [600,900]) {
       await page.setViewportSize({width,height})
-      for (const id of sections) {
-        const link=page.getByTestId(`section-${id}`)
-        await link.scrollIntoViewIfNeeded()
-        await link.click()
-        await expect(page.locator(`#${id}`)).toBeInViewport()
-        await expect(link).toHaveAttribute('aria-current','true')
+      for (const id of tabs) {
+        const panel=await openTab(page,id)
+        await expect(panel).toBeVisible()
+        const tab=page.getByTestId(`inspect-${id}`)
+        await expect(tab).toHaveAttribute('aria-selected','true')
+        const box=(await tab.boundingBox())!
+        expect(box.x).toBeGreaterThanOrEqual(0)
+        expect(box.x+box.width).toBeLessThanOrEqual(width+1)
+        expect(box.y).toBeGreaterThanOrEqual(0)
+        expect(box.y+box.height).toBeLessThanOrEqual(height+1)
       }
       for (const id of sheets) {
         const trigger=await openSheet(page,id)
@@ -80,11 +91,10 @@ test('the page names every section, jumps to it, and opens every control sheet a
   await page.screenshot({path:info.outputPath('page-desktop.png')})
 })
 
-test('additional algorithms use the current target, share their sequence and sit in their sections',async({page},info)=>{
+test('additional algorithms use the current target, share their sequence and sit in their tabs',async({page},info)=>{
   await fixtures(page)
   await page.goto(url)
-  await page.getByTestId('section-aligned').click()
-  const aligned=page.locator('#aligned')
+  const aligned=await openTab(page,'analysis')
   const build=aligned.getByRole('button',{name:'Build aligned sequence',exact:true})
   await expect(build).toBeEnabled()
   const request=page.waitForRequest(r=>r.url().endsWith('/analysis/api/jobs/sequence'))
@@ -97,24 +107,26 @@ test('additional algorithms use the current target, share their sequence and sit
   await expect(page.getByRole('tab',{name:'Significance (σ)'})).toBeVisible()
   await page.getByRole('tab',{name:'Significance (σ)'}).click()
   await expect(page.locator('.diff__main img')).toHaveAttribute('src','/analysis/api/frames/sig.png')
-  await page.getByTestId('section-coverage').click()
-  const coverage=page.locator('#coverage')
+  const coverage=await openTab(page,'coverage')
+  // The analysis service's coverage is a second view of the same visits: folded under the history.
+  await coverage.locator('summary',{hasText:'Wavelength coverage & other archives'}).click()
   await expect(coverage.getByRole('img',{name:'SPHEREx exposures covering the target: date versus wavelength'})).toBeVisible()
   await expect(coverage.getByRole('button',{name:'Search the CADC archive (2–20 s)'})).toBeVisible()
   await expect(coverage.locator('.reference-analysis')).toContainText('Fixture observation search')
-  await page.getByTestId('section-measure').click()
-  await page.locator('#measure').getByRole('button',{name:'Measure spectrum',exact:true}).click()
-  await expect(page.locator('#measure').getByRole('img',{name:'SPHEREx spectrum of the target: flux density versus wavelength'})).toBeVisible()
+  const measure=await openTab(page,'measure')
+  // The aligned aperture spectrum is the second method: folded under the quick-look measurement.
+  await measure.locator('summary',{hasText:'Second method: aligned aperture spectrum'}).click()
+  await measure.getByRole('button',{name:'Measure spectrum',exact:true}).click()
+  await expect(measure.getByRole('img',{name:'SPHEREx spectrum of the target: flux density versus wavelength'})).toBeVisible()
   await page.screenshot({path:info.outputPath('page-analysis-desktop.png')})
-  await page.getByTestId('section-candidate').click()
-  await expect(page.locator('#candidate')).toBeInViewport()
+  await expect(await openTab(page,'candidate')).toBeInViewport()
   await page.setViewportSize({width:390,height:844})
-  await page.getByTestId('section-aligned').click()
+  await openTab(page,'analysis')
   await expect(page.getByRole('tab',{name:'Significance (σ)'})).toBeVisible()
   await page.screenshot({path:info.outputPath('page-analysis-mobile.png')})
 })
 
-test('analysis service error offers retry under Coverage; the other parts wait and the page stays usable',async({page})=>{
+test('analysis service error offers retry under Coverage; the other parts wait and the inspector stays usable',async({page})=>{
   await fixtures(page)
   let attempt = 0
   await page.route('**/analysis/api/observations?**',route => {
@@ -124,51 +136,61 @@ test('analysis service error offers retry under Coverage; the other parts wait a
     return route.fulfill({json:search})
   })
   await page.goto(url)
-  await page.getByTestId('section-coverage').click()
-  const coverage=page.locator('#coverage')
+  const coverage=await openTab(page,'coverage')
+  await coverage.locator('summary',{hasText:'Wavelength coverage & other archives'}).click()
   await expect(coverage.locator('.reference-analysis [role=alert]')).toContainText('Archive unavailable')
-  await expect(page.locator('#aligned')).toContainText('needs the archive search, which failed')
+  await expect(page.locator('#inspect-panel-analysis')).toContainText('needs the archive search, which failed: retry it in the Coverage tab')
   await coverage.getByRole('button',{name:'Retry observation search'}).click()
   await expect(coverage.locator('.reference-analysis [role=status]')).toContainText('archive search is incomplete')
   await coverage.getByRole('button',{name:'Retry archive search'}).click()
-  await expect(page.locator('#aligned').getByRole('button',{name:'Build aligned sequence',exact:true})).toBeEnabled()
-  await page.getByTestId('section-data').click()
-  await expect(page.locator('#data')).toBeInViewport()
+  await expect((await openTab(page,'analysis')).getByRole('button',{name:'Build aligned sequence',exact:true})).toBeEnabled()
+  await expect(await openTab(page,'data')).toBeInViewport()
 })
 
-test('the analysis searches the exact selected coordinates and draws its graphs at the section width', async ({ page }, info) => {
+test('the analysis searches the exact selected coordinates and draws its graphs at the panel width, wider when expanded', async ({ page }, info) => {
   await fixtures(page)
   const selected = { ...target, ra:269.640817, dec:4.910194, name:null }
   await page.route('**/api/observations?**', route => route.fulfill({json:{collection:'TEST_FIXTURE',ra:selected.ra,dec:selected.dec,count:2,detectors:{'6':2},epochs:[],observations:[]}}))
   await page.route('**/analysis/api/observations?**', route => route.fulfill({json:{...search,target:selected}}))
   await page.setViewportSize({width:1440,height:900})
-  const request = page.waitForRequest('**/analysis/api/observations?**')
   await page.goto('/?ra=269.640817&dec=4.910194&fov=0.2&band=6')
+  await expect(page.locator('.viewer')).toBeVisible()
+  // The archive search starts once a tab that needs it opens.
+  const request = page.waitForRequest('**/analysis/api/observations?**')
+  const coverage=await openTab(page,'coverage')
   const params = new URL((await request).url()).searchParams
   expect(params.get('ra')).toBe('269.640817')
   expect(params.get('dec')).toBe('4.910194')
   expect(params.get('fov')).toBe('12')
-  await page.getByTestId('section-coverage').click()
-  const graph=page.locator('#coverage').getByRole('img',{name:'SPHEREx exposures covering the target: date versus wavelength'})
+  await coverage.locator('summary',{hasText:'Wavelength coverage & other archives'}).click()
+  const graph=coverage.getByRole('img',{name:'SPHEREx exposures covering the target: date versus wavelength'})
   await expect(graph).toBeVisible()
-  expect((await graph.boundingBox())!.width).toBeGreaterThan(500)
+  const panel=(await coverage.boundingBox())!
+  expect((await graph.boundingBox())!.width).toBeGreaterThan(panel.width*0.75)
+  // Expand gives the graphs the room of the images.
+  await page.getByRole('button',{name:'Expand inspector'}).click()
+  await expect.poll(async()=>(await graph.boundingBox())!.width).toBeGreaterThan(500)
   await page.screenshot({path:info.outputPath('page-coverage-desktop.png')})
-  await page.getByTestId('section-measure').click()
-  await page.locator('#measure').getByRole('button',{name:'Measure spectrum',exact:true}).click()
-  const spectrum=page.locator('#measure').getByRole('img',{name:'SPHEREx spectrum of the target: flux density versus wavelength'})
+  await page.getByRole('button',{name:'Dock inspector'}).click()
+  const measure=await openTab(page,'measure')
+  await measure.locator('summary',{hasText:'Second method: aligned aperture spectrum'}).click()
+  await measure.getByRole('button',{name:'Measure spectrum',exact:true}).click()
+  const spectrum=measure.getByRole('img',{name:'SPHEREx spectrum of the target: flux density versus wavelength'})
   await expect(spectrum).toBeVisible()
   await page.setViewportSize({width:390,height:844})
+  await openTab(page,'measure')
   await expect(spectrum).toBeVisible()
   expect(await page.evaluate(()=>document.documentElement.scrollWidth)).toBeLessThanOrEqual(391)
 })
 
-test('aligned image browser places metadata and vertical thumbnails beside the selected image',async({page},info)=>{
+test('aligned image browser, expanded, places metadata and vertical thumbnails beside the selected image',async({page},info)=>{
   await fixtures(page)
   await page.setViewportSize({width:1920,height:900})
   await page.goto(url)
-  await page.getByTestId('section-aligned').click()
-  await page.locator('#aligned').getByRole('button',{name:'Build aligned sequence',exact:true}).click()
-  const browser=page.locator('#aligned .reference-analysis .blink')
+  const aligned=await openTab(page,'analysis')
+  await page.getByRole('button',{name:'Expand inspector'}).click()
+  await aligned.getByRole('button',{name:'Build aligned sequence',exact:true}).click()
+  const browser=aligned.locator('.reference-analysis .blink')
   const rail=browser.getByRole('list',{name:'Observation thumbnails'})
   await rail.getByRole('button',{name:/^Show observation 2,/}).click()
   const metadata=browser.getByRole('region',{name:'Selected observation metadata'})
@@ -190,6 +212,7 @@ test('aligned image browser places metadata and vertical thumbnails beside the s
   expect(details.height).toBeLessThanOrEqual(image.height+1)
   await page.screenshot({path:info.outputPath('aligned-browser-desktop.png')})
   await page.setViewportSize({width:390,height:844})
+  await openTab(page,'analysis')
   await expect(metadata).toBeVisible()
   expect(await page.evaluate(()=>document.documentElement.scrollWidth)).toBeLessThanOrEqual(391)
   await page.screenshot({path:info.outputPath('aligned-browser-mobile.png')})

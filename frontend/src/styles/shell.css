@@ -68,6 +68,8 @@
 }
 @media (width > 700px) and (max-width:1023px) {
   .shell:has(> .stage.investigate) { grid-template-columns:minmax(0,1fr) auto; grid-template-areas:'hud map' 'main map' 'bar map'; }
+  /* The map column is narrow here: the inspector's panel gives its content the width. */
+  .inspector-panel { padding-inline:var(--space-2); }
 }
 .sky-area.overview { position:relative; inset:auto; align-self:start; margin:var(--space-3) var(--space-3) var(--space-3) 0; z-index:var(--z-chrome); width:var(--map-w); max-width:calc(100% - 24px); height:calc(var(--map-w) * .75 + 36px); max-height:calc(100% - 24px); overflow:visible; background:var(--surface-1); border:1px solid var(--border-strong); border-radius:var(--radius-md); }
 .sky-area.overview .sky-stage { top:36px; overflow:hidden; border-radius:0 0 var(--radius-md) var(--radius-md); }
@@ -155,20 +157,32 @@
 .tab-count { min-width:18px; padding:0 5px; border-radius:var(--radius-md); background:var(--surface-3); color:var(--text-primary); font-size:10px; font-variant-numeric:tabular-nums; text-align:center; }
 .tab-count.alert { background:var(--status-fail); color:var(--surface-0); }
 .inspector-close { display:none; flex:none; width:36px; min-height:32px; padding:0; background:transparent; border-color:transparent; }
+.inspector-expand { flex:none; min-height:30px; padding:0 var(--space-2); background:transparent; font-size:var(--text-xs); }
 .inspector-panel { flex:1; min-height:0; overflow-y:auto; overscroll-behavior:contain; padding:var(--space-3); display:flex; flex-direction:column; gap:var(--space-3); container-type:inline-size; scrollbar-width:thin; font-size:var(--text-sm); }
 .inspector-panel[hidden] { display:none; }
 .inspector-panel:focus:not(:focus-visible) { outline:none; }
 .inspector-panel > h3 { margin:var(--space-2) 0 0; font-size:var(--text-md); }
 .inspector-panel svg,.inspector-panel table { max-width:100%; }
+.tab-loading { display:flex; flex-direction:column; gap:var(--space-3); }
+/* The loading player: the same grid, grey frames in place of the pair, the thumbnails, the image and the bar. */
+.player-skeleton .pair-head > .skeleton-lines { gap:var(--space-2); padding-block:var(--space-1); }
+.player-skeleton .transport { padding-block:var(--space-3); }
 .inspect-toggle { display:none; }
 @media (width > 700px) {
-  .sky-area.overview > .inspector { position:absolute; left:-1px; top:calc(100% + 1px + var(--space-3)); width:var(--map-w);
-    height:calc(100dvh - env(safe-area-inset-top) - env(safe-area-inset-bottom) - var(--hud-pad-y) - 100% - 2px - 2 * var(--space-3)); }
+  /* A grid item in the map column: under the card (its size measured by App), down to the window's bottom. */
+  .stage.investigate > .inspector { grid-area:map; align-self:end; justify-self:end; position:relative; z-index:var(--z-chrome);
+    width:var(--map-card-w, 280px); height:calc(100% - var(--hud-pad-y) - var(--map-card-h, 0px) - 2 * var(--space-3)); margin:0 var(--space-3) var(--space-3) 0; }
   /* Minimized, the card keeps the map's width, so the inspector keeps its width and only moves up. */
-  .sky-area.overview.collapsed:has(> .inspector:not([hidden])) { width:var(--map-w); }
+  .stage.investigate:has(> .inspector:not([hidden])) > .sky-area.overview.collapsed { width:var(--map-w); }
+  /* Expand: wider over the images, from the right edge, at the same height; nothing beside it moves. */
+  .stage.investigate > .inspector.expanded { position:absolute; right:0; bottom:0; width:clamp(var(--map-card-w, 280px), 55vw, 960px);
+    box-shadow:0 12px 32px var(--shadow-color); }
   /* Expanded, the map lies over the page; the inspector waits under it. */
-  .sky-area.overview.expanded > .inspector { visibility:hidden; }
+  .stage.investigate:has(> .sky-area.expanded) > .inspector { visibility:hidden; }
 }
+/* A minimized map keeps Aladin at its size but hidden; Aladin gives its reticle and widgets their own visibility,
+   so clip the hidden map too: nothing of it may show or take clicks over the inspector below the bar. */
+.sky-area.overview.collapsed > .sky-stage { clip-path:inset(100%); }
 
 /* On-demand sheets (options, layers, about) open from the header; narrow headers fold them into "⋯". */
 .header-tools { display:contents; }
@@ -260,12 +274,15 @@
   .sky-area.overview { flex:none; width:auto; max-width:none; height:min(calc(var(--map-w) * .75 + 36px), 50%); margin:0; border-width:1px 0 0; border-radius:0; }
   .sky-area.overview.collapsed { height:36px; }
   .overview-expand { display:none; }
-  /* The inspector: a bottom sheet over the page, opened with Inspect in the viewer head. */
+  /* The inspector: opened with Inspect in the viewer head, it takes the lower half of the stage; the images shrink
+     above it instead of being covered, so the player stays usable while inspecting. */
   .inspect-toggle { display:inline-flex; margin-left:auto; }
-  .sky-area.overview > .inspector { position:fixed; left:0; right:0; bottom:0; z-index:var(--z-panel); height:min(70dvh, 560px);
-    padding-bottom:env(safe-area-inset-bottom); border-width:1px 0 0; border-radius:var(--radius-lg) var(--radius-lg) 0 0; box-shadow:0 -8px 24px var(--shadow-color); }
-  .sky-area.overview > .inspector:not(.open) { display:none; }
+  .stage.investigate > .viewer { min-height:min-content; }
+  .stage.investigate > .inspector { position:relative; z-index:var(--z-chrome); flex:0 1 50%; min-height:160px; border-width:1px 0 0; border-radius:0; }
+  .stage.investigate > .inspector:not(.open) { display:none; }
+  .shell:has(> .fpanel:not([hidden])) .stage.investigate > .inspector { display:none; }
   .inspector-close { display:inline-flex; }
+  .inspector-expand { display:none; }
 }
 @media (max-height:600px) and (min-width:701px) {
 

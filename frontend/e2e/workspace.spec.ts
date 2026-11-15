@@ -56,8 +56,21 @@ async function hitTarget(locator: Locator) {
 }
 
 // No sidebar: the controls that are not information open as a sheet from the header (folded into "⋯" on narrow
-// headers); the information is on the investigate page, reached through the section bar.
+// headers); the information is in the inspector under the overview map, one tab per kind (on phones it opens with
+// Inspect under the images).
 const SHEET_IDS = ['target', 'layers', 'about'] as const
+async function openTab(page: Page, id: string, tap = false) {
+  const toggle = page.locator('.inspect-toggle')
+  if (await toggle.isVisible() && await toggle.getAttribute('aria-expanded') !== 'true') await (tap ? toggle.tap() : toggle.click())
+  const tab = page.getByTestId(`inspect-${id}`)
+  await (tap ? tab.tap() : tab.click())
+  return page.locator(`#inspect-panel-${id}`)
+}
+// Phones: the inspector takes the lower half of the stage; closing it gives the images the whole stage again.
+async function closeInspector(page: Page, tap = false) {
+  const close = page.getByRole('button', { name: 'Close inspect' })
+  if (await close.isVisible()) await (tap ? close.tap() : close.click())
+}
 async function openSheet(page: Page, id: (typeof SHEET_IDS)[number]) {
   const direct = page.getByTestId(`open-${id}`)
   if (await direct.isVisible()) {
@@ -114,8 +127,7 @@ test('fixture: name search, compare, playback, quality and source metadata stay 
   await page.getByRole('button', { name: 'Pause', exact: true }).click()
   await page.getByRole('button', { name: 'Next frame', exact: true }).click()
   await expect(page.locator('.stamp')).toContainText('2026-09-10')
-  await page.getByTestId('section-data').click()
-  await expect(page.locator('#data')).toContainText('TEST_FIXTURE')
+  await expect(await openTab(page, 'data')).toContainText('TEST_FIXTURE')
   await expect(page.locator('.stamp')).toContainText('2026-09-10')
   await page.getByRole('radio', { name: 'Difference', exact: true }).click()
   await expect(page.getByLabel('Epoch A (earlier)')).toBeVisible()
@@ -152,7 +164,7 @@ test('fixture: empty data and incompatible epochs are honest', async ({ page }) 
   await fixtures(page, { ...manifest, epochs: 1, frames: [frame(0)], differences: [] })
   await page.goto('/?ra=37.954542&dec=89.264111&band=6&fov=0.2&mode=difference')
   await expect(page.getByRole('radio', { name: 'Difference' })).toBeDisabled()
-  await expect(page.locator('.viewer')).toContainText('At least two epochs are needed.')
+  await expect(page.locator('.viewer')).toContainText('Difference needs observations from at least two epochs.')
   await expect(page.getByRole('button', { name: 'Play', exact: true })).toBeDisabled()
   await fixtures(page, { ...manifest, epochs: 0, frames: [], differences: [] })
   await page.reload()
@@ -269,9 +281,8 @@ test('touch: pan, locate, compare and dismiss remain usable after rotation', asy
   await page.locator('#target-panel').getByRole('button', { name: 'Polaris', exact: true }).tap()
   await expect(page.getByRole('button', { name: 'Play', exact: true })).toBeVisible()
   await page.setViewportSize({ width: 667, height: 375 })
-  await page.getByTestId('section-candidate').tap()
-  await expect(page.locator('#candidate')).toBeInViewport()
-  await page.getByTestId('section-images').tap()
+  await expect(await openTab(page, 'candidate', true)).toBeInViewport()
+  await closeInspector(page, true)
   await hitTarget(page.getByRole('button', { name: 'Next frame', exact: true }))
   await page.getByTestId('header-more').tap()
   await page.getByTestId('menu-layers').tap()
@@ -382,7 +393,7 @@ test('fixture: frames on the sky, layers, Gaia motion and spectrum keep their pl
   await page.getByTestId('sky-search').fill('Polaris')
   await page.getByTestId('sky-search').press('Enter')
   await expect(page).toHaveURL(/name=Polaris/)
-  await expect(page.locator('.viewer .meta')).toContainText('576402619921510144')
+  await expect(page.locator('#inspect-panel-frame .frame-details')).toContainText('576402619921510144')
   await openSheet(page, 'layers')
   const onSky = page.locator('.layers-section').getByLabel('SPHEREx frames on the sky')
   await expect(onSky).toBeChecked()
@@ -392,9 +403,9 @@ test('fixture: frames on the sky, layers, Gaia motion and spectrum keep their pl
   await expect(page.locator('.layers-section').getByLabel(/AllWISE/)).toBeEnabled()
   await onSky.uncheck()
   await expect(page.locator('.map-caption')).not.toContainText('SPHEREx frame on the sky')
-  await page.getByTestId('section-measure').click()
-  await page.getByRole('button', { name: 'Build quick-look spectrum from all SPHEREx visits' }).click()
-  await expect(page.locator('#measure')).toContainText('Could not build the spectrum: Not Found')
+  const measure = await openTab(page, 'measure')
+  await measure.getByRole('button', { name: 'Measure the target in all SPHEREx visits' }).click()
+  await expect(measure).toContainText('Could not measure the target: Not Found')
 })
 
 test('fixture: a shared link with a name adds the Gaia marker; new coordinates drop the name', async ({ page }) => {
@@ -404,7 +415,7 @@ test('fixture: a shared link with a name adds the Gaia marker; new coordinates d
   await page.route('**/api/resolve?**', route => route.fulfill({ json: { name: 'Polaris', ra: manifest.ra, dec: manifest.dec, proper_motion: motion } }))
   await page.goto('/?ra=37.954542&dec=89.264111&fov=0.2&band=6&name=Polaris')
   await expect(page.locator('.player .marker')).toBeVisible()
-  await expect(page.locator('.viewer .meta')).toContainText('576402619921510144')
+  await expect(page.locator('#inspect-panel-frame .frame-details')).toContainText('576402619921510144')
   await openSheet(page, 'target')
   await page.getByText('Enter precise coordinates', { exact: true }).click()
   await page.getByLabel('Right ascension').fill('37.9')
@@ -412,7 +423,7 @@ test('fixture: a shared link with a name adds the Gaia marker; new coordinates d
   await expect(page).toHaveURL(/ra=37\.9&/)
   await expect(page.getByRole('button', { name: 'Play', exact: true })).toBeVisible()
   expect(page.url()).not.toContain('name=')
-  await expect(page.locator('.viewer .meta')).not.toContainText('Gaia DR3')
+  await expect(page.locator('#inspect-panel-frame .frame-details')).not.toContainText('Gaia DR3')
   await expect(page.locator('.player .marker')).toHaveCount(0)
 })
 
@@ -450,7 +461,7 @@ test('fixture: Mark detected sources in two frames lists candidate marks A and B
   for (const width of [320, 1920]) {
     await page.setViewportSize({ width, height: 900 })
     await page.goto('/?ra=37.954542&dec=89.264111&fov=0.2&band=6')
-    await page.getByTestId('section-candidate').click()
+    await openTab(page, 'candidate')
     await expect(panel).toContainText('Spotted motion? Mark the object in two frames')
     await hitTarget(panel.getByRole('button', { name: 'Mark in this frame' }))
     await page.locator('summary', { hasText: 'Detected sources' }).click()
@@ -500,18 +511,18 @@ test('fixture: Explore picks a region on the sky, Investigate shows its images, 
   await expect(page.locator('.sky-area.overview')).toBeVisible()
   await fits(page, page.locator('.sky-area.overview'))
   await page.getByRole('button', { name: 'Next frame', exact: true }).click()
-  await page.getByTestId('section-checks').click()
-  await expect(page.locator('#checks')).toBeInViewport()
+  await expect(await openTab(page, 'quality')).toBeInViewport()
   await page.getByRole('button', { name: 'Back to sky' }).click()
   await expect(page.locator('.viewer')).toBeHidden()
+  await expect(page.locator('.inspector')).toBeHidden()
   await page.getByRole('button', { name: /^Back to images/ }).click()
-  // The page keeps its frame and its place.
+  // The workspace keeps its frame and its tab.
   await expect(page.locator('.stamp')).toContainText('2026-09-10')
-  await expect(page.locator('#checks')).toBeInViewport()
+  await expect(page.locator('#inspect-panel-quality')).toBeInViewport()
   await expect(page.locator('.sky-area.overview')).toBeVisible()
   await page.getByRole('button', { name: 'Minimize' }).click()
   await expect(page.locator('.sky-area.overview .sky-stage')).toBeHidden()
-  await page.getByTestId('section-coverage').click()
+  await openTab(page, 'coverage')
   await expect(page.locator('.observation-timeline')).toBeInViewport()
   const bounds = await page.evaluate(() => ({ w: document.documentElement.scrollWidth, h: document.documentElement.scrollHeight }))
   expect(bounds).toEqual({ w: 1440, h: 900 })
@@ -550,6 +561,8 @@ test('fixture: vertical thumbnails select the large image and its own metadata',
     await page.setViewportSize({width,height:900})
     await page.goto('/?ra=37.954542&dec=89.264111')
     const gallery=page.getByRole('region',{name:'Observation images'})
+    // The shown frame's details are the Frame tab of the inspector (on phones: opened under the images).
+    await openTab(page,'frame')
     const metadata=page.getByRole('region',{name:'Shown frame'})
     await expect(gallery.locator('.observation-card')).toHaveCount(12)
     await expect(gallery).not.toContainText('Coverage')
@@ -571,12 +584,10 @@ test('fixture: vertical thumbnails select the large image and its own metadata',
     expect(Math.abs(rail.y-image.y)).toBeLessThan(2)
     expect(Math.abs(rail.height-image.height)).toBeLessThan(2)
     expect(rail.width).toBeLessThanOrEqual(90)
-    const player=(await page.locator('.observation-player').boundingBox())!
-    if(player.width>=850) {
-      const details=(await metadata.boundingBox())!
-      expect(details.x).toBeGreaterThanOrEqual(image.x+image.width)
-      expect(details.height).toBeLessThanOrEqual(image.height+1)
-    }
+    // Beside the image from 701 px (the inspector under the map), under it on phones.
+    const details=(await metadata.boundingBox())!
+    if(width>700) expect(details.x).toBeGreaterThanOrEqual(image.x+image.width)
+    else expect(details.y).toBeGreaterThanOrEqual(image.y)
     expect(await page.evaluate(()=>document.documentElement.scrollWidth)).toBeLessThanOrEqual(width+1)
     if ([390,1440,1920].includes(width)) await page.screenshot({path:info.outputPath(`image-browser-${width}.png`)})
   }
@@ -591,14 +602,14 @@ test('fixture: observation history opens beside the comparison and closes withou
   for (const width of [320, 375, 390, 600, 768, 1024, 1280, 1366, 1440, 1920]) {
     for (const height of [600, 700, 768, 900]) {
       await page.setViewportSize({ width, height })
-      const trigger = page.getByTestId('section-coverage')
+      await openTab(page, 'coverage')
+      const trigger = page.getByTestId('inspect-coverage')
       await fits(page, trigger)
       await hitTarget(trigger)
-      await trigger.click()
       await expect(page.locator('.observation-timeline')).toBeInViewport()
       expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(width + 1)
       if (height === 900 && [390, 1440].includes(width)) await page.screenshot({ path: info.outputPath(`history-${width}.png`) })
-      await page.getByTestId('section-images').click()
+      await closeInspector(page)
       await expect(page.locator('.stamp')).toBeInViewport()
       await expect(page.locator('.stamp')).toHaveText(stamp!)
       await expect(page.locator('.bottom-bar')).toHaveCount(0)
@@ -619,27 +630,28 @@ test('fixture: the target, detector and blocked difference are named once', asyn
   await expect(head).not.toContainText('D6')
   // A blocked difference: the greyed tab and its reason, without "Difference unavailable" again.
   await expect(page.getByRole('radio', { name: 'Difference' })).toBeDisabled()
-  await expect(head).toContainText('At least two epochs are needed.')
+  await expect(head).toContainText('Difference needs observations from at least two epochs.')
   await expect(head).not.toContainText('unavailable')
-  // One way into the observation history; its count stands on the section bar, not again in the section.
-  const trigger = page.getByTestId('section-coverage')
+  // One way into the observation history; its count stands on the tab, not again in the panel.
+  const trigger = page.getByTestId('inspect-coverage')
   await expect(trigger).toContainText('4')
   await trigger.click()
-  const summary = page.locator('#coverage .history-summary')
+  const summary = page.locator('#inspect-panel-coverage .history-summary')
   await expect(summary).toContainText('2 epochs')
   await expect(summary).toContainText('4 in D6')
   await expect(summary).not.toContainText('observations')
-  // The Data section repeats neither the search bar nor the checks or the coverage.
-  await page.getByTestId('section-data').click()
-  const region = page.locator('#data .data-section').first()
+  // The Data tab repeats neither the search bar nor the checks or the coverage.
+  const data = await openTab(page, 'data')
+  const region = data.locator('.data-section').first()
   await expect(region).toContainText('0.2°')
   await expect(region).not.toContainText('37.954542')
-  await expect(page.locator('#data')).toContainText('Image preparation')
-  await expect(page.locator('#data')).not.toContainText('SPHEREx coverage')
-  await expect(page.locator('#data').getByRole('region', { name: 'Checks for this view' })).toHaveCount(0)
-  // The science note stands once, under the images.
-  await expect(page.locator('.science-note')).toHaveCount(1)
-  await expect(page.locator('#images .science-note')).toHaveCount(1)
+  await expect(data).toContainText('Image preparation')
+  await expect(data).not.toContainText('SPHEREx coverage')
+  await expect(data.getByRole('region', { name: 'Checks for this view' })).toHaveCount(0)
+  // The caveat stands once, with the checks; no permanent line under the images.
+  await expect(page.locator('.science-note')).toHaveCount(0)
+  await expect(page.getByText('Changes are candidates', { exact: true })).toHaveCount(1)
+  await expect(page.locator('#inspect-panel-quality')).toContainText('Changes are candidates')
 })
 
 test('fixture: an unedited search field keeps the comparison position, an edited one is resolved as a name', async ({ page }) => {
@@ -838,7 +850,7 @@ test('fixture: header menus close on Escape or a press outside, open above a she
   await page.keyboard.press('Escape')
   await expect(page.locator('.fpanel')).toBeHidden()
   await examples.click()
-  await page.locator('.science-note').click()
+  await page.locator('.viewer .viewport').click()
   await expect(page.locator('.hud-chips')).toBeHidden()
   // Moving the focus away (keyboard) closes it as well.
   await examples.click()

@@ -2,6 +2,7 @@ import { frameRelease, lambdaText, utcMinute, type BlinkLetter, type BlinkPair }
 import { markerPosition, skyToFrame } from '../motion'
 import { SEARCH_AREA_LABEL, type Prediction } from '../track'
 import type { Frame, FrameManifest, ProperMotion } from '../types'
+import { WavelengthStrip } from './WavelengthStrip'
 
 interface Props {
   frame: Frame
@@ -18,9 +19,10 @@ interface Props {
 
 const LETTERS = ['a', 'b'] as const
 
-// What the shown frame is (spec §14): a few rows by default – time, composition, wavelength, quality, release,
-// and the Gaia and track markers when they are on the image – and everything else the data has behind
-// "All details". Fields the archive does not report are not invented.
+// What the shown frame is (spec §14): only what reading the image needs by default – time, composition, wavelength,
+// quality, and the Gaia and track markers when they are on the image – and everything else the data has behind
+// "All details" (release, epoch, MJD, field, where λ sits among the detectors, provenance). Fields the archive does
+// not report are not invented.
 export function FrameDetails({ frame, index, count, letter, grid, motion, predictions = [], pair = null, onSet }: Props) {
   const marker = motion && markerPosition(motion, frame.mjd, grid.ra, grid.dec, grid.size_deg)
   const predicted = predictions.find((p) => p.mjd === frame.mjd)
@@ -60,8 +62,6 @@ export function FrameDetails({ frame, index, count, letter, grid, motion, predic
           {Math.round(frame.coverage * 100)} % covered ·{' '}
           {frame.masked_fraction == null ? 'masked pixels not reported' : `${(frame.masked_fraction * 100).toFixed(1)} % masked`}
         </dd>
-        <dt>Release</dt>
-        <dd>{frameRelease(frame, grid.collection)}</dd>
         {motion && (
           <>
             <dt>Gaia DR3</dt>
@@ -82,6 +82,8 @@ export function FrameDetails({ frame, index, count, letter, grid, motion, predic
       <details className="disclosure">
         <summary>All details</summary>
         <dl className="meta">
+          <dt>Release</dt>
+          <dd>{frameRelease(frame, grid.collection)}</dd>
           <dt>Epoch</dt>
           <dd>{frame.epoch + 1}</dd>
           <dt>MJD</dt>
@@ -101,6 +103,7 @@ export function FrameDetails({ frame, index, count, letter, grid, motion, predic
             {frame.cloud_url && <> · <a href={frame.cloud_url} target="_blank" rel="noreferrer">Level-2 file (AWS S3)</a></>}
           </dd>
         </dl>
+        <WavelengthStrip detector={frame.detector} frame={frame} />
       </details>
     </section>
   )

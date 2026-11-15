@@ -314,10 +314,11 @@ export function BlinkPlayer({
         </span>
         <label className="speed">
           Speed
+          {/* Reduced motion: never faster than one swap a second. */}
           <input
             type="range"
             min={150}
-            max={1500}
+            max={reduced ? 1650 - REDUCED_DELAY_MS : 1500}
             step={50}
             value={1650 - delayMs}
             onChange={(event) => setDelayMs(1650 - Number(event.target.value))}

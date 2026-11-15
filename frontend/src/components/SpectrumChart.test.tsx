@@ -3,7 +3,6 @@ import { describe, expect, it } from 'vitest'
 import type { Check, SpectrumPoint } from '../types'
 import {
   Plot,
-  BrightnessPanel,
   SpectrumChart,
   bandColour,
   epochShape,
@@ -70,14 +69,23 @@ describe('SpectrumChart', () => {
     expect(html).toContain('href="https://irsa.example/cutout"')
   })
 
-  it('starts on request and says it is a quick-look spectrum; Brightness offers the same measurement', () => {
+  it('measures on request, one measurement for brightness over time and the spectrum', () => {
     const quick = { job: null, error: null, running: false, spectrum: null, start: () => undefined }
-    const html = renderToStaticMarkup(<SpectrumChart quick={quick} />)
+    const html = renderToStaticMarkup(<SpectrumChart quick={quick} centerUm={1.65} detector={3} />)
+    expect(html).toContain('aria-label="Quick-look photometry"')
+    expect(html).toContain('Measure the target in all SPHEREx visits')
+  })
 
-    expect(html).toContain('Quick-look spectrum')
-    expect(html).toContain('Build quick-look spectrum')
-    const brightness = renderToStaticMarkup(<BrightnessPanel quick={quick} centerUm={1.65} detector={3} />)
-    expect(brightness).toContain('Measure the target in all SPHEREx visits')
+  it('shows brightness over time before the spectrum, with the quick-look caveat', () => {
+    const points = [point(0, 1.65, 10, 1), point(1, 1.66, 12, 1), point(2, 2.4, 9, 1)]
+    const spectrum = { collection: 'spherex_dr1', ra: 1, dec: 2, complete: true, points, checks: [] }
+    const quick = { job: { job_id: 's', status: 'finished' as const, progress: 3, total: 3, error: null, spectrum },
+      error: null, running: false, spectrum, start: () => undefined }
+    const html = renderToStaticMarkup(<SpectrumChart quick={quick} centerUm={1.65} detector={3} />)
+    expect(html.indexOf('Brightness at the target over time')).toBeGreaterThan(-1)
+    expect(html.indexOf('Brightness at the target over time')).toBeLessThan(html.indexOf('Flux at the target by wavelength'))
+    expect(html).toContain('Quick-look only')
+    expect(html).not.toContain('Measure the target in all SPHEREx visits')
   })
 
   it('counts missing cutouts for the retry and keeps the other notes', () => {

@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { createSpectrum, getSpectrumJob } from '../api'
 import type { Check, Spectrum, SpectrumJob, SpectrumPoint } from '../types'
 import { BrightnessChart } from './BrightnessChart'
+import { Skeleton } from './Skeleton'
 import { ChartFrame, HIT_RADIUS, LegendItem, Marker, NearestLayer, niceTicks, shapeOf, SHAPE_GLYPHS, tickLabel, tipHandlers } from './Chart'
 
 // Drawn at the measured panel width (ChartFrame); the height stays fixed.
@@ -109,9 +110,12 @@ function QuickStatus({ quick, build }: { quick: QuickSpectrum; build: string }) 
       )}
       {job?.status === 'not_found' && <p className="notice">The measurement expired – start it again.</p>}
       {running && job && (
-        <p className="progress">
-          {job.total > 0 ? `Measuring every visit… ${job.progress}/${job.total}` : 'Searching all detectors…'}
-        </p>
+        <div className="tab-loading" aria-busy="true">
+          <p className="progress">
+            {job.total > 0 ? `Measuring every visit… ${job.progress}/${job.total}` : 'Searching all detectors…'}
+          </p>
+          <Skeleton variant="chart" />
+        </div>
       )}
       {(error ?? job?.error) && <p className="notice error">Could not measure the target: {error ?? job?.error}</p>}
       {spectrum && spectrum.points.length === 0 && <p className="notice">No visit gave a usable flux at this position.</p>}
@@ -119,14 +123,15 @@ function QuickStatus({ quick, build }: { quick: QuickSpectrum; build: string }) 
   )
 }
 
-// Flux against wavelength from every SPHEREx visit of the target (the Spectrum tab).
-export function SpectrumChart({ quick }: { quick: QuickSpectrum }) {
+// The Measure tab: one measurement of the target in every SPHEREx visit, read two ways – its brightness over time
+// (in a narrow window around the shown frame's wavelength: did it change?) and its spectrum (what is it?).
+export function SpectrumChart({ quick, centerUm, detector }: { quick: QuickSpectrum; centerUm?: number | null; detector?: number }) {
   const points = quick.spectrum?.points ?? []
   const { notes } = summarize(quick.spectrum?.checks ?? [])
   return (
-    <section aria-label="Quick-look spectrum">
-      <h3>Quick-look spectrum at the target</h3>
-      <QuickStatus quick={quick} build="Build quick-look spectrum from all SPHEREx visits" />
+    <section className="quick-measure" aria-label="Quick-look photometry">
+      <QuickStatus quick={quick} build="Measure the target in all SPHEREx visits" />
+      {points.length > 0 && <BrightnessChart points={points} centerUm={centerUm} detector={detector} />}
       {points.length > 0 && <Plot points={points} />}
       {quick.spectrum && (
         <p className="caveat">
@@ -135,18 +140,6 @@ export function SpectrumChart({ quick }: { quick: QuickSpectrum }) {
           need checking. {notes.join(' · ')}
         </p>
       )}
-    </section>
-  )
-}
-
-// The same visits over time, in a narrow window around the shown frame's wavelength (the Brightness tab).
-export function BrightnessPanel({ quick, centerUm, detector }: { quick: QuickSpectrum; centerUm?: number | null; detector?: number }) {
-  const points = quick.spectrum?.points ?? []
-  return (
-    <section aria-label="Quick-look brightness">
-      <h3>Quick-look brightness at the target</h3>
-      <QuickStatus quick={quick} build="Measure the target in all SPHEREx visits" />
-      {points.length > 0 && <BrightnessChart points={points} centerUm={centerUm} detector={detector} />}
     </section>
   )
 }

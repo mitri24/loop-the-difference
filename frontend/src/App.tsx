@@ -1,6 +1,6 @@
 import { AnalysisReleaseInfo } from './analysis/AnalysisReleaseInfo'
 import { AnalysisHost } from './analysis/AnalysisHost'
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import type { AladinInstance } from 'aladin-lite'
 import { createFrames, getFrameJob, getObservations, resolveName } from './api'
 import { AboutPanel } from './components/AboutPanel'
@@ -23,13 +23,13 @@ import { LayersSection } from './components/LayersSection'
 import { ModeSwitch } from './components/ModeSwitch'
 import { ObservationTimeline } from './components/ObservationTimeline'
 import { SearchBar } from './components/SearchBar'
+import { Skeleton } from './components/Skeleton'
 import { SkyFrame } from './components/SkyFrame'
 import { SkyView } from './components/SkyView'
 import { SmallBodies, useSmallBodies } from './components/SmallBodies'
 import { SourceList } from './components/SourceList'
-import { BrightnessPanel, SpectrumChart, useQuickSpectrum } from './components/SpectrumChart'
+import { SpectrumChart, useQuickSpectrum } from './components/SpectrumChart'
 import { TargetForm } from './components/TargetForm'
-import { WavelengthStrip } from './components/WavelengthStrip'
 import { useFrameLayers } from './frameLayers'
 import { usePickLayer } from './pickLayer'
 import { usePlateLayer } from './historicalPlate'
@@ -52,9 +52,9 @@ const usesStacks = (mode: ViewMode) => mode !== 'exposures'
 // No sidebar: the information about the comparison is one menu, the inspector under the overview map (one tab per
 // kind, one bounded panel). Only controls open on demand, as a sheet: target & options, sky layers, about.
 type Panel = 'target' | 'layers' | 'about'
-type InspectId = 'frame' | 'quality' | 'candidate' | 'spectrum' | 'brightness' | 'coverage' | 'analysis' | 'data'
+type InspectId = 'frame' | 'quality' | 'candidate' | 'measure' | 'coverage' | 'analysis' | 'data'
 // Tabs whose content starts slow or external lookups once opened.
-const ANALYSIS_TABS: InspectId[] = ['spectrum', 'coverage', 'analysis']
+const ANALYSIS_TABS: InspectId[] = ['measure', 'coverage', 'analysis']
 const PANELS: { id: Panel; title: string; label: string }[] = [
   { id: 'target', title: 'Target & options', label: 'Options' },
   { id: 'layers', title: 'Sky layers', label: 'Layers' },
@@ -68,6 +68,7 @@ export default function App() {
   // The query the map was last moved to; a failed request leaves the map where it was.
   const [centred, setCentred] = useState<Pick<TargetQuery, 'ra' | 'dec'>>(POLARIS)
   const [summary, setSummary] = useState<ObservationSummary | null>(null)
+  const [summaryFailed, setSummaryFailed] = useState(false)
   const [job, setJob] = useState<FrameJob | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [motion, setMotion] = useState<ProperMotion | null>(null)
@@ -101,10 +102,12 @@ export default function App() {
   const [pick, setPick] = useState<{ ra: number; dec: number } | null>(null)
   const [name, setName] = useState('')
   const [shareStatus, setShareStatus] = useState('')
-  // The inspector's tab; on phones the inspector is a bottom sheet, closed by default.
+  // The inspector's tab; Expand lays it wider over the images (desktop); on phones it opens under the images.
   const [inspect, setInspect] = useState<InspectId>('frame')
   const [inspectOpen, setInspectOpen] = useState(false)
+  const [inspectWide, setInspectWide] = useState(false)
   const controller = useRef<AbortController | null>(null)
+  const shellRef = useRef<HTMLDivElement>(null)
   const lastRequest = useRef<{ query: TargetQuery; name?: string }>({ query: INITIAL ?? POLARIS })
   // The search text that stands for the comparison on screen; null once the field is edited or a new run starts.
   const searchShows = useRef<string | null>(null)
@@ -136,12 +139,28 @@ export default function App() {
       if (event.key === 'Escape' &&
           !event.defaultPrevented && !(event.target instanceof HTMLSelectElement)) {
         if (panel) closePanel()
+        else if (inspectWide) setInspectWide(false)
         else setInspectOpen(false)
       }
     }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
-  }, [closePanel, panel])
+  }, [closePanel, panel, inspectWide])
+
+  // The inspector hangs under the overview map card and is as wide as it: the card's size as CSS variables on the
+  // shell (styles/shell.css). An expanded map has no card box (0 × 0): the last size stays for when it docks again.
+  useLayoutEffect(() => {
+    const shell = shellRef.current
+    const card = shell?.querySelector<HTMLElement>('.sky-area')
+    if (!shell || !card) return
+    const observer = new ResizeObserver(() => {
+      if (!card.offsetWidth) return
+      shell.style.setProperty('--map-card-w', `${card.offsetWidth}px`)
+      shell.style.setProperty('--map-card-h', `${card.offsetHeight}px`)
+    })
+    observer.observe(card)
+    return () => observer.disconnect()
+  }, [])
 
   const togglePanel = (next: Panel, trigger: HTMLButtonElement) => {
     panelTrigger.current = trigger
@@ -163,6 +182,7 @@ export default function App() {
     setError(null)
     setJob(null)
     setSummary(null)
+    setSummaryFailed(false)
     setMotion(null)
     setPlateOnSky(false)
     setFrameIndex(0)
@@ -203,7 +223,7 @@ export default function App() {
           setCentred(next)
           setViewRevision((value) => value + 1)
         }
-      }, () => undefined)
+      }, () => { if (!stale()) setSummaryFailed(true) })
       if (Number.isFinite(Number(next.ra)) && Number.isFinite(Number(next.dec))) {
         setCenter({ ra: Number(next.ra), dec: Number(next.dec) })
       }
@@ -369,6 +389,17 @@ export default function App() {
       )}
     </>
   )
+  // While the first images are prepared: grey frames where the pair, thumbnails, image and bar will be (same grid).
+  const loadingViewer = busy && !hasFrames && !error && (
+    <div className="player player-skeleton" aria-hidden="true">
+      <div className="observation-gallery"><div className="observation-strip">
+        {[0, 1, 2, 3].map((i) => <div key={i} className="observation-card"><Skeleton variant="thumb" /></div>)}
+      </div></div>
+      <div className="pair-head"><Skeleton variant="line" lines={2} /><span /><Skeleton variant="line" lines={2} /></div>
+      <div className="viewport"><Skeleton variant="image" /></div>
+      <div className="controls transport"><Skeleton variant="line" /></div>
+    </div>
+  )
   const emptyState = !busy && !hasFrames && !error && (EMBED && !job
     ? <p className="muted">Add ra and dec to the URL, e.g. ?ra=02:31:49.09&amp;dec=+89:15:50.8&amp;embed=1</p>
     : <div className="empty-state">
@@ -389,7 +420,7 @@ export default function App() {
     </>
   )
   const evidence = manifest && <EvidencePanel checks={checks} manifest={manifest} frameLabel={`this comparison · ${manifest.frames.length} ${manifest.frames.length === 1 ? 'image' : 'images'}`}
-    onAction={(action) => (!EMBED || action !== 'choose-region') && onCheckAction(action)} />
+    onAction={(action) => { if (!EMBED || action !== 'choose-region') onCheckAction(action) }} />
   const frameDetails = manifest && frame && !showDifference && <FrameDetails frame={frame} index={frameIndex} count={manifest.frames.length} letter={frameLetter}
     grid={manifest} motion={motion} predictions={predictions} pair={pair} onSet={(which) => setPairRequest({ pair: { [which]: frameIndex } })} />
 
@@ -405,14 +436,22 @@ export default function App() {
     <p className="muted">SPHEREx · {manifest?.collection ?? summary?.collection ?? 'IRSA archive'}</p></main>
 
   const loadFirst = <p className="muted">Load a comparison first: choose a target in the search bar.</p>
+  // A tab whose content is on its way: grey frames instead of "load first" while the comparison loads.
+  const pending = (shape: 'chart' | 'lines', words: string) => busy ? <div className="tab-loading" aria-busy="true">
+    <p className="sr-only">{words}</p>
+    {shape === 'chart' && <Skeleton variant="chart" />}
+    <Skeleton variant="line" lines={shape === 'chart' ? 2 : 6} />
+  </div> : loadFirst
   const blocking = checks.some((check) => check.severity === 'blocker' || check.severity === 'error')
   const current = PANELS.find((item) => item.id === panel)
-  // One tab per kind of information, in the order of the investigation; every panel stays mounted.
+  // One tab per question a scientist asks, in the order of the investigation: what am I looking at, can I trust the
+  // comparison, is it a candidate, how does it measure, where else was it observed, a second method, the data.
+  // Results first; second methods and provenance details stay folded. Every panel stays mounted.
   const tabs: InspectorTab<InspectId>[] = [
     { id: 'frame', label: 'Frame', content: showDifference
       ? <p className="muted">The difference image is shown: its epochs, legend and sources stand beside it.</p>
-      : frameDetails ? <>{frameDetails}<WavelengthStrip detector={manifest!.detector} frame={frame!} /></> : loadFirst },
-    { id: 'quality', label: 'Quality', count: checks.length, alert: blocking, content: evidence || loadFirst },
+      : frameDetails || pending('lines', 'Loading the frame details…') },
+    { id: 'quality', label: 'Quality', count: checks.length, alert: blocking, content: evidence || pending('lines', 'Loading the checks…') },
     { id: 'candidate', label: 'Candidate', count: candidate.marks.length, content: manifest && hasFrames ? <>
       <CandidatePanel candidate={candidate} blocked={markBlocked} track={possible && { ...possible, predictions }}
         known={{ epochs: smallBodies.epochs, motion, detector: manifest.detector, target: targetText(query) }}
@@ -428,13 +467,15 @@ export default function App() {
       {manifest.stacked
         ? <p className="muted">Known asteroids and comets (JPL SBIdent) are looked up for single exposures: switch the view to Exposures.</p>
         : <SmallBodies lookup={smallBodies} currentMjd={frame?.mjd ?? null} />}
-    </> : loadFirst },
-    { id: 'spectrum', label: 'Spectrum', content: manifest ? <>
-      <SpectrumChart quick={quick} />
-      {analysisTarget && <><h3>Aperture spectrum (aligned analysis)</h3><div ref={setSpectrumSlot} /></>}
-    </> : loadFirst },
-    { id: 'brightness', label: 'Brightness', content: manifest
-      ? <BrightnessPanel quick={quick} centerUm={(frame ?? manifest.frames[0])?.wavelength_um} detector={manifest.detector} /> : loadFirst },
+    </> : pending('lines', 'Loading the comparison…') },
+    { id: 'measure', label: 'Measure', content: <>
+      {manifest ? <SpectrumChart quick={quick} centerUm={(frame ?? manifest.frames[0])?.wavelength_um} detector={manifest.detector} />
+        : pending('chart', 'Loading the comparison…')}
+      {analysisTarget && <details className="disclosure">
+        <summary>Second method: aligned aperture spectrum</summary>
+        <div ref={setSpectrumSlot} />
+      </details>}
+    </> },
     { id: 'coverage', label: 'Coverage', count: summary?.count, content: <>
       {summary ? <>
         <div className="history-summary">
@@ -443,8 +484,14 @@ export default function App() {
         </div>
         <ObservationTimeline observations={summary.observations} frames={manifest?.frames}
           currentIndex={showDifference ? undefined : frameIndex} detector={manifest?.detector ?? query.band} />
-      </> : job ? <p className="muted">The observation history could not be loaded for this position.</p> : loadFirst}
-      {analysisTarget && <><h3>Wavelength coverage & other archives</h3><div ref={setCoverageSlot} /></>}
+      </> : summaryFailed || (error && !busy) ? <p className="muted">The observation history could not be loaded for this position.</p>
+        : job && !busy ? <div className="tab-loading" aria-busy="true"><p className="sr-only">Loading the observation history…</p>
+          <Skeleton variant="chart" /><Skeleton variant="line" lines={2} /></div>
+        : pending('chart', 'Loading the observation history…')}
+      {analysisTarget && <details className="disclosure">
+        <summary>Wavelength coverage & other archives</summary>
+        <div ref={setCoverageSlot} />
+      </details>}
     </> },
     { id: 'analysis', label: 'Analysis', content: <>
       <p className="muted">Blink and difference on one sky grid, from their own aligned sequence.</p>
@@ -462,7 +509,7 @@ export default function App() {
   ]
 
   return (
-    <div className="shell" data-testid="planet-x-shell">
+    <div className="shell" data-testid="planet-x-shell" ref={shellRef}>
       <a className="skip-link" href="#sky-map">Skip to the sky map</a>
       <SearchBar tools={<HeaderTools items={PANELS} open={panel} onToggle={togglePanel}
         actions={[{ id: 'share', label: 'Share', title: 'Copy this comparison link', onClick: () => void share() }]} />} onDraftChange={setDraft} value={name} onChange={(value) => { searchShows.current = null; setName(value) }} draft={draft} busy={busy} onShow={show} onFind={find} />
@@ -477,12 +524,17 @@ export default function App() {
             <button type="button" className="inspect-toggle" aria-expanded={inspectOpen} aria-controls="inspector"
               onClick={() => setInspectOpen((open) => !open)}>Inspect</button>
           </div>
-          <div className="viewer-body">
+          <div className="viewer-body" aria-busy={busy && !hasFrames}>
             {statusBlock}
             {job && emptyState}
+            {loadingViewer}
             {viewer}
           </div>
         </section>
+        {/* Under the overview map and as wide as it (desktop), under the images when opened (phones): styles/shell.css.
+            Kept mounted in Explore, so its charts, jobs and analysis parts keep their state. */}
+        <Inspector id="inspector" tabs={tabs} active={inspect} onSelect={selectInspect} hidden={stage !== 'investigate'}
+          open={inspectOpen} onClose={() => setInspectOpen(false)} expanded={inspectWide} onExpand={setInspectWide} />
         <SkyFrame overview={stage === 'investigate'}>
           <main id="sky-map" className="sky-stage" tabIndex={0} aria-label="Interactive sky map. Arrow keys pan; plus and minus zoom." onKeyDown={(event) => {
             if (event.target !== event.currentTarget || !sky) return
@@ -520,10 +572,6 @@ export default function App() {
             {analysisSkyCaption && <span className="frame-caption">{analysisSkyCaption}</span>}
             <span className="map-hint">Drag to explore · scroll to zoom · map tools at left</span>
           </footer>
-          {/* Under the overview map, as wide as it (styles/shell.css); kept mounted in Explore, so its charts,
-              jobs and analysis parts keep their state. */}
-          <Inspector id="inspector" tabs={tabs} active={inspect} onSelect={selectInspect} hidden={stage !== 'investigate'}
-            open={inspectOpen} onClose={() => setInspectOpen(false)} />
         </SkyFrame>
         {stage === 'explore' && <div className="explore-actions">
           {/* One short cue on the first visit; the sky stays the page. */}
