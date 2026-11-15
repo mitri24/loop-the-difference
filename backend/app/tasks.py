@@ -56,7 +56,7 @@ MAX_SPECTRUM_POINTS = 100
 SPECTRUM_VERSION = 5
 # Bump whenever the rendered output changes: the job key changes, so cached results are rebuilt,
 # and `warm` removes frame folders whose manifest carries an older version.
-PIPELINE_VERSION = 12
+PIPELINE_VERSION = 13
 # Exposures of one epoch see a source at different wavelengths, so its brightness differs between
 # them: a value is left out of the stack only beyond CLIP_SIGMA × √(variance + (CLIP_AMPFRAC ×
 # median)²) from the median of the exposures, after SWarp's clipped mean (Gruen et al. 2014,
@@ -594,6 +594,10 @@ def _frame(index: int, url: str, epoch: int, members: list[KeptFrame], stacked: 
     first, last = observations[0], observations[-1]
     wavelengths = [w for *_, w, _ in members if w is not None]
     bandwidths = [b for *_, b in members if b is not None]
+    exposures, starts, ends, released = (
+        _every(observations, field)
+        for field in ("exposure_s", "start_mjd", "end_mjd", "release_date")
+    )
     return Frame(
         index=index,
         url=url,
@@ -613,7 +617,31 @@ def _frame(index: int, url: str, epoch: int, members: list[KeptFrame], stacked: 
         bandwidth_um=round(float(np.median(bandwidths)), 4) if bandwidths else None,
         masked_fraction=round(float(np.isnan(stacked.image[stacked.covered]).mean()), 3),
         release=_releases(observations),
+        exposure_s=None if exposures is None else round(sum(exposures), 4),
+        start_mjd=None if starts is None else min(starts),
+        end_mjd=None if ends is None else max(ends),
+        spatial_resolution_arcsec=_common(observations, "spatial_resolution_arcsec"),
+        resolving_power=_common(observations, "resolving_power"),
+        calib_level=_common(observations, "calib_level"),
+        publisher_did=first.publisher_did,
+        instrument_name=_common(observations, "instrument_name"),
+        facility_name=_common(observations, "facility_name"),
+        # ISO dates in UTC sort by time: a stack is public once its last exposure is.
+        release_date=None if released is None else max(released),
+        pixel_scale_arcsec=_common(observations, "pixel_scale_arcsec"),
     )
+
+
+def _every(observations: list[Observation], field: str) -> list | None:
+    """Every exposure's value of `field`, or None when one of them lacks it."""
+    values = [getattr(obs, field) for obs in observations]
+    return None if None in values else values
+
+
+def _common(observations: list[Observation], field: str):
+    """The value of `field` all exposures share, or None when they differ."""
+    values = {getattr(obs, field) for obs in observations}
+    return values.pop() if len(values) == 1 else None
 
 
 def _releases(observations: list[Observation]) -> str | None:

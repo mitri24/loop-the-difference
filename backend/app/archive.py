@@ -1,11 +1,13 @@
 import hashlib
 import io
 import json
+import math
 import os
 import re
 import time
 from collections import Counter
 from concurrent.futures import ThreadPoolExecutor
+from datetime import UTC, datetime
 from pathlib import Path
 from xml.etree import ElementTree
 
@@ -227,8 +229,8 @@ def parse_sia_votable(content: bytes, collection: str | None = None) -> list[Obs
         match = _DETECTOR.search(str(row["energy_bandpassname"]))
         if match is None:
             continue
-        mjd = (float(row["t_min"]) + float(row["t_max"])) / 2
-        region = row.get("s_region")
+        start, end = float(row["t_min"]), float(row["t_max"])
+        mjd = (start + end) / 2
         observations.append(
             Observation(
                 obs_id=str(row["obs_id"]),
@@ -240,10 +242,46 @@ def parse_sia_votable(content: bytes, collection: str | None = None) -> list[Obs
                 access_url=str(row["access_url"]),
                 cloud_url=parse_cloud_access(row.get("cloud_access")),
                 collection=collection,
-                s_region=None if region is None or np.ma.is_masked(region) else str(region),
+                s_region=_cell(row, "s_region", str),
+                # In ObsCore units, as IRSA's FIELDs state them: t_exptime in s, t_min and t_max
+                # in MJD, s_resolution and s_pixel_scale in arcsec; em_res_power is λ/Δλ.
+                exposure_s=_cell(row, "t_exptime", float),
+                start_mjd=start,
+                end_mjd=end,
+                spatial_resolution_arcsec=_cell(row, "s_resolution", float),
+                resolving_power=_cell(row, "em_res_power", float),
+                calib_level=_cell(row, "calib_level", int),
+                publisher_did=_cell(row, "obs_publisher_did", str),
+                instrument_name=_cell(row, "instrument_name", str),
+                facility_name=_cell(row, "facility_name", str),
+                release_date=_timestamp(_cell(row, "obs_release_date", str)),
+                pixel_scale_arcsec=_cell(row, "s_pixel_scale", float),
             )
         )
     return sorted(observations, key=lambda o: o.mjd)
+
+
+def _cell(row, name: str, kind: type) -> float | int | str | None:
+    """One cell as `kind`; None when the answer lacks the column or leaves the cell empty."""
+    value = row.get(name)
+    if value is None or np.ma.is_masked(value) or not str(value).strip():
+        return None
+    try:
+        value = kind(value)
+    except (TypeError, ValueError):
+        return None
+    return None if isinstance(value, float) and not math.isfinite(value) else value
+
+
+def _timestamp(value: str | None) -> str | None:
+    """A DALI timestamp (UTC; IRSA writes "2026-09-27 23:59:28") in the form of Observation.date."""
+    try:
+        moment = datetime.fromisoformat(value)
+    except (TypeError, ValueError):
+        return None
+    if moment.tzinfo is not None:
+        moment = moment.astimezone(UTC)
+    return f"{moment:%Y-%m-%dT%H:%M:%S}Z"
 
 
 def parse_cloud_access(value: object) -> str | None:
