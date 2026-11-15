@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type CSSProperties, type PointerEvent as ReactPointerEvent, type ReactNode } from 'react'
+import { useEffect, useRef, useState, type CSSProperties, type KeyboardEvent as ReactKeyboardEvent, type PointerEvent as ReactPointerEvent, type ReactNode } from 'react'
 import {
   REDUCED_DELAY_MS,
   REDUCED_MAX_SWAPS,
@@ -13,7 +13,7 @@ import {
   type BlinkPair,
 } from '../blink'
 import { MARK_LETTERS, type Mark } from '../candidate'
-import { FIT, MAX_ZOOM, PAN_STEP, ZOOM_STEP, panBy, viewTransform, zoomAt, zoomText, type ImageView } from '../imageZoom'
+import { FIT, MAX_ZOOM, PAN_STEP, ZOOM_STEP, imageX, panBy, viewTransform, zoomAt, zoomText, type ImageView } from '../imageZoom'
 import { frameToSky, gridExtentDeg, markerPosition, skyToFrame } from '../motion'
 import { SEARCH_AREA_LABEL, type Prediction } from '../track'
 import type { Check, Frame, FrameManifest, ProperMotion } from '../types'
@@ -89,11 +89,17 @@ export function BlinkPlayer({
   const [scope, setScope] = useState<'ab' | 'all'>(pair ? 'ab' : 'all')
   const [index, setIndex] = useState(pair?.a ?? 0)
   const [playing, setPlaying] = useState(false)
-  // Arming the mark pauses: a click must land on the frame the user aimed at.
+  // Blink, or Swipe: A left and B right of a line the user moves, on one image with one zoom.
+  const [mode, setMode] = useState<'blink' | 'swipe'>('blink')
+  const [split, setSplit] = useState(0.5)
+  // Arming the mark pauses: a click must land on the frame the user aimed at. Marks are set in the blink.
   const [wasMarking, setWasMarking] = useState(marking)
   if (marking !== wasMarking) {
     setWasMarking(marking)
-    if (marking) setPlaying(false)
+    if (marking) {
+      setPlaying(false)
+      setMode('blink')
+    }
   }
   // Pixels across the frames' common grid, from the loaded PNG: every overlay and click uses the image's real extent.
   const [pixels, setPixels] = useState<number | null>(null)
@@ -159,18 +165,47 @@ export function BlinkPlayer({
   const togglePlay = (next: 'ab' | 'all' = pair ? 'ab' : 'all') => {
     swaps.current = 0
     setAutoPaused(false)
+    setMode('blink')
     if (playing && scope === next) return setPlaying(false)
     setScope(next)
     setPlaying(true)
   }
   const show = (target: number) => {
     setPlaying(false)
+    setMode('blink')
     setIndex(target)
   }
   // Stepping goes through every frame in time order.
   const step = (delta: number) => {
     setPlaying(false)
+    setMode('blink')
     setIndex((i) => nextIndex(i, count, null, delta))
+  }
+  const swiping = mode === 'swipe' && pair !== null
+  const startSwipe = () => {
+    setPlaying(false)
+    setAutoPaused(false)
+    setMode('swipe')
+  }
+  // The line moves with the pointer on its handle, or by 5 % with the arrow keys there (Home/End: the edges).
+  const moveSplit = (to: number) => setSplit(Math.min(1, Math.max(0, to)))
+  const splitHandlers = {
+    onPointerDown: (event: ReactPointerEvent<HTMLDivElement>) => {
+      event.stopPropagation()
+      event.currentTarget.setPointerCapture?.(event.pointerId)
+    },
+    onPointerMove: (event: ReactPointerEvent<HTMLDivElement>) => {
+      if (!event.currentTarget.hasPointerCapture?.(event.pointerId)) return
+      event.stopPropagation()
+      const box = viewportRef.current?.getBoundingClientRect()
+      if (box && box.width > 0) moveSplit((event.clientX - box.left) / box.width)
+    },
+    onKeyDown: (event: ReactKeyboardEvent<HTMLDivElement>) => {
+      const to = { ArrowLeft: split - 0.05, ArrowRight: split + 0.05, Home: 0, End: 1 }[event.key]
+      if (to === undefined) return
+      event.preventDefault()
+      moveSplit(to)
+    },
   }
   const choose = (which: 'a' | 'b', value: number) => {
     if (!pair) return
@@ -195,7 +230,7 @@ export function BlinkPlayer({
     const onKey = (event: KeyboardEvent) => {
       if (event.altKey || event.ctrlKey || event.metaKey) return
       const target = event.target instanceof Element ? event.target : null
-      if (target?.closest('input, textarea, select, [contenteditable="true"]')) return
+      if (target?.closest('input, textarea, select, [contenteditable="true"], .swipe-handle')) return
       const pan = event.shiftKey && zoomed && { ArrowLeft: [1, 0], ArrowRight: [-1, 0], ArrowUp: [0, 1], ArrowDown: [0, -1] }[event.key]
       if (pan) {
         setView((current) => panBy(current, (pan[0] * PAN_STEP), (pan[1] * PAN_STEP)))
@@ -360,7 +395,7 @@ export function BlinkPlayer({
           }
           // Only the shown, loaded image marks: not the stamp, the checks badge, a placeholder or an error message.
           const image = event.target
-          if (!marking || !onMark || !(image instanceof HTMLImageElement) || !image.naturalWidth || image.style.visibility === 'hidden') return
+          if (swiping || !marking || !onMark || !(image instanceof HTMLImageElement) || !image.naturalWidth || image.style.visibility === 'hidden') return
           // Playing, the frame may change under the pointer: that click only pauses.
           if (playing) return setPlaying(false)
           const box = image.getBoundingClientRect()
@@ -371,6 +406,15 @@ export function BlinkPlayer({
         {/* The image and everything placed on the sky zoom and pan together; the stamp and the badge stay. */}
         <div className="viewport-clip">
           <div className="viewport-sky" style={skyStyle}>
+            {swiping && pair ? <>
+              <ObservationImage key={`swipe-a-${frames[pair.a].url}`} src={frames[pair.a].url} onSize={setPixels}
+                alt={`A: SPHEREx detector ${frames[pair.a].detector}, ${frames[pair.a].date.slice(0, 10)}, left of the line`} />
+              <div className="swipe-b" style={{ clipPath: `inset(0 0 0 ${(imageX(view, split) * 100).toFixed(3)}%)` }}>
+                <ObservationImage key={`swipe-b-${frames[pair.b].url}`} src={frames[pair.b].url}
+                  alt={`B: SPHEREx detector ${frames[pair.b].detector}, ${frames[pair.b].date.slice(0, 10)}, right of the line`} />
+              </div>
+              <div className="reticle" aria-hidden="true" />
+            </> : <>
             {/* Load only the visible frame and its next playback partner. */}
             {[index, nextIndex(index, count, blinkPair)].filter((i, n, all) => all.indexOf(i) === n).map((i) => {
               const f = frames[i]
@@ -410,11 +454,23 @@ export function BlinkPlayer({
                 </span>
               )
             })}
+            </>}
           </div>
         </div>
         {/* The letter in its colour, as on the thumbnails and in the table; the text reads "A · date". */}
-        <span className="stamp">{letter ? <><b className={`stamp-letter ${letter.toLowerCase()}`}>{letter}</b> · {utcMinute(frame.date)}</> : stampText(frame, null)}</span>
-        <CheckBadge checks={checksForFrame(checks, frame)} />
+        {swiping && pair ? <>
+          <span className="stamp"><b className="stamp-letter a">A</b> · {utcMinute(frames[pair.a].date)}</span>
+          <span className="stamp stamp-right"><b className="stamp-letter b">B</b> · {utcMinute(frames[pair.b].date)}</span>
+          <div className="swipe-line" style={{ left: `${split * 100}%` }}>
+            <div className="swipe-handle" role="slider" tabIndex={0} aria-label="Swipe line: A left, B right"
+              aria-valuemin={0} aria-valuemax={100} aria-valuenow={Math.round(split * 100)} aria-valuetext={`${Math.round(split * 100)} % A`}
+              title="Drag, or use the arrow keys" {...splitHandlers} />
+          </div>
+          <CheckBadge checks={[...new Set([...checksForFrame(checks, frames[pair.a]), ...checksForFrame(checks, frames[pair.b])])]} />
+        </> : <>
+          <span className="stamp">{letter ? <><b className={`stamp-letter ${letter.toLowerCase()}`}>{letter}</b> · {utcMinute(frame.date)}</> : stampText(frame, null)}</span>
+          <CheckBadge checks={checksForFrame(checks, frame)} />
+        </>}
       </div>
 
       <div className="controls transport">
@@ -441,6 +497,13 @@ export function BlinkPlayer({
         <span className="frame-count">
           {index + 1}/{count}
         </span>
+        {pair && (
+          <div className="view-mode" role="radiogroup" aria-label="Compare A and B">
+            <button type="button" role="radio" aria-checked={!swiping} onClick={() => setMode('blink')}>Blink</button>
+            <button type="button" role="radio" aria-checked={swiping} onClick={startSwipe}
+              title="A left, B right of a line you move, with the same zoom">Swipe</button>
+          </div>
+        )}
         <div className="zoom-buttons" role="group" aria-label="Zoom the image">
           <button type="button" onClick={() => zoomBy(1 / ZOOM_STEP)} disabled={!zoomed} aria-label="Zoom out" title="Zoom out (−)">−</button>
           <button type="button" onClick={() => setView(FIT)} disabled={!zoomed} aria-label={`Zoom ${zoomText(view.z)}, fit the whole image`}
@@ -469,6 +532,7 @@ export function BlinkPlayer({
       </div>
 
       {autoPaused && <p className="notice">Paused after 20 swaps (reduced motion) – press Play to continue</p>}
+      {swiping && <p className="notice">Swipe shows A and B only: layer symbols, marks and the Gaia marker stand on the image in Blink.</p>}
 
       <div className="player-side">
         {controls}
