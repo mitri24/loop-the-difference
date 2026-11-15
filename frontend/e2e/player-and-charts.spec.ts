@@ -74,27 +74,33 @@ for (const [width, height] of [[1024, 700], [1280, 800], [1440, 900]]) {
   })
 }
 
-test('a reading panel takes the overview map’s width; images and pair stay in view', async ({ page }) => {
+test('the page: images first without scrolling, the sections below, the overview map stays beside', async ({ page }) => {
   await fixtures(page)
   await page.setViewportSize({ width: 1280, height: 800 })
   await page.goto(`/?ra=${manifest.ra}&dec=${manifest.dec}&fov=0.2&band=6`)
-  await expect(page.locator('.sky-area.overview')).toBeVisible()
-  await page.getByTestId('dock-evidence').click()
-  await expect(page.locator('.sky-area.overview')).toBeHidden()
-  expect(await overflow(page.locator('.viewer-body'))).toBeLessThanOrEqual(1)
+  await expect(page.locator('.player')).toBeVisible()
+  await expect(page.getByTestId('section-images')).toHaveAttribute('aria-current', 'true')
   await inView(page, page.locator('.blink-pair'))
-  expect((await page.locator('.viewer .viewport').boundingBox())!.width).toBeGreaterThan(400)
-  // The science note shows once: in the panel while it is open.
-  await expect(page.locator('.viewer-body > .science-note')).toBeHidden()
-  await page.getByTestId('dock-layers').click()
+  await inView(page, page.locator('.transport'))
+  await page.getByTestId('section-checks').click()
+  await expect(page.locator('#checks')).toBeInViewport()
   await expect(page.locator('.sky-area.overview')).toBeVisible()
+  // The keys 1–7 jump between sections while no field has focus.
+  await page.locator('#checks h2').click()
+  await page.keyboard.press('5')
+  await expect(page.locator('#coverage')).toBeInViewport()
+  await page.keyboard.press('1')
+  await expect(page.locator('.stamp')).toBeInViewport()
+  // The science note shows once, under the images; the sidebar is gone.
+  await expect(page.locator('.science-note')).toHaveCount(1)
+  await expect(page.locator('.dock')).toHaveCount(0)
 })
 
 test('charts: tooltip on hover and keyboard focus, Table toggle, width follows the panel after the table', async ({ page }) => {
   await fixtures(page)
   await page.setViewportSize({ width: 1440, height: 900 })
   await page.goto(`/?ra=${manifest.ra}&dec=${manifest.dec}&fov=0.2&band=6`)
-  await page.getByTestId('dock-spectrum').click()
+  await page.getByTestId('section-measure').click()
   await page.getByRole('button', { name: 'Build quick-look spectrum from all SPHEREx visits' }).click()
   const chart = page.locator('.spectrum-chart')
   await expect(chart.locator('svg[role="img"]')).toBeVisible()

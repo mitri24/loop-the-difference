@@ -14,6 +14,7 @@ import { EvidencePanel, hasBlocker, manifestChecks } from './components/Evidence
 import { DataPanel } from './components/DataPanel'
 import { DifferenceView } from './components/DifferenceView'
 import { FloatingPanel } from './components/FloatingPanel'
+import { HeaderTools } from './components/HeaderTools'
 import { LoadProgress } from './components/LoadProgress'
 import { SectionNav, scrollToSection, type PageSection } from './components/SectionNav'
 import { LayersSection } from './components/LayersSection'
@@ -302,8 +303,8 @@ export default function App() {
     : showDifference ? 'Marks are set on single frames, not on the difference image.'
     : manifest?.preview ? 'Mark candidates after the final images and checks are ready.'
     : !frameOnSky ? 'Turn on "SPHEREx frames on the sky" in Layers to mark by clicking.' : null
-  // Marking by clicking the sky works while the page with the candidate check is shown.
-  const candidate = useCandidate(job?.job_id ?? null, !markBlocked && stage === 'investigate')
+  // Marking by clicking the sky works on the overview map and, larger, on the full sky (Explore).
+  const candidate = useCandidate(job?.job_id ?? null, !markBlocked)
   useMarkLayer(sky, candidate.marks)
   const possible = useMemo(() => manifest ? possibleTrack(candidate.marks, manifest, manifest.frames.map((f) => f.mjd)) : null, [candidate.marks, manifest])
   const predictions = useMemo(() => (showDifference ? [] : possible?.predictions ?? []), [possible, showDifference])
@@ -379,10 +380,7 @@ export default function App() {
   return (
     <div className="shell" data-testid="planet-x-shell">
       <a className="skip-link" href="#sky-map">Skip to the sky map</a>
-      <SearchBar tools={PANELS.map((item) => (
-        <button key={item.id} type="button" className="header-tool" data-testid={`open-${item.id}`} aria-expanded={panel === item.id}
-          aria-controls="floating-panel" onClick={(event) => togglePanel(item.id, event.currentTarget)}>{item.label}</button>
-      ))} onDraftChange={setDraft} value={name} onChange={(value) => { searchShows.current = null; setName(value) }} draft={draft} busy={busy} onShow={show} onFind={find} onShare={() => void share()} />
+      <SearchBar tools={<HeaderTools items={PANELS} open={panel} onToggle={togglePanel} />} onDraftChange={setDraft} value={name} onChange={(value) => { searchShows.current = null; setName(value) }} draft={draft} busy={busy} onShow={show} onFind={find} onShare={() => void share()} />
 
       <div className={`stage ${stage}`}>
         <section className="viewer" aria-label="SPHEREx images of the region" hidden={stage !== 'investigate'}>
@@ -492,12 +490,25 @@ export default function App() {
             <span className="map-hint">Drag to explore · scroll to zoom · map tools at left</span>
           </footer>
         </SkyFrame>
-        {stage === 'explore' && (pick || job) && <div className="explore-actions">
+        {stage === 'explore' && <div className="explore-actions">
+          {/* One short cue on the first visit; the sky stays the page. */}
+          {!pick && !job && <div className="pick-card explore-cue" role="note">
+            <span>Search a target, pick an example, or click the sky to choose a region.</span>
+            <button type="button" onClick={useMapCenter} disabled={skyUnavailable || !sky}>Compare map center</button>
+          </div>}
           {pick && <div className="pick-card" role="group" aria-label="Selected position">
             <span>RA {pick.ra.toFixed(5)}° · Dec {pick.dec.toFixed(5)}°</span>
             <button type="button" className="primary" onClick={() => show({ ...draft, ra: pick.ra.toFixed(6), dec: pick.dec.toFixed(6) })}>Compare here</button>
             <button type="button" aria-label="Clear the selected position" onClick={() => setPick(null)}>✕</button>
           </div>}
+          {/* Candidate marking on the full sky: the marks and the check stay on the page. */}
+          {job && !markBlocked && (candidate.armed
+            ? <div className="pick-card candidate-sky" role="group" aria-label="Candidate marking on the sky">
+              <span><span aria-hidden="true">◎</span> Click the object inside the SPHEREx frame · {candidate.marks.length}/2 marks</span>
+              <span className="candidate-notice" role="status" aria-live="polite">{candidate.notice}</span>
+              <button type="button" onClick={() => candidate.setArmed(false)}>Done</button>
+            </div>
+            : <button type="button" onClick={() => candidate.setArmed(true)}><span aria-hidden="true">◎</span> Mark a candidate on the sky</button>)}
           {job && <button type="button" onClick={() => setStage('investigate')}>Back to images <span aria-hidden="true">→</span></button>}
         </div>}
       </div>
