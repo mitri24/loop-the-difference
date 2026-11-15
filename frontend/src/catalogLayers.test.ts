@@ -47,13 +47,13 @@ describe('catalogue URLs', () => {
     )
   })
 
-  it('asks SIMBAD TAP for 500 objects in the cone, encoded', () => {
+  it('asks SIMBAD TAP for the 500 brightest objects in the cone (V, else G), encoded', () => {
     const url = simbadUrl(1, -2, 0.5)
     expect(url).toBe(
-      "https://simbad.cfa.harvard.edu/simbad/sim-tap/sync?request=doQuery&lang=adql&format=votable/td&query=SELECT%20TOP%20500%20main_id%2C%20ra%2C%20dec%2C%20otype%2C%20pmra%2C%20pmdec%20FROM%20basic%20WHERE%20CONTAINS(POINT('ICRS'%2C%20ra%2C%20dec)%2C%20CIRCLE('ICRS'%2C%201%2C%20-2%2C%200.5))%20%3D%201",
+      "https://simbad.cfa.harvard.edu/simbad/sim-tap/sync?request=doQuery&lang=adql&format=votable/td&query=SELECT%20TOP%20500%20main_id%2C%20ra%2C%20dec%2C%20otype%2C%20pmra%2C%20pmdec%20FROM%20basic%20LEFT%20JOIN%20allfluxes%20ON%20basic.oid%20%3D%20allfluxes.oidref%20WHERE%20CONTAINS(POINT('ICRS'%2C%20ra%2C%20dec)%2C%20CIRCLE('ICRS'%2C%201%2C%20-2%2C%200.5))%20%3D%201%20ORDER%20BY%20V%2C%20G",
     )
     expect(decodeURIComponent(url.split('query=')[1])).toBe(
-      "SELECT TOP 500 main_id, ra, dec, otype, pmra, pmdec FROM basic WHERE CONTAINS(POINT('ICRS', ra, dec), CIRCLE('ICRS', 1, -2, 0.5)) = 1",
+      "SELECT TOP 500 main_id, ra, dec, otype, pmra, pmdec FROM basic LEFT JOIN allfluxes ON basic.oid = allfluxes.oidref WHERE CONTAINS(POINT('ICRS', ra, dec), CIRCLE('ICRS', 1, -2, 0.5)) = 1 ORDER BY V, G",
     )
   })
 

@@ -21,8 +21,14 @@ DOWNLOAD_ATTEMPTS = 5
 RETRY_BASE_S = 2.0
 # IRSA answers "503 Server busy, retry later" under load.
 _RETRY_STATUS = {429, 500, 502, 503, 504}
-# Spectral resolving power per detector (SPHEREx instrument design): one resolution element is λ/R.
-R_BY_DETECTOR = {1: 41, 2: 41, 3: 41, 4: 35, 5: 110, 6: 130}
+# Spectral resolving power per detector as IRSA lists it for the spectral images (band N = DN),
+# https://caltech-ipac.github.io/spherex-archive-documentation/spherex-data-products; the median
+# λ/bandwidth of the DR1 WCS-WAVE tables lies within about 0.5 of it. One resolution element is λ/R.
+R_BY_DETECTOR = {1: 39, 2: 41, 3: 41, 4: 35, 5: 112, 6: 128}
+# Wavelengths within half a resolution element match; up to one element they still compare, with
+# a warning (spectral features can mimic a change); beyond that a difference is not meaningful.
+WAVELENGTH_MATCH_FRACTION = 0.5
+WAVELENGTH_LIMIT_FRACTION = 1.0
 _SIP_CARD = re.compile(r"(A|B|AP|BP)_(ORDER|\d+_\d+)")
 # Mask planes of the cutout's FLAGS extension whose pixels are unusable for blinking
 # (bad detector pixels, saturation, cosmic rays and other per-exposure artefacts). Names
@@ -178,9 +184,11 @@ def delta_lambda_pct(a_um: float, b_um: float) -> float:
     return 200 * abs(a_um - b_um) / (a_um + b_um)
 
 
-def comparable_wavelengths(a_um: float, b_um: float, detector: int) -> bool:
-    """Frames compare directly only within one resolution element: |Δλ|/λ ≤ 1/R."""
-    return delta_lambda_pct(a_um, b_um) <= 100 / R_BY_DETECTOR[detector]
+def comparable_wavelengths(
+    a_um: float, b_um: float, detector: int, fraction: float = WAVELENGTH_LIMIT_FRACTION
+) -> bool:
+    """|Δλ|/λ ≤ fraction/R; by default: frames compare only within one resolution element."""
+    return delta_lambda_pct(a_um, b_um) <= 100 * fraction / R_BY_DETECTOR[detector]
 
 
 def target_grid(

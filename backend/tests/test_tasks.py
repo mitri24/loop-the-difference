@@ -182,6 +182,14 @@ def test_wavelength_spread_beyond_one_resolution_element_blocks_the_difference()
     assert "4.500" in check.detail and "4.600" in check.detail
 
 
+def test_wavelength_spread_within_one_resolution_element_warns():
+    (check,) = wavelength_checks([4.50, 4.53], detector=6)  # 0.85 λ/R at R = 128
+
+    assert (check.code, check.severity) == ("WAVELENGTH_CLOSE", "warning")
+    assert check.affects == ["difference"]
+    assert "0.85 resolution elements" in check.detail
+
+
 def test_matching_wavelengths_pass_without_a_check():
     assert wavelength_checks([4.50, 4.51, None], detector=6) == []
     assert wavelength_checks([4.50], detector=6) == []
@@ -278,7 +286,7 @@ def test_every_frame_lists_its_sources_with_png_pixel_positions(monkeypatch, set
 
     manifest = build_frames("job", RA, DEC, SIZE_DEG, 6, 12, stack=False)
 
-    assert manifest["pipeline_version"] == 10
+    assert manifest["pipeline_version"] == tasks.PIPELINE_VERSION
     for frame in manifest["frames"]:
         (source,) = frame["sources"]
         assert source["match"] == "none"

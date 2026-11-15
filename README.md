@@ -24,18 +24,18 @@ browser ──► web (nginx + React, Aladin Lite)
             api (FastAPI) ──► redis queue ──► worker(s)
                                                 │ search (SIA2) + cutouts
                                                 ▼
-                                   NASA/IPAC IRSA · SPHEREx DR1
+                                   NASA/IPAC IRSA · SPHEREx releases
 ```
 
 1. The API searches IRSA for every SPHEREx observation of the position.
 2. A worker downloads small cutouts, spread over all epochs, and resamples them onto one north-up grid.
 3. All frames get one shared brightness stretch and are cached, so a target is prepared only once.
 
-Scale the heavy part with more workers: `docker compose up --scale worker=4`. Spectra run on a worker of their own (`worker-slow`, queue `slow`), so they never delay a frame job. A new SPHEREx data release is one setting: `SKYSHIFT_SPHEREX_COLLECTION` (see `.env.example`).
+Scale the heavy part with more workers: `docker compose up --scale worker=4`. Spectra run on a worker of their own (`worker-slow`, queue `slow`), so they never delay a frame job. A new SPHEREx data release needs no change: the search covers every SPHEREx image release IRSA lists (DR1, QR3, their deep fields); `SKYSHIFT_SPHEREX_COLLECTION` is only the fallback while IRSA cannot list them.
 
 ## Warm the cache for the demo
 
-The demo must not depend on IRSA answering quickly. This prepares the frames for the six challenge targets (default view, detectors D6 and D1) and keeps the observation search and name-resolution answers on disk, so a demo click is served from the cache even without network:
+The demo must not depend on IRSA answering quickly. This prepares the frames, the epoch stacks and their difference images for the challenge targets (default view, detectors D6 and D1) and keeps the observation search and name-resolution answers on disk, so a demo click is served from the cache even without network:
 
 ```sh
 docker compose run --rm worker python -m app.warm            # all targets, skips what is complete
