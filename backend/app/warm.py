@@ -29,6 +29,7 @@ from app.archive import (
     sia_cache_path,
     spherex_collections,
 )
+from app.catalogs import gaia_cache_path
 from app.config import Settings, get_settings
 from app.coords import parse_dec, parse_ra
 from app.jobs import job_id_for
@@ -175,6 +176,8 @@ def run(
                     )
             if not args.no_spectrum and job.target not in spectra:
                 spectra.add(job.target)
+                if args.force:  # refreshed by this target's one spectrum job, not per detector
+                    gaia_cache_path(settings.cache_dir, job.ra, job.dec).unlink(missing_ok=True)
                 failed += not _warm_spectrum(partial(spectrum, collections=collections), job)
             if not args.force and cached.is_file():
                 manifest = FrameManifest.model_validate_json(cached.read_text())

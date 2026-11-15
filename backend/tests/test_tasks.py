@@ -4,7 +4,7 @@ import pytest
 from PIL import Image
 
 from app import sources, tasks
-from app.catalogs import position_at
+from app.catalogs import gaia_cache_path, position_at
 from app.frames import Aligned, target_grid
 from app.models import Observation, ProperMotion
 from app.photometry import SKIP_EDGE, SKIP_NAN
@@ -309,7 +309,7 @@ def test_spectrum_has_one_point_per_visit_of_every_detector(monkeypatch, setting
         "wavelength_at",
         lambda path, ra, dec: (None, None) if path.stem == "102" else wavelength(path, ra, dec),
     )
-    monkeypatch.setattr(tasks, "find_proper_motion", lambda ra, dec, strict: None)
+    monkeypatch.setattr(tasks, "find_proper_motion", lambda ra, dec, strict, cache_dir: None)
 
     spectrum = build_spectrum(RA, DEC)
 
@@ -345,7 +345,7 @@ def test_spectrum_is_corrected_to_total_flux_only_when_every_visit_has_an_epsf(
     measured = {"100": (50.0, 2.0, False), "290": (40.0, 3.0, False)}
     monkeypatch.setattr(tasks, "forced_photometry", lambda path, ra, dec: measured[path.stem])
     monkeypatch.setattr(tasks, "aperture_correction", lambda path, ra, dec: factors.get(path.stem))
-    monkeypatch.setattr(tasks, "find_proper_motion", lambda ra, dec, strict: None)
+    monkeypatch.setattr(tasks, "find_proper_motion", lambda ra, dec, strict, cache_dir: None)
 
     spectrum = build_spectrum(RA, DEC)
 
@@ -364,7 +364,7 @@ def test_only_measured_points_are_corrected(monkeypatch, settings, tmp_path):
         return 1.25
 
     monkeypatch.setattr(tasks, "aperture_correction", correction)
-    monkeypatch.setattr(tasks, "find_proper_motion", lambda ra, dec, strict: None)
+    monkeypatch.setattr(tasks, "find_proper_motion", lambda ra, dec, strict, cache_dir: None)
 
     spectrum = build_spectrum(RA, DEC)
 
@@ -385,7 +385,7 @@ def test_spectrum_follows_a_star_with_proper_motion_to_each_visit(monkeypatch, s
         pmdec_mas_yr=36000.0,
         parallax_mas=None,
     )
-    monkeypatch.setattr(tasks, "find_proper_motion", lambda ra, dec, strict: star)
+    monkeypatch.setattr(tasks, "find_proper_motion", lambda ra, dec, strict, cache_dir: star)
     measured = []
 
     def photometry(path, ra, dec):
@@ -410,6 +410,25 @@ def test_spectrum_without_gaia_says_so_and_stays_incomplete(monkeypatch, setting
     assert "SPECTRUM_GAIA_UNAVAILABLE" in [c["code"] for c in spectrum["checks"]]
     assert spectrum["complete"] is False
     assert len(spectrum["points"]) == 1
+
+
+def test_a_warmed_spectrum_keeps_the_star_motion_while_gaia_is_down(
+    monkeypatch, settings, tmp_path
+):
+    _offline_archive(monkeypatch, settings, tmp_path, [_observation(100)])
+    monkeypatch.setattr(tasks, "forced_photometry", lambda path, ra, dec: (1.0, 0.1, False))
+    cached = gaia_cache_path(settings.cache_dir, RA, DEC)
+    cached.parent.mkdir(parents=True, exist_ok=True)
+    cached.write_text(
+        "source_id,ra,dec,pmra,pmdec,parallax,parallax_over_error,ref_epoch\n"
+        f"42,{RA},{DEC},0.0,0.0,100.0,50.0,2000.0\n"
+    )
+
+    spectrum = build_spectrum(RA, DEC)  # conftest makes every Gaia request fail
+
+    codes = [c["code"] for c in spectrum["checks"]]
+    assert "SPECTRUM_PROPER_MOTION" in codes
+    assert "SPECTRUM_GAIA_UNAVAILABLE" not in codes
 
 
 def test_every_frame_lists_its_sources_with_png_pixel_positions(monkeypatch, settings, tmp_path):
