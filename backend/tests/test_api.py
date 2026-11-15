@@ -300,3 +300,55 @@ def test_spectrum_is_rebuilt_only_when_it_is_missing_or_incomplete(
 def test_spectrum_rejects_invalid_coordinates_and_job_ids(client):
     assert client.post("/api/spectrum", json={"ra": "nope", "dec": "1"}).status_code == 422
     assert client.get("/api/spectrum/..").status_code == 404
+
+
+def test_ready_comparison_does_not_wait_for_archive_release_refresh(client, settings, monkeypatch):
+    from app import main
+    from app.archive import collections_cache_path
+    from app.tasks import PIPELINE_VERSION
+
+    collection = "spherex_dr1"
+    collections_cache_path(settings.cache_dir).write_text(json.dumps([collection]))
+    job_id = jobs.job_id_for(collection, 133.795, -7.245, 0.2, 6, 12)
+    folder = manifest_path(settings.cache_dir, job_id).parent
+    folder.mkdir(parents=True)
+    frame = Frame(
+        index=0,
+        url=f"/api/frames/{job_id}/frame_00.png",
+        obs_id="saved",
+        date="2026-01-01T00:00:00Z",
+        mjd=61000,
+        detector=6,
+        wavelength_min_um=4.4,
+        wavelength_max_um=5.0,
+        coverage=1,
+        source_url="https://irsa.example/saved",
+        epoch=0,
+    )
+    manifest = FrameManifest(
+        collection=collection,
+        ra=133.795,
+        dec=-7.245,
+        size_deg=0.2,
+        detector=6,
+        pixel_scale_arcsec=6.15,
+        epochs=1,
+        frames=[frame],
+        warnings=[],
+        pipeline_version=PIPELINE_VERSION,
+    )
+    manifest_path(settings.cache_dir, job_id).write_text(manifest.model_dump_json())
+    (folder / "frame_00.png").write_bytes(b"saved NASA pixels")
+
+    def must_not_call(*args):
+        raise AssertionError("A ready comparison must not contact IRSA or Redis")
+
+    monkeypatch.setattr(main, "spherex_collections", must_not_call)
+    monkeypatch.setattr(jobs, "connect", must_not_call)
+    response = client.post(
+        "/api/frames",
+        json={"ra": "133.795", "dec": "-7.245", "size_deg": 0.2, "detector": 6, "max_frames": 12},
+    )
+    assert response.status_code == 200
+    assert response.json()["status"] == "finished"
+    assert response.json()["job_id"] == job_id

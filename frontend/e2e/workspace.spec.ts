@@ -543,7 +543,7 @@ test('fixture: what the layers show on the sky also stands on the SPHEREx image,
   await fixtures(page, { ...manifest, frames: [detected(0), detected(1)] })
   await page.setViewportSize({ width: 1440, height: 900 })
   await page.goto('/?ra=37.954542&dec=89.264111&fov=0.2&band=6')
-  const marks = page.locator('.viewer .viewport .image-mark')
+  const marks = page.locator('.viewer .viewport .image-mark.source-none')
   // "Sources detected in the shown frame" is on by default: its marker stands on the image too.
   await expect(marks).toHaveCount(1)
   await expect(marks.first()).toHaveClass(/source-none/)
@@ -740,7 +740,7 @@ test('fixture: vertical thumbnails select the large image and its own metadata',
     await page.goto('/?ra=37.954542&dec=89.264111')
     const gallery=page.getByRole('region',{name:'Observation images'})
     // A and B stand as a table beside the image (under it on narrow viewers), with the shown frame above it.
-    const metadata=page.getByRole('region',{name:'A and B'})
+    const metadata=page.getByRole('region',{name:'A and B',exact:true})
     await expect(gallery.locator('.observation-card')).toHaveCount(12)
     await expect(gallery).not.toContainText('Coverage')
     await gallery.getByRole('button',{name:/^Show observation 12,/}).click()

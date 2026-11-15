@@ -365,7 +365,7 @@ def test_search_asks_again_on_a_gateway_error_and_names_irsas_answer(settings, m
         search_observations(1.0, 2.0, settings, ["spherex_dr1"])
     assert len(calls) == 3
     assert "HTTP 502 Bad Gateway" in str(caught.value)
-    assert "examples" in str(caught.value)
+    assert "Previously saved comparisons" in str(caught.value)
 
     # A gateway that recovers on the second try answers normally.
     answers = iter([httpx.Response(503, request=request), _Answer(FIXTURE.read_bytes())])

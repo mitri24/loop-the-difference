@@ -523,7 +523,7 @@ export default function App() {
       {/* Shown as the loading bar on the viewer head; the words are for screen readers. */}
       <p className="comparison-status sr-only" role="status" aria-live="polite">{status}</p>
       {error && <div className="notice error" role="alert"><strong>Comparison unavailable</strong><p>{error}</p>
-        {/IRSA/.test(error) && !EMBED && <p>This is the archive, not Loop the Difference. The examples beside the search are stored and work now.</p>}
+        {/IRSA/.test(error) && !EMBED && <p>This position needs an archive response. Previously saved comparisons can still open; an example is available offline only after its images have been stored.</p>}
         {!EMBED && (centred.ra !== query.ra || centred.dec !== query.dec) && <p>The map still shows the previous position.</p>}</div>}
       {stopped && !busy && !hasFrames && !error && <p className="notice">{job
         ? 'Stopped waiting. The server keeps preparing these images: Retry picks them up.' : 'Stopped waiting.'}</p>}

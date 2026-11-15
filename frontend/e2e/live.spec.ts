@@ -36,6 +36,8 @@ test.describe('Live services (no mocked API responses)', () => {
     await info.attach('real-manifests.json', { body: JSON.stringify(manifests, null, 2), contentType: 'application/json' })
     await writeFile(info.outputPath('real-manifests.json'), JSON.stringify(manifests, null, 2))
     await expect(page.locator('.viewer [role="alert"]')).toHaveCount(0)
+    const inspectOnly = page.getByRole('button', { name: 'Show the images for inspection only' })
+    if (await inspectOnly.isVisible()) await inspectOnly.click()
     await expect(page.locator('.viewer .viewport img').first()).toBeVisible()
     await expect.poll(() => page.locator('.viewer .viewport img').first().evaluate((img: HTMLImageElement) => img.naturalWidth)).toBeGreaterThan(1)
     await expect(page.locator('.layer-caption')).not.toContainText('loading', { timeout: 15_000 })

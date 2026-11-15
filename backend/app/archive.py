@@ -120,7 +120,8 @@ def unreachable_text(exc: httpx.HTTPError) -> str:
         answer = "the connection failed"
     return (
         f"SPHEREx archive (IRSA) is not reachable: {answer}. "
-        "Targets loaded before (the examples) still work; try a new position again later."
+        "Previously saved comparisons remain available; a new position needs the archive. "
+        "Try again later."
     )
 
 

@@ -1,3 +1,4 @@
+import json
 import re
 from datetime import datetime
 from typing import Annotated
@@ -15,6 +16,7 @@ from app import jobs, names, partners, smallbodies, surprise, tracks
 from app.archive import (
     ArchiveError,
     collection_key,
+    collections_cache_path,
     resolve_position,
     search_observations,
     spherex_collections,
@@ -134,6 +136,43 @@ def observations(ra: str, dec: str, settings: SettingsDep) -> ObservationSummary
 @app.post("/api/frames")
 def create_frames(request: FrameRequest, settings: SettingsDep) -> FrameJob:
     ra, dec = parse_ra(request.ra), parse_dec(request.dec)
+    # A ready comparison must not wait for the daily release-list refresh at IRSA.
+    # The parallel observations request still refreshes that list; a subsequent request then
+    # uses its new collection key, so a new release is not hidden permanently.
+    stored = collections_cache_path(settings.cache_dir)
+    if stored.is_file():
+        try:
+            known = json.loads(stored.read_text())
+            if (
+                not isinstance(known, list)
+                or not known
+                or not all(isinstance(c, str) for c in known)
+            ):
+                raise ValueError("Invalid collection cache")
+            cached_id = jobs.job_id_for(
+                collection_key(known),
+                ra,
+                dec,
+                request.size_deg,
+                request.detector,
+                request.max_frames,
+                request.stack,
+            )
+            path = manifest_path(settings.cache_dir, cached_id)
+            if path.is_file():
+                cached = FrameManifest.model_validate_json(path.read_text())
+                if (
+                    cached.complete
+                    and not cached.preview
+                    and cached.frames
+                    and all(
+                        (path.parent / frame.url.rsplit("/", 1)[-1]).is_file()
+                        for frame in cached.frames
+                    )
+                ):
+                    return FrameJob(job_id=cached_id, status="finished", manifest=cached)
+        except (OSError, ValueError):
+            pass  # An unreadable cache follows the usual archive/worker path.
     collections = spherex_collections(settings)
     job_id = jobs.job_id_for(
         collection_key(collections),
