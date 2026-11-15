@@ -276,7 +276,12 @@ def test_collection_list_falls_back_when_irsa_is_silent(settings, monkeypatch, i
 
     monkeypatch.setattr(archive, "_fetch_collections", unreachable)
     assert spherex_collections(settings) == ["spherex_dr1"]
-    assert not collections_cache_path(settings.cache_dir).exists()
+    # Even the configured fallback is kept for an hour: a fresh install asks the silent IRSA once,
+    # not 15 s per request until the first search succeeds.
+    assert collections_cache_path(settings.cache_dir).is_file()
+    monkeypatch.setattr(archive, "_fetch_collections", lambda s: pytest.fail("asked again"))
+    assert spherex_collections(settings) == ["spherex_dr1"]
+    monkeypatch.setattr(archive, "_fetch_collections", unreachable)
 
     collections_cache_path(settings.cache_dir).write_text('["spherex_dr1", "spherex_qr3"]')
     os.utime(collections_cache_path(settings.cache_dir), (0, 0))

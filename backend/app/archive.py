@@ -181,13 +181,12 @@ def spherex_collections(settings: Settings) -> list[str]:
     if found:
         _write_cached(cached, json.dumps(found).encode())
         return found
-    stored = cached_collections(settings.cache_dir)
-    if not stored:
-        return [settings.spherex_collection]
-    # Kept like an old list: IRSA is asked again in an hour, not on every request.
-    _write_cached(cached, json.dumps(stored).encode())
+    # The releases with stored answers, else the configured one; kept like an old list, so IRSA
+    # is asked again in an hour, not by every request (its self-description took minutes today).
+    fallback = cached_collections(settings.cache_dir) or [settings.spherex_collection]
+    _write_cached(cached, json.dumps(fallback).encode())
     _postpone_refresh(cached)
-    return stored
+    return fallback
 
 
 def _refresh_collections_in_background(settings: Settings) -> None:
