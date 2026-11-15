@@ -75,7 +75,7 @@ export function CandidatePanel({ candidate: { marks, notice, armed, setArmed, cl
           </KnownObjectCheck>
           {visits && <Precovery track={track} marks={marks} {...visits} detector={known.detector}
             followsTarget={followsTarget(known.motion, marks) ? known.target : null} />}
-          <p className="candidate-hint">Share in the top bar copies a link with your markers included. Anyone opening it sees the same comparison and marked positions once the images load.</p>
+          <p className="candidate-hint">Share in the top bar copies a link with your markers included; anyone opening it sees the same comparison and marked positions. Export in the top bar saves all data as a file.</p>
           <div className="candidate-actions">
             <button type="button" onClick={clear}>Clear this object’s marks</button>
           </div>

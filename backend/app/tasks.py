@@ -1,3 +1,5 @@
+import contextlib
+import threading
 import warnings
 from collections import Counter
 from collections.abc import Callable
@@ -25,6 +27,7 @@ from app.completeness import measure_completeness
 from app.config import Settings, get_settings
 from app.frames import (
     R_BY_DETECTOR,
+    ROTATION_MARGIN,
     SPHEREX_PIXEL_SCALE_ARCSEC,
     TARGET_FLAG_RADIUS_PX,
     WAVELENGTH_MATCH_FRACTION,
@@ -47,7 +50,7 @@ from app.frames import (
 )
 from app.models import Check, Difference, Frame, FrameManifest, Observation, Spectrum, SpectrumPoint
 from app.photometry import aperture_correction, forced_photometry
-from app.sources import find_sources
+from app.sources import field_catalogs, find_sources
 
 MIN_COVERAGE = 0.5
 # Just the aperture and the sky ring around the target (about 25 px with the rotation margin).
@@ -148,6 +151,11 @@ def build_frames(
     settings = get_settings()
     collections = collections or spherex_collections(settings)
     found, failed = search_observations(ra, dec, settings, collections)
+    # The catalogues find_sources asks for are fetched while the cutouts download, so their
+    # on-disk cache is warm by then.
+    threading.Thread(
+        target=_prefetch_catalogs, args=(ra, dec, size_deg, settings.cache_dir), daemon=True
+    ).start()
     observations = [o for o in found if o.detector == detector]
     selected = select_for_stacks(observations) if stack else select_frames(observations, max_frames)
     urls = [cutout_url(o.access_url, ra, dec, size_deg) for o in selected]
@@ -199,6 +207,13 @@ def build_frames(
         stack=stack,
         prepared=prepared,
     )
+
+
+def _prefetch_catalogs(ra: float, dec: float, size_deg: float, cache_dir: Path) -> None:
+    """Same cone as find_sources (half the grid diagonal), so it hits the cache."""
+    # A catalogue only labels sources: whatever fails here, find_sources simply asks again.
+    with contextlib.suppress(Exception):
+        field_catalogs(ra, dec, round(size_deg * ROTATION_MARGIN / 2, 4), cache_dir)
 
 
 def _render_frames(

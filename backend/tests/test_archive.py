@@ -1,4 +1,6 @@
 import os
+import threading
+import time
 from pathlib import Path
 
 import httpx
@@ -202,7 +204,7 @@ def test_empty_search_answers_are_not_cached(settings, monkeypatch):
     monkeypatch.setattr("app.archive.httpx.get", lambda *a, **k: Response())
 
     assert search_observations(1.0, 2.0, settings) == ([], [])
-    assert not (settings.cache_dir / "sia").exists()
+    assert not list((settings.cache_dir / "sia").glob("*.xml"))
 
 
 def test_resolved_names_are_cached_on_disk(settings, monkeypatch):
@@ -235,7 +237,19 @@ def test_self_description_lists_only_spherex_image_collections():
     ]
 
 
-def test_collection_list_is_cached_for_a_day(settings, monkeypatch):
+@pytest.fixture(autouse=True)
+def fresh_refresh_lock(monkeypatch):
+    # A refresh a test never ran must not hold the lock for the next test.
+    monkeypatch.setattr(archive, "_refresh_lock", threading.Lock())
+
+
+@pytest.fixture
+def inline_refresh(monkeypatch):
+    """The background refresh of an old collection list runs before the call returns."""
+    monkeypatch.setattr(archive, "_start_thread", lambda target: target())
+
+
+def test_collection_list_is_cached_for_a_day(settings, monkeypatch, inline_refresh):
     monkeypatch.setattr(archive, "_fetch_collections", _fetch_collections)
     calls = []
 
@@ -256,7 +270,7 @@ def test_collection_list_is_cached_for_a_day(settings, monkeypatch):
     assert len(calls) == 2
 
 
-def test_collection_list_falls_back_when_irsa_is_silent(settings, monkeypatch):
+def test_collection_list_falls_back_when_irsa_is_silent(settings, monkeypatch, inline_refresh):
     def unreachable(settings):
         raise httpx.ConnectError("down")
 
@@ -294,6 +308,172 @@ def test_silent_irsa_without_a_list_uses_the_releases_with_stored_answers(settin
     assert cached.is_file()
     monkeypatch.setattr(archive, "_fetch_collections", lambda s: pytest.fail("asked again"))
     assert spherex_collections(settings) == ["spherex_dr1_deep", "spherex_qr3"]
+
+
+def test_an_old_collection_list_is_answered_at_once_and_refreshed_behind(settings, monkeypatch):
+    cached = collections_cache_path(settings.cache_dir)
+    cached.write_text('["spherex_dr1"]')
+    os.utime(cached, (0, 0))
+    refreshes = []
+    monkeypatch.setattr(archive, "_start_thread", refreshes.append)
+    monkeypatch.setattr(archive, "_fetch_collections", lambda s: ["spherex_dr1", "spherex_qr3"])
+
+    # The request gets the known list without waiting; one refresh is started, not one per call.
+    assert spherex_collections(settings) == ["spherex_dr1"]
+    assert spherex_collections(settings) == ["spherex_dr1"]
+    assert len(refreshes) == 1
+
+    refreshes[0]()
+    assert spherex_collections(settings) == ["spherex_dr1", "spherex_qr3"]
+    assert time.time() - cached.stat().st_mtime < 60
+    assert len(refreshes) == 1
+    # The refresh is over: the next stale list starts a new one.
+    os.utime(cached, (0, 0))
+    spherex_collections(settings)
+    assert len(refreshes) == 2
+    refreshes[1]()
+
+
+def test_a_silent_irsa_leaves_the_old_list_for_an_hour(settings, monkeypatch):
+    cached = collections_cache_path(settings.cache_dir)
+    cached.write_text('["spherex_dr1", "spherex_qr3"]')
+    os.utime(cached, (0, 0))
+    irsa_asked = threading.Event()
+    threads = []
+
+    def unreachable(settings):
+        irsa_asked.set()
+        raise httpx.ConnectError("down")
+
+    def start(target):
+        threads.append(threading.Thread(target=target, daemon=True))
+        threads[-1].start()
+
+    monkeypatch.setattr(archive, "_fetch_collections", unreachable)
+    monkeypatch.setattr(archive, "_start_thread", start)
+
+    assert spherex_collections(settings) == ["spherex_dr1", "spherex_qr3"]
+    assert irsa_asked.wait(5)
+    threads[0].join(5)
+    assert not threads[0].is_alive()
+    # Postponed by an hour, like the synchronous fallback did.
+    age = time.time() - cached.stat().st_mtime
+    assert archive.COLLECTIONS_MAX_AGE_S - archive.COLLECTIONS_RETRY_S - 60 < age < 86400
+    monkeypatch.setattr(archive, "_start_thread", lambda target: pytest.fail("asked again"))
+    assert spherex_collections(settings) == ["spherex_dr1", "spherex_qr3"]
+
+
+def test_a_waiting_search_takes_the_answer_the_first_searcher_writes(settings, monkeypatch):
+    cached = sia_cache_path(settings.cache_dir, "spherex_dr1", 1.0, 2.0)
+    marker = cached.with_suffix(".inflight")
+    archive._write_cached(marker, b"4242")
+    monkeypatch.setattr("app.archive.httpx.get", lambda *a, **k: pytest.fail("asked IRSA twice"))
+    polls = []
+
+    def other_process_answers(seconds):
+        # Fake clock: the first searcher writes its answer and drops the marker while we wait.
+        polls.append(seconds)
+        archive._write_cached(cached, FIXTURE.read_bytes())
+        marker.unlink()
+
+    monkeypatch.setattr(archive.time, "sleep", other_process_answers)
+    monkeypatch.setattr(archive, "SEARCH_POLL_S", 0.001)
+
+    found, failed = search_observations(1.0, 2.0, settings, ["spherex_dr1"])
+
+    assert (len(found), failed) == (6, [])
+    assert polls == [0.001]
+    assert not marker.exists()
+
+
+def test_two_searchers_for_one_position_ask_irsa_once(settings, monkeypatch):
+    irsa_answers = threading.Event()
+    calls = []
+
+    def slow_get(url, params, timeout):
+        calls.append(params["COLLECTION"])
+        irsa_answers.wait(5)
+        return _Answer(FIXTURE.read_bytes())
+
+    monkeypatch.setattr("app.archive.httpx.get", slow_get)
+    monkeypatch.setattr(archive, "SEARCH_POLL_S", 0.01)
+    marker = sia_cache_path(settings.cache_dir, "spherex_dr1", 1.0, 2.0).with_suffix(".inflight")
+    results = {}
+
+    def search(name):
+        results[name] = archive._search_collection(1.0, 2.0, "spherex_dr1", settings)
+
+    first = threading.Thread(target=search, args=("first",), daemon=True)
+    first.start()
+    deadline = time.monotonic() + 5
+    while not marker.is_file() and time.monotonic() < deadline:
+        time.sleep(0.005)
+    assert marker.is_file()
+    second = threading.Thread(target=search, args=("second",), daemon=True)
+    second.start()
+    irsa_answers.set()
+    first.join(5)
+    second.join(5)
+
+    assert calls == ["spherex_dr1"]
+    assert [len(results[name][0]) for name in ("first", "second")] == [6, 6]
+    assert not marker.exists()
+
+
+def test_a_stale_marker_of_a_dead_searcher_is_ignored(settings, monkeypatch):
+    cached = sia_cache_path(settings.cache_dir, "spherex_dr1", 1.0, 2.0)
+    marker = cached.with_suffix(".inflight")
+    archive._write_cached(marker, b"4242")
+    stale = time.time() - settings.http_timeout_s - archive.SEARCH_INFLIGHT_GRACE_S - 1
+    os.utime(marker, (stale, stale))
+    monkeypatch.setattr(archive.time, "sleep", lambda *_: pytest.fail("waited on a dead searcher"))
+    calls = []
+
+    def fake_get(url, params, timeout):
+        calls.append(params["COLLECTION"])
+        return _Answer(FIXTURE.read_bytes())
+
+    monkeypatch.setattr("app.archive.httpx.get", fake_get)
+
+    found, _ = search_observations(1.0, 2.0, settings, ["spherex_dr1"])
+
+    assert (len(found), calls) == (6, ["spherex_dr1"])
+    assert cached.is_file() and not marker.exists()
+
+
+def test_a_waiter_whose_searcher_got_nothing_asks_irsa_once_itself(settings, monkeypatch):
+    cached = sia_cache_path(settings.cache_dir, "spherex_dr1", 1.0, 2.0)
+    marker = cached.with_suffix(".inflight")
+    archive._write_cached(marker, b"4242")
+    calls = []
+
+    def fake_get(url, params, timeout):
+        calls.append(params["COLLECTION"])
+        return _Answer(FIXTURE.read_bytes())
+
+    # The first searcher's answer was empty or failed: it only drops the marker.
+    monkeypatch.setattr(archive.time, "sleep", lambda *_: marker.unlink())
+    monkeypatch.setattr("app.archive.httpx.get", fake_get)
+
+    found, _ = search_observations(1.0, 2.0, settings, ["spherex_dr1"])
+
+    assert (len(found), calls) == (6, ["spherex_dr1"])
+    assert not marker.exists()
+
+
+def test_the_marker_goes_when_the_search_fails_or_finds_nothing(settings, monkeypatch):
+    monkeypatch.setattr("app.archive.SEARCH_RETRY_S", 0)
+    marker = sia_cache_path(settings.cache_dir, "spherex_dr1", 1.0, 2.0).with_suffix(".inflight")
+    monkeypatch.setattr("app.archive.httpx.get", _per_collection({"spherex_dr1": None}))
+    with pytest.raises(ArchiveError):
+        search_observations(1.0, 2.0, settings, ["spherex_dr1"])
+    assert not marker.exists()
+
+    empty = FIXTURE.read_bytes().replace(b"science", b"calibration")
+    monkeypatch.setattr("app.archive.httpx.get", _per_collection({"spherex_dr1": empty}))
+    assert search_observations(1.0, 2.0, settings, ["spherex_dr1"]) == ([], [])
+    assert not marker.exists()
+    assert not list((settings.cache_dir / "sia").glob("*.part"))
 
 
 def _per_collection(answers: dict[str, bytes | None]):

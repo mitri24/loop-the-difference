@@ -4,6 +4,7 @@ import json
 import math
 import os
 import re
+import threading
 import time
 from collections import Counter
 from concurrent.futures import ThreadPoolExecutor
@@ -32,6 +33,12 @@ COLLECTIONS_TIMEOUT_S = 15.0
 SEARCH_ATTEMPTS = 3
 SEARCH_RETRY_S = 1.5
 _SEARCH_RETRY_STATUS = {429, 500, 502, 503, 504}
+# IRSA needs ~22 s per search whatever is asked; the API and the worker ask for the same position
+# at once. A marker next to the cache file lets the second asker wait for the first one's answer.
+SEARCH_POLL_S = 0.5
+SEARCH_INFLIGHT_GRACE_S = 10.0
+# One refresh of the stale collection list per process at a time, in the background.
+_refresh_lock = threading.Lock()
 _REQUIRED = ("obs_id", "energy_bandpassname", "em_min", "em_max", "t_min", "t_max", "access_url")
 
 
@@ -79,13 +86,40 @@ def _search_collection(
     cached = sia_cache_path(settings.cache_dir, collection, ra, dec)
     if cached.is_file():
         return parse_sia_votable(cached.read_bytes(), collection), None
-    params = {"COLLECTION": collection, "POS": f"CIRCLE {ra} {dec} 0.0005", "MAXREC": "5000"}
-    response = _search(settings, params)
-    observations = parse_sia_votable(response.content, collection)
-    if not observations:
-        return [], response.content
-    _write_cached(cached, response.content)
-    return observations, None
+    marker = cached.with_suffix(".inflight")
+    inflight_s = settings.http_timeout_s + SEARCH_INFLIGHT_GRACE_S
+    if _await_search(cached, marker, inflight_s):
+        return parse_sia_votable(cached.read_bytes(), collection), None
+    # Nobody else is asking (or the other search ended without an answer): ask IRSA once.
+    _write_cached(marker, str(os.getpid()).encode())
+    try:
+        params = {"COLLECTION": collection, "POS": f"CIRCLE {ra} {dec} 0.0005", "MAXREC": "5000"}
+        response = _search(settings, params)
+        observations = parse_sia_votable(response.content, collection)
+        if not observations:
+            return [], response.content
+        _write_cached(cached, response.content)
+        return observations, None
+    finally:
+        marker.unlink(missing_ok=True)
+
+
+def _await_search(cached: Path, marker: Path, inflight_s: float) -> bool:
+    """Another process asks IRSA for this position: wait for its answer instead of asking again.
+
+    True when the cached answer appeared. False when nobody is asking, the marker is older than
+    `inflight_s` (a crashed searcher) or vanished without an answer (empty or failed search).
+    """
+    while True:
+        if cached.is_file():
+            return True
+        try:
+            age = time.time() - marker.stat().st_mtime
+        except FileNotFoundError:
+            return cached.is_file()  # the answer lands before the marker goes
+        if age >= inflight_s:
+            return False
+        time.sleep(SEARCH_POLL_S)
 
 
 def _search(settings: Settings, params: dict[str, str]) -> httpx.Response:
@@ -133,30 +167,67 @@ def unreachable_text(exc: httpx.HTTPError) -> str:
 def spherex_collections(settings: Settings) -> list[str]:
     """Every SPHEREx Level-2 image collection IRSA lists, kept on disk for a day.
 
-    IRSA silent: the last known list, else the collections with stored answers (warmed targets keep
-    working in every release they were found in), else the configured collection alone.
+    A known list is answered at once, whatever its age; an old one is refreshed in the background
+    (IRSA's self-description took minutes today). Only a fresh install waits for IRSA. IRSA silent:
+    the last known list, else the collections with stored answers (warmed targets keep working in
+    every release they were found in), else the configured collection alone.
     """
     cached = collections_cache_path(settings.cache_dir)
-    if cached.is_file() and time.time() - cached.stat().st_mtime < COLLECTIONS_MAX_AGE_S:
+    if cached.is_file():
+        if time.time() - cached.stat().st_mtime >= COLLECTIONS_MAX_AGE_S:
+            _refresh_collections_in_background(settings)
         return json.loads(cached.read_text())
-    try:
-        found = _fetch_collections(settings)
-    except (httpx.HTTPError, ElementTree.ParseError):
-        found = []
+    found = _fetch_collections_or_nothing(settings)
     if found:
         _write_cached(cached, json.dumps(found).encode())
         return found
+    stored = cached_collections(settings.cache_dir)
+    if not stored:
+        return [settings.spherex_collection]
+    # Kept like an old list: IRSA is asked again in an hour, not on every request.
+    _write_cached(cached, json.dumps(stored).encode())
+    _postpone_refresh(cached)
+    return stored
+
+
+def _refresh_collections_in_background(settings: Settings) -> None:
+    """Refresh the stale list in a daemon thread, one per process at a time."""
+    if not _refresh_lock.acquire(blocking=False):
+        return  # a refresh is already running
+
+    def refresh() -> None:
+        cached = collections_cache_path(settings.cache_dir)
+        try:
+            found = _fetch_collections_or_nothing(settings)
+            if found:
+                _write_cached(cached, json.dumps(found).encode())
+            elif cached.is_file():
+                _postpone_refresh(cached)  # IRSA is silent: keep the old list for an hour
+        finally:
+            _refresh_lock.release()
+
+    try:
+        _start_thread(refresh)
+    except RuntimeError:  # no thread could be started: the next request tries again
+        _refresh_lock.release()
+        raise
+
+
+def _start_thread(target) -> None:
+    # Daemon: a slow IRSA must not keep a process alive. Tests swap this to run inline.
+    threading.Thread(target=target, daemon=True).start()
+
+
+def _postpone_refresh(cached: Path) -> None:
     retry_at = time.time() - COLLECTIONS_MAX_AGE_S + COLLECTIONS_RETRY_S
-    if not cached.is_file():
-        stored = cached_collections(settings.cache_dir)
-        if not stored:
-            return [settings.spherex_collection]
-        # Kept like an old list: IRSA is asked again in an hour, not on every request.
-        _write_cached(cached, json.dumps(stored).encode())
-        os.utime(cached, (retry_at, retry_at))
-        return stored
-    os.utime(cached, (retry_at, retry_at))  # IRSA is silent: keep the old list for an hour
-    return json.loads(cached.read_text())
+    os.utime(cached, (retry_at, retry_at))
+
+
+def _fetch_collections_or_nothing(settings: Settings) -> list[str]:
+    try:
+        return _fetch_collections(settings)
+    except (httpx.HTTPError, ElementTree.ParseError):
+        return []
 
 
 def _fetch_collections(settings: Settings) -> list[str]:
