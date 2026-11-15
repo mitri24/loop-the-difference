@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, type ReactNode } from 'react'
 import { CHALLENGE_TARGETS } from '../targets'
 import type { TargetQuery } from '../url'
 import { openTarget } from './TargetForm'
@@ -22,10 +22,12 @@ interface Props {
   onFind: (name: string, base: TargetQuery) => void
   onShare: () => void
   onDraftChange?: (query: TargetQuery) => void
+  // Buttons for the on-demand sheets (options, layers, about), before Examples and Share.
+  tools?: ReactNode
 }
 
 // Top of the workspace: one input for a name or "RA, Dec", the example targets, Surprise me and Share.
-export function SearchBar({ value, onChange, draft, busy, onShow, onFind, onShare, onDraftChange }: Props) {
+export function SearchBar({ value, onChange, draft, busy, onShow, onFind, onShare, onDraftChange, tools }: Props) {
   const [examplesOpen, setExamplesOpen] = useState(false)
   const submit = () => {
     setExamplesOpen(false)
@@ -51,6 +53,7 @@ export function SearchBar({ value, onChange, draft, busy, onShow, onFind, onShar
           </button>
         </form>
         <div className="header-actions">
+        {tools}
         <button type="button" className="examples-toggle" aria-expanded={examplesOpen} aria-controls="search-examples" onClick={() => setExamplesOpen(!examplesOpen)}>Examples <span aria-hidden="true">⌄</span></button>
         <button type="button" className="share-button" onClick={onShare} title="Copy this comparison link">Share</button>
         </div>
