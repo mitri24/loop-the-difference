@@ -32,12 +32,13 @@ def no_gaia(monkeypatch):
 
 @pytest.fixture(autouse=True)
 def no_allwise(monkeypatch):
-    """Source matching asks IRSA Gator for AllWISE with httpx.get: never in tests."""
+    """Source matching asks IRSA Gator for AllWISE and CatWISE2020: never in tests."""
 
     def unreachable(*_, **__):
         raise httpx.ConnectError("no network in tests")
 
     monkeypatch.setattr(sources, "query_allwise", unreachable)
+    monkeypatch.setattr(sources, "query_catwise", unreachable)
 
 
 @pytest.fixture(autouse=True)

@@ -9,6 +9,7 @@ from astropy.table import Table
 from app import sources
 from app.catalogs import position_at
 from app.frames import Aligned, target_grid
+from app.models import ProperMotion
 from app.sources import (
     FWHM_PX,
     MATCH_RADIUS_ARCSEC,
@@ -16,17 +17,21 @@ from app.sources import (
     CatalogStar,
     allwise_stars,
     cached_query,
+    catwise_stars,
     detect,
     field_catalogs,
     find_sources,
     gaia_stars,
     label,
+    with_catwise_motion,
 )
 
 FIXTURES = Path(__file__).parent / "fixtures"
 # Real answers for a 0.03° cone around WISE 0855-0714 (Gaia DR3 TAP CSV, IRSA Gator VOTable).
 GAIA = gaia_stars((FIXTURES / "gaia_wise0855_cone.csv").read_text())
 ALLWISE = allwise_stars(Table.read(FIXTURES / "allwise_wise0855_cone.xml", format="votable"))
+# IRSA Gator's CatWISE2020 answer within 36″ of WISE 0855−0714's 2015 position (15 Nov 2026).
+CATWISE = catwise_stars(Table.read(FIXTURES / "catwise_wise0855_cone.xml", format="votable"))
 RA, DEC, SIZE_DEG = 133.795, -7.245, 0.05
 MJD = 60800.7
 
@@ -386,3 +391,50 @@ def test_a_cut_catalogue_leaves_unmatched_sources_unknown(monkeypatch):
     assert [s.match for s in label(detections, grid, shape, MJD, far, [])] == ["none"]
     monkeypatch.setattr(sources, "MAX_CATALOG_ROWS", 2)
     assert [s.match for s in label(detections, grid, shape, MJD, far, [])] == ["unknown"]
+
+
+def test_catwise_keeps_the_sources_that_move_above_3_sigma_in_mas_per_year_at_their_epoch():
+    fast = next(s for s in CATWISE if s.catalog_id == "CatWISE2020 J085507.96-071439.3")
+
+    assert len(CATWISE) == 9  # of 21 rows: the others move below 3σ
+    assert (fast.motion.pmra_mas_yr, fast.motion.pmdec_mas_yr) == pytest.approx((-8021.2, 1035.7))
+    assert fast.motion.ref_epoch == pytest.approx(2015.86, abs=0.01)
+
+
+def test_allwise_takes_the_motion_of_the_fastest_catwise_source_it_was_in_2010():
+    moved = with_catwise_motion(ALLWISE, CATWISE)
+    wise0855 = next(s for s in moved if s.catalog_id == "AllWISE J085510.74-071442.5")
+
+    # Not the slow 0.27″/yr fragment 1.3″ away: the 8″/yr one that stood there in 2010.
+    assert wise0855.motion.pmra_mas_yr == pytest.approx(-8021.2)
+    assert (wise0855.motion.ra, wise0855.motion.dec, wise0855.motion.ref_epoch) == (
+        wise0855.ra,
+        wise0855.dec,
+        2010.5,
+    )
+    assert [s.catalog_id for s in moved if s.motion] == ["AllWISE J085510.74-071442.5"]
+    assert with_catwise_motion(ALLWISE, []) == ALLWISE
+
+
+def test_a_moving_allwise_source_matches_where_it_is_at_the_frame_date():
+    grid, shape = target_grid(RA, DEC, SIZE_DEG)
+    star = sources.CatalogStar("AllWISE J1", RA, DEC, 15.0)
+    # 2″/yr west: about 30″ from its 2010.5 place at the frame's date, five match radii.
+    west_2015 = RA - 10 / 3600 / np.cos(np.radians(DEC))
+    motion = ProperMotion(
+        source_id="J1",
+        ra=west_2015,
+        dec=DEC,
+        ref_epoch=2015.5,
+        pmra_mas_yr=-2000.0,
+        pmdec_mas_yr=0.0,
+        parallax_mas=None,
+    )
+    moved = with_catwise_motion(
+        [star], [sources.CatalogStar("CatWISE2020 J1", west_2015, DEC, None, motion)]
+    )
+    image = _sky(shape, [(*_pixel(grid, *position_at(moved[0].motion, MJD)), 100.0)])
+    detections, _ = detect(image)
+
+    assert label(detections, grid, shape, MJD, [], moved)[0].catalog_id == "AllWISE J1"
+    assert label(detections, grid, shape, MJD, [], [star])[0].match == "none"

@@ -9,6 +9,7 @@ import csv
 import hashlib
 import io
 import json
+import math
 import os
 import threading
 import time
@@ -28,7 +29,7 @@ from photutils.detection import find_peaks
 from photutils.psf import fit_2dgaussian
 from scipy import ndimage
 
-from app.catalogs import GAIA_TAP_URL, position_at
+from app.catalogs import GAIA_TAP_URL, J2000, MJD_J2000, position_at
 from app.frames import ROTATION_MARGIN, SPHEREX_PIXEL_SCALE_ARCSEC, Aligned
 from app.models import Check, DetectedSource, ProperMotion
 
@@ -64,6 +65,13 @@ CATALOG_TIMEOUT_S = 10.0
 # Rows per catalogue and field (Gaia DR3: brightest, AllWISE: nearest); a crowded field is cut.
 MAX_CATALOG_ROWS = 10000
 ALLWISE_TABLE = "allwise_p3as_psd"
+# AllWISE positions lie at its mean epoch. Its red sources move to each frame's time with the
+# motion of their CatWISE2020 counterpart, about 12× more accurate than AllWISE's own, as on the
+# sky layer (frontend/src/catalogLayers.ts) and in the analysis service: only motions above 3σ,
+# and a CatWISE2020 source moved back to 2010.5 is the AllWISE source within this distance.
+CATWISE_TABLE = "catwise_2020"
+ALLWISE_EPOCH = 2010.5
+CATWISE_MATCH_ARCSEC = 3.0
 # IRSA's catalogue query API: 2-3 s per field, while IRSA TAP took minutes or answered 502.
 GATOR_URL = "https://irsa.ipac.caltech.edu/cgi-bin/Gator/nph-query"
 
@@ -81,7 +89,7 @@ class CatalogStar(NamedTuple):
     ra: float
     dec: float
     mag: float | None
-    # Gaia DR3 only: the star is moved to each frame's date.
+    # Gaia DR3, and AllWISE with a CatWISE2020 motion: the star is moved to each frame's date.
     motion: ProperMotion | None = None
 
 
@@ -235,6 +243,72 @@ def allwise_stars(table: Table) -> list[CatalogStar]:
     return stars
 
 
+def catwise_stars(table: Table) -> list[CatalogStar]:
+    """CatWISE2020 rows that move above 3σ (see query_catwise), at their mean observation epoch.
+    pmra is µα·cos δ like Gaia's, in arcsec/yr in the table."""
+    stars = []
+    for row in table:
+        values = [row[c] for c in ("pmra", "pmdec", "sigpmra", "sigpmdec", "meanobsmjd")]
+        if any(np.ma.is_masked(value) for value in values):
+            continue
+        pmra, pmdec, sig_ra, sig_dec, mjd = (float(value) for value in values)
+        if abs(pmra) < 3 * sig_ra and abs(pmdec) < 3 * sig_dec:
+            continue
+        motion = ProperMotion(
+            source_id=str(row["source_name"]),
+            ra=float(row["ra"]),
+            dec=float(row["dec"]),
+            ref_epoch=J2000 + (mjd - MJD_J2000) / 365.25,
+            pmra_mas_yr=pmra * 1000,
+            pmdec_mas_yr=pmdec * 1000,
+            parallax_mas=None,
+        )
+        stars.append(
+            CatalogStar(f"CatWISE2020 {motion.source_id}", motion.ra, motion.dec, None, motion)
+        )
+    return stars
+
+
+def with_catwise_motion(
+    allwise: list[CatalogStar], catwise: list[CatalogStar]
+) -> list[CatalogStar]:
+    """AllWISE stars with the motion of a moving CatWISE2020 source that, moved back to 2010.5,
+    lies within CATWISE_MATCH_ARCSEC: the fastest of them. A fast mover that stood there in 2010
+    is what AllWISE saw, while CatWISE2020 may also list slow fragments of the same smeared object
+    nearer by (WISE 0855−0714: 0.27″/yr at 1.3″, its 8″/yr fragments at 2–3″). The others keep
+    their 2010.5 place."""
+    moving = [star for star in catwise if star.motion]
+    if not allwise or not moving:
+        return allwise
+    then = MJD_J2000 + (ALLWISE_EPOCH - J2000) * 365.25
+    back = [position_at(star.motion, then) for star in moving]
+    places = SkyCoord([ra for ra, _ in back] * u.deg, [dec for _, dec in back] * u.deg)
+    stars = SkyCoord([s.ra for s in allwise] * u.deg, [s.dec for s in allwise] * u.deg)
+    near, index, _, _ = places.search_around_sky(stars, CATWISE_MATCH_ARCSEC * u.arcsec)
+    fastest: dict[int, ProperMotion] = {}
+    for i, j in zip(near, index, strict=True):
+        motion = moving[int(j)].motion
+        speed = math.hypot(motion.pmra_mas_yr, motion.pmdec_mas_yr)
+        held = fastest.get(int(i))
+        if held is None or speed > math.hypot(held.pmra_mas_yr, held.pmdec_mas_yr):
+            fastest[int(i)] = motion
+    moved = list(allwise)
+    for i, motion in fastest.items():
+        star = allwise[i]
+        moved[i] = star._replace(
+            motion=ProperMotion(
+                source_id=star.catalog_id,
+                ra=star.ra,
+                dec=star.dec,
+                ref_epoch=ALLWISE_EPOCH,
+                pmra_mas_yr=motion.pmra_mas_yr,
+                pmdec_mas_yr=motion.pmdec_mas_yr,
+                parallax_mas=None,
+            )
+        )
+    return moved
+
+
 def query_gaia(ra: float, dec: float, radius_deg: float) -> list[CatalogStar]:
     query = (
         f"SELECT TOP {MAX_CATALOG_ROWS} source_id, ra, dec, pmra, pmdec, ref_epoch, "
@@ -264,6 +338,22 @@ def query_allwise(ra: float, dec: float, radius_deg: float) -> list[CatalogStar]
     return allwise_stars(Table.read(io.BytesIO(response.content), format="votable"))
 
 
+def query_catwise(ra: float, dec: float, radius_deg: float) -> list[CatalogStar]:
+    params = {
+        "catalog": CATWISE_TABLE,
+        "spatial": "cone",
+        "objstr": f"{ra} {dec}",
+        "radius": radius_deg * 3600,
+        "radunits": "arcsec",
+        "outfmt": 3,  # VOTable
+        "selcols": "source_name,ra,dec,meanobsmjd,pmra,pmdec,sigpmra,sigpmdec",
+        "outrows": MAX_CATALOG_ROWS,
+    }
+    response = httpx.get(GATOR_URL, params=params, timeout=CATALOG_TIMEOUT_S)
+    response.raise_for_status()
+    return catwise_stars(Table.read(io.BytesIO(response.content), format="votable"))
+
+
 Query = Callable[[float, float, float], list[CatalogStar]]
 
 
@@ -291,7 +381,8 @@ def cached_query(
 def field_catalogs(
     ra: float, dec: float, radius_deg: float, cache_dir: Path
 ) -> tuple[list[CatalogStar] | None, list[CatalogStar] | None]:
-    """Gaia DR3 and AllWISE around the field, asked in parallel; None for a failed catalogue."""
+    """Gaia DR3 and AllWISE (moving with CatWISE2020) around the field, asked in parallel; None
+    for a failed catalogue."""
     answers: dict[str, list[CatalogStar] | None] = {}
 
     def ask(name: str, query: Query) -> None:
@@ -305,14 +396,18 @@ def field_catalogs(
     # Daemon threads: a late answer must not keep a process alive.
     threads = [
         threading.Thread(target=ask, args=item, daemon=True)
-        for item in (("gaia", query_gaia), ("allwise", query_allwise))
+        for item in (("gaia", query_gaia), ("allwise", query_allwise), ("catwise", query_catwise))
     ]
     for thread in threads:
         thread.start()
     deadline = time.monotonic() + CATALOG_TIMEOUT_S
     for thread in threads:
         thread.join(max(0.0, deadline - time.monotonic()))
-    return answers.get("gaia"), answers.get("allwise")
+    allwise = answers.get("allwise")
+    # Without CatWISE2020 AllWISE keeps its 2010.5 positions, as before.
+    return answers.get("gaia"), allwise and with_catwise_motion(
+        allwise, answers.get("catwise") or []
+    )
 
 
 def _brightest_within(
@@ -458,8 +553,9 @@ def source_checks(
             f"W1 {BRIGHT_MAG['allwise']:g} within {BRIGHT_RADIUS_PX:g} px: their saturated cores "
             "are masked, only the wings place them. The brightest catalogue source within the "
             "radius wins; a match "
-            "can be a chance alignment. Gaia DR3 positions are moved to each frame's date; AllWISE "
-            "positions are from about 2010, so a fast-moving source can miss its match. "
+            "can be a chance alignment. Gaia DR3 positions are moved to each frame's date, and so "
+            "are AllWISE sources that CatWISE2020 sees moving above 3σ; the other AllWISE "
+            "positions are from about 2010, so a source moving below that can miss its match. "
             "Catalogues (chance match = a random position has a source within 1 px): "
             f"{status('Gaia DR3', gaia)}, {status('AllWISE', allwise)}",
         )
