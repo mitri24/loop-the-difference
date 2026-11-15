@@ -1,0 +1,10 @@
+.evidence__subject { color:var(--text-secondary); font-size:var(--text-xs); }
+.check-group { display:flex; flex-direction:column; gap:var(--space-2); }
+.check-group__title { margin:0; font-size:var(--text-xs); font-weight:var(--weight-medium); color:var(--text-muted); }
+.check-item__text { margin:2px 0 0; color:var(--text-secondary); font-size:var(--text-xs); }
+.check-item__action { margin-top:var(--space-1); min-height:28px; padding:2px 10px; font-size:var(--text-xs); }
+.check-item__more { margin-top:2px; color:var(--text-muted); font-size:var(--text-xs); }
+.check-item__more > summary { min-height:24px; padding:2px 0; font-size:var(--text-xs); }
+.check-item__more ul { margin:2px 0 0; padding-left:16px; }
+.check-passed > summary { min-height:28px; padding:2px 0; }
+.check-passed[open] > summary { margin-bottom:var(--space-2); }

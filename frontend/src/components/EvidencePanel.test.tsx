@@ -1,6 +1,7 @@
+import { renderToStaticMarkup } from 'react-dom/server'
 import { describe, expect, it } from 'vitest'
-import type { Check, FrameManifest } from '../types'
-import { checksForFrame, groupBySeverity, hasBlocker, manifestChecks } from './EvidencePanel'
+import type { Check, Frame, FrameManifest } from '../types'
+import { checksForFrame, EvidencePanel, groupBySeverity, hasBlocker, manifestChecks } from './EvidencePanel'
 
 const CHECKS: Check[] = [
   {
@@ -71,5 +72,36 @@ describe('evidence checks', () => {
       },
     ])
     expect(manifestChecks({ checks: [], warnings: [] })).toEqual([])
+  })
+})
+
+describe('EvidencePanel', () => {
+  const panel = (props: Parameters<typeof EvidencePanel>[0]) => renderToStaticMarkup(<EvidencePanel {...props} />)
+  const flagged: Check = { code: 'FLAGGED_PIXELS', severity: 'warning', message: 'Flagged pixels next to the target',
+    detail: 'obs1: unusable pixels within 3 px of the target', affects: ['obs:obs1'] }
+  const mismatch: Check = { code: 'WAVELENGTH_MISMATCH', severity: 'blocker', message: 'Frames were observed at different wavelengths',
+    detail: 'Effective wavelength ranges from 4.410 to 4.510 µm', affects: ['difference'] }
+  const final = { preview: false, epochs: 2, release: 'DR1',
+    frames: [{ index: 0, obs_id: 'obs0', wavelength_um: 4.7 }, { index: 1, obs_id: 'obs1', wavelength_um: 4.7 }] as Frame[] }
+
+  it('groups problems by meaning and keeps the technical details on demand', () => {
+    const html = panel({ checks: [flagged, mismatch] })
+    expect(html.indexOf('>Blocking</h4>')).toBeLessThan(html.indexOf('>Scientific limits</h4>'))
+    expect(html).toContain('Different wavelengths')
+    expect(html).toContain('<summary>Technical details</summary><ul><li>Effective wavelength ranges from 4.410 to 4.510 µm</li></ul>')
+    expect(html).not.toContain('check-item__action')
+  })
+
+  it('offers a check’s action only where the workspace wires it', () => {
+    expect(panel({ checks: [mismatch], onAction: () => undefined })).toContain('class="check-item__action">Choose a compatible pair</button>')
+  })
+
+  it('names what the checks refer to, adds the caveat and keeps passed checks in one closed row', () => {
+    const html = panel({ checks: [flagged], manifest: final, frameLabel: 'this comparison · 2 images' })
+    expect(html).toContain('Checks for this comparison · 2 images')
+    expect(html).toContain('Changes are candidates')
+    expect(html).toMatch(/<details class="check-group check-passed"><summary class="check-group__title">Passed checks · 5<\/summary>/)
+    expect(html).toContain('Images aligned')
+    expect(html).not.toContain('Target pixels usable')
   })
 })
