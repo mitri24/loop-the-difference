@@ -19,3 +19,17 @@
 .check-item__more ul { margin:2px 0 0; padding-left:16px; }
 .check-passed > summary { min-height:28px; padding:2px 0; }
 .check-passed[open] > summary { margin-bottom:var(--space-2); }
+
+.evidence { gap:24px; }
+.evidence-intro { margin:0; font-size:18px; font-weight:650; }
+.evidence > .muted { margin:0; font-size:14px; line-height:1.6; }
+.evidence .check-item { padding:20px 0; gap:12px; }
+.evidence .check-item > div { min-width:0; }
+.evidence .check-item__title { font-size:14px; line-height:1.5; }
+.evidence .check-item__text { margin-top:8px; font-size:14px; line-height:1.65; }
+.check-item__foot { gap:8px 16px; margin-top:12px; }
+.check-item__action { min-height:44px; font-size:14px; text-align:left; }
+.check-item__more > summary { min-height:40px; padding:10px 0; font-size:13px; }
+
+.check-context > summary { min-height:44px; padding:12px 0; font-size:14px; color:var(--text-secondary); }
+.evidence .check-list:empty { display:none; }

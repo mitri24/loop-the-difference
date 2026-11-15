@@ -22,3 +22,13 @@ frontend/playwright-report/
 frontend/test-results/
 frontend/test-results-live/
 frontend/test-results-native/
+
+frontend/qa-comparison/
+
+frontend/qa-unlimited/
+frontend/qa-unlimited-local/
+
+frontend/qa-menu/
+frontend/qa-menu-short/
+
+frontend/qa-compact-menu/

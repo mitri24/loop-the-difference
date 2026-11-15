@@ -18,13 +18,13 @@ describe('PairTable', () => {
   it('puts the essentials of A and B in the same row, the rest of the metadata folded under All metadata', () => {
     const html = table([frame(0, '2026-02-10T12:00:30Z', 4.61, { cloud_url: 'https://s3.example/0.fits' }),
       frame(1, '2026-05-11T12:00:00Z', 4.612, { n_combined: 6, release: 'QR3' })])
-    expect(html).toContain('<th scope="row">Observed</th><td>2026-02-10 12:00:30 UTC</td><td>2026-05-11 12:00:00 UTC</td>')
+    expect(html).toContain('<th scope="row">Observed</th><td>2026-02-10 12:00 UTC</td><td>2026-05-11 12:00 UTC</td>')
     expect(html).toContain('<td>single exposure</td><td>stack of 6</td>')
     expect(html).toContain('<td>λ 4.610 µm ± 0.020</td><td>λ 4.612 µm ± 0.020</td>')
     expect(html).toContain('<td>96 %<span class="muted"> · 1.2 % masked</span></td>')
     expect(html).toContain('href="https://irsa.example/obs-0"')
     // Folded: the Level-2 file, the archive's own fields, the field and the wavelength strip.
-    const more = html.indexOf('<summary>All metadata</summary>')
+    const more = html.indexOf('<summary>Image details &amp; original data</summary>')
     expect(more).toBeGreaterThan(html.indexOf('class="pair-verdict'))
     expect(html.indexOf('Level-2 file')).toBeGreaterThan(more)
     expect(html.indexOf('Field RA')).toBeGreaterThan(more)
@@ -80,8 +80,8 @@ describe('PairTable', () => {
       ab50: 18.725, ab90: 18.39, false_per_frame: 0, offset_arcsec: 0.9 }
     const html = table([frame(0, '2026-02-10T12:00:00Z', 4.61, { completeness: limit }), frame(1, '2026-05-11T12:00:00Z', 4.612)])
     const row = html.indexOf('>Detection limit</th>')
-    expect(row).toBeGreaterThan(html.indexOf('>Sources</th>'))
-    expect(row).toBeLessThan(html.indexOf('<summary>All metadata</summary>'))
+    expect(row).toBeGreaterThan(html.indexOf('>Image</th>'))
+    expect(row).toBeLessThan(html.indexOf('<summary>Image details &amp; original data</summary>'))
     expect(html.slice(row)).toMatch(/^>Detection limit<\/th><td>50 % at 18\.7 AB<\/td><td><span class="muted">–<\/span><\/td>/)
     // A comparison from before the measurement: no row at all.
     expect(table([frame(0, '2026-02-10T12:00:00Z', 4.61), frame(1, '2026-05-11T12:00:00Z', 4.612)])).not.toContain('Detection limit')

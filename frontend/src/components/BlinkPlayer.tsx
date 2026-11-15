@@ -448,9 +448,9 @@ export function BlinkPlayer({
               const at = skyToFrame(mark.ra, mark.dec, grid.ra, grid.dec, extentDeg)
               const here = mark.obs_id === frame.obs_id
               return at && (
-                <span key={mark.obs_id} className={here ? 'candidate-mark current' : 'candidate-mark'}
-                  style={{ left: `${at.x * 100}%`, top: `${at.y * 100}%` }} title={`Your mark ${MARK_LETTERS[i]}${here ? ', set in this frame' : ''}`}>
-                  <span className="candidate-mark-letter">{MARK_LETTERS[i]}</span>
+                <span key={`${mark.label ?? i}:${mark.obs_id}`} className={here ? 'candidate-mark current' : 'candidate-mark'}
+                  style={{ left: `${at.x * 100}%`, top: `${at.y * 100}%` }} title={`Your mark ${mark.label ?? MARK_LETTERS[i]}${here ? ', set in this frame' : ''}`}>
+                  <span className="candidate-mark-letter">{mark.label ?? MARK_LETTERS[i]}</span>
                 </span>
               )
             })}

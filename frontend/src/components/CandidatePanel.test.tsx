@@ -19,10 +19,10 @@ const render = (
 describe('CandidatePanel', () => {
   it('names the next action before any mark', () => {
     const html = render([])
-    expect(html).toContain('Candidate check')
+    expect(html).toContain('Your objects')
     expect(html).toContain('Spotted motion? Mark the object in two frames')
     expect(html).toContain('aria-pressed="false"')
-    expect(html).not.toContain('Clear marks')
+    expect(html).not.toContain('Clear this object’s marks')
   })
 
   it('asks for a second frame after one mark and shows the state chip', () => {
@@ -45,7 +45,7 @@ describe('CandidatePanel', () => {
     expect(html).toContain('B · 2026-10-25 21:55 UTC')
     expect(html).toMatch(/<button type="button" aria-pressed="false" disabled="">/)
     expect(html).toContain('Not on the sky.')
-    expect(html).toContain('Clear marks')
+    expect(html).toContain('Clear this object’s marks')
   })
 
   it('shows the possible track of Pluto frames 7 and 10 as possible motion', () => {

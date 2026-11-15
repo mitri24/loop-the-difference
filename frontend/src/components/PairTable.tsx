@@ -26,7 +26,6 @@ interface Props {
   onSetShown: (which: Which) => void
 }
 
-const utcSecond = (date: string) => `${date.slice(0, 19).replace('T', ' ')} UTC`
 // In the frame choice: date and minute; the Observed row and the group label say UTC.
 const choiceText = (date: string) => date.slice(0, 16).replace('T', ' ')
 export const baselineText = (days: number) => (days >= 365.25 ? `${(days / 365.25).toFixed(2)} yr` : `${days.toFixed(1)} d`)
@@ -63,7 +62,7 @@ const instrument = (f: Frame) => [...new Set([f.facility_name, f.instrument_name
 const VERDICT = {
   same: { tone: 'ok', text: 'same wavelength: brightness compares directly' },
   close: { tone: 'warn', text: 'close wavelengths: part of a brightness change can be colour' },
-  different: { tone: 'fail', text: 'different wavelengths: a brightness change can be colour, not change' },
+  different: { tone: 'fail', text: 'different light bands: do not judge brightness changes from this pair' },
   unknown: { tone: 'warn', text: 'wavelength not reported for one of them' },
 } as const
 
@@ -145,6 +144,7 @@ export function PairTable({ frames, pair, index, letter, grid, motion, predictio
           ))}
         </p>
       )}
+      <h3 className="side-label">2 · Compare two moments</h3>
       <table className="pair-table">
         <thead>
           <tr>
@@ -155,16 +155,11 @@ export function PairTable({ frames, pair, index, letter, grid, motion, predictio
         </thead>
         {/* What a comparison needs, at a glance; everything else the archive says is one click below. */}
         <tbody>
-          {row('Observed', (f) => <>{utcSecond(f.date)}{f.date_end && <> → {utcMinute(f.date_end)}</>}</>)}
+          {row('Observed', (f) => <>{utcMinute(f.date)}{f.date_end && <> → {utcMinute(f.date_end)}</>}</>)}
           {row('Wavelength', (f) => <>λ {lambda(f)}</>, 'Centre wavelength at the target ± half the bandwidth')}
           {row('Image', image, 'Single exposure or a stack of exposures, with its exposure time (t_exptime)')}
-          {row('Quality', quality, 'Share of the field with data · pixels flagged as unusable (saturation, cosmic rays, …)')}
-          {row('Sources', sources, 'Detected at ≥ 5σ · how many have no Gaia DR3 or AllWISE match (they need verification)')}
           {(a.completeness || b.completeness) && row('Detection limit', limit,
             'Measured with artificial stars set into the frame: half of the stars this bright are found again')}
-          {motion && row('Gaia DR3', gaia, `Predicted position of ${motion.source_id} · µ ${motion.pmra_mas_yr.toFixed(0)}, ${motion.pmdec_mas_yr.toFixed(0)} mas/yr`)}
-          {predictions.length > 0 && row('Track', track, 'Where the possible track from your marks puts the object')}
-          {row('Data', (f) => <a href={f.source_url} target="_blank" rel="noreferrer">{f.obs_id}</a>, 'The observation at IRSA')}
         </tbody>
       </table>
       <p className={`pair-verdict ${verdict.tone}`}>
@@ -172,10 +167,16 @@ export function PairTable({ frames, pair, index, letter, grid, motion, predictio
         {releases[0] !== releases[1] && <> · releases differ, so calibration can too</>}
       </p>
       <details className="disclosure pair-more">
-        <summary>All metadata</summary>
+        <summary>Image details &amp; original data</summary>
         <table className="pair-table">
           <thead className="sr-only"><tr><td /><th scope="col">A</th><th scope="col">B</th></tr></thead>
           <tbody>
+          {row('Quality', quality, 'Share of the field with data · pixels flagged as unusable (saturation, cosmic rays, …)')}
+          {row('Sources', sources, 'Detected at ≥ 5σ · how many have no Gaia DR3 or AllWISE match (they need verification)')}
+          {motion && row('Gaia DR3', gaia, `Predicted position of ${motion.source_id} · µ ${motion.pmra_mas_yr.toFixed(0)}, ${motion.pmdec_mas_yr.toFixed(0)} mas/yr`)}
+          {predictions.length > 0 && row('Track', track, 'Where the possible track from your marks puts the object')}
+          {row('Data', (f) => <a href={f.source_url} target="_blank" rel="noreferrer">{f.obs_id}</a>, 'The observation at IRSA')}
+            {row('Exact time', (f) => `${f.date.slice(0, 19).replace('T', ' ')} UTC`)}
             {row('Time span', timeSpan, 'Start of the first exposure to the end of the last (t_min, t_max)')}
             {row('Resolving power', (f) => ifKnown(f.resolving_power, (r) => `${Number(r.toFixed(1))}`), 'λ/Δλ as the archive lists it (em_res_power)')}
             {row('Spatial resolution', (f) => ifKnown(f.spatial_resolution_arcsec, (v) => `${Number(v.toFixed(3))}″`),

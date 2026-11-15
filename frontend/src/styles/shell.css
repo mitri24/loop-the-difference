@@ -161,11 +161,12 @@
    the overview map, as wide as the map, down to the window's bottom; on phones it is a bottom sheet. */
 .inspector { container:inspector / inline-size; display:flex; flex-direction:column; min-height:0; background:var(--surface-1); border:1px solid var(--border-strong); border-radius:var(--radius-md); }
 .inspector[hidden] { display:none; }
-.inspector-head { flex:none; display:flex; align-items:flex-start; gap:var(--space-1); padding:var(--space-1); border-bottom:1px solid var(--border); }
-.inspector-tabs { flex:1; display:flex; flex-wrap:wrap; gap:2px; min-width:0; }
-.inspector-tabs [role='tab'] { display:inline-flex; align-items:center; gap:var(--space-1); min-width:0; min-height:30px; padding:0 6px; border:1px solid transparent; border-radius:999px; background:transparent; color:var(--text-secondary); font-size:var(--text-xs); white-space:nowrap; }
-.inspector-tabs [role='tab']:hover { color:var(--text-primary); background:var(--surface-2); }
-.inspector-tabs [role='tab'][aria-selected='true'] { color:var(--accent); border-color:var(--accent); background:var(--accent-subtle); }
+.inspector-head { flex:none; display:flex; align-items:center; gap:var(--space-1); padding:2px; border-bottom:1px solid var(--border); }
+/* The same segmented surface as the image-kind switch. */
+.inspector-tabs { flex:1; display:flex; flex-wrap:nowrap; gap:2px; min-width:0; padding:2px; border:1px solid var(--border-strong); border-radius:var(--radius-md); background:var(--surface-2); overflow-x:auto; scrollbar-width:thin; }
+.inspector-tabs [role='tab'] { display:inline-flex; flex:1 0 auto; align-items:center; justify-content:center; gap:var(--space-1); min-width:0; min-height:30px; padding:0 6px; border:0; border-radius:calc(var(--radius-md) - 2px); background:transparent; color:var(--text-secondary); font-size:var(--text-xs); font-weight:600; white-space:nowrap; }
+.inspector-tabs [role='tab']:hover:not([aria-selected='true']) { color:var(--text-primary); background:var(--surface-1); }
+.inspector-tabs [role='tab'][aria-selected='true'] { color:var(--text-on-accent); background:var(--accent); }
 .tab-count { min-width:18px; padding:0 5px; border-radius:var(--radius-md); background:var(--surface-3); color:var(--text-primary); font-size:10px; font-variant-numeric:tabular-nums; text-align:center; }
 .tab-count.alert { background:var(--status-fail); color:var(--surface-0); }
 .inspector-close { display:none; flex:none; width:36px; min-height:32px; padding:0; background:transparent; border-color:transparent; }
@@ -181,12 +182,6 @@
 .player-skeleton > .player-side { gap:var(--space-2); }
 .player-skeleton .transport { padding-block:var(--space-3); }
 .inspect-toggle { display:none; }
-/* A narrow inspector (the map column on tablets, a short landscape phone): the tabs in one row that scrolls sideways,
-   so the panel keeps its height. */
-@container inspector (max-width:259px) {
-  .inspector-tabs { flex-wrap:nowrap; overflow-x:auto; scrollbar-width:none; }
-  .inspector-tabs [role='tab'] { flex:none; }
-}
 @media (width > 700px) {
   /* A grid item in the map column, as wide as the column (the map card sets it: the inspector's own content never
      widens it), under the card (its height measured by App) down to the window's bottom. */

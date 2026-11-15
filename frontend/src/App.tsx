@@ -414,7 +414,7 @@ export default function App() {
   const candidate = useCandidate(job?.job_id ?? null, !markBlocked, manifest && !manifest.preview && linkComparison ? manifest : null, LINKED_MARKS)
   // The address bar carries the marks (the link's, until they are placed) and A and B: a reload or a copied address
   // keeps them.
-  const urlMarks = candidate.marks.length > 0 ? candidate.marks : candidate.linked
+  const urlMarks = candidate.shareMarks.length > 0 ? candidate.shareMarks : candidate.linked
   const pairIds = useMemo(() => (manifest && !manifest.preview && pair && manifest.frames[pair.a] && manifest.frames[pair.b]
     ? { a: manifest.frames[pair.a].obs_id, b: manifest.frames[pair.b].obs_id } : null), [manifest, pair])
   // The link's A and B in its own comparison's final images: the player starts on them.
@@ -428,9 +428,9 @@ export default function App() {
     // While the link's comparison loads, its A and B stay in the address.
     if (!EMBED) window.history.replaceState(null, '', toSearch(query, EMBED, urlMarks, pairIds ?? (linkComparison ? LINKED_PAIR : null)))
   }, [query, urlMarks, pairIds, linkComparison])
-  useMarkLayer(sky, candidate.marks)
+  useMarkLayer(sky, candidate.allMarks)
   // The link opens this comparison with the marks set in it.
-  const link = () => new URL(toSearch(query, EMBED, candidate.marks, pairIds), window.location.href).href
+  const link = () => new URL(toSearch(query, EMBED, candidate.shareMarks, pairIds), window.location.href).href
   const share = async () => {
     try {
       await navigator.clipboard.writeText(link())
@@ -563,12 +563,12 @@ export default function App() {
   const imagesToggle = <ImagesToggle value={query.mode === 'exposures' ? 'exposures' : 'stacks'} onChange={selectMode} disabled={busy && !job} />
   const changeText = changeLine(pairChanges)
   const changes = manifest && hasFrames && (
-    <section className="changes" aria-label="Changes between A and B">
-      <h3 className="side-label">Changes between A and B</h3>
+    <details className="changes" aria-label="Difference image">
+      <summary>Difference image</summary>
       {changeText
         ? <p>{changeText}{pairChanges.result?.comparable && job && <> · <button type="button" className="text-button" onClick={() => setPairView({ job: job.job_id, open: true, pair })}>Show the difference</button></>}</p>
         : differenceBlocked && <p className="muted">{differenceBlocked}{liftAction && <> <button type="button" className="text-button" onClick={() => onCheckAction(liftAction.id)}>{liftAction.label}</button></>}</p>}
-    </section>
+    </details>
   )
   // Beside the image, under the A/B table (under the difference image, which has its own side column): the user
   // marks in the image and reads the check next to it.
@@ -610,7 +610,7 @@ export default function App() {
     : <BlinkPlayer key={`${job.job_id}-${manifest.preview ? manifest.frames[0]?.url : 'final'}`} frames={manifest.frames} checks={checks} grid={manifest} motion={motion} predictions={predictions}
       onIndexChange={showFrame} onPairChange={setPair} seek={seek} pairRequest={pairRequest} initialPair={pairView?.job === job.job_id ? pairView.pair : linkedPair} active={EMBED || stage === 'investigate'} showShare={EMBED}
       controls={imagesToggle} changes={changes} marks={imageMarks} candidate={!EMBED && candidateSide}
-      marking={candidate.armed} candidateMarks={candidate.marks} onMark={(shown, ra, dec) => candidate.markAt(shown, manifest, ra, dec)} />)
+      marking={candidate.armed} candidateMarks={candidate.allMarks} onMark={(shown, ra, dec) => candidate.markAt(shown, manifest, ra, dec)} />)
   const evidence = manifest && <EvidencePanel checks={checks} manifest={manifest} frameLabel={`this comparison · ${manifest.frames.length} ${manifest.frames.length === 1 ? 'image' : 'images'}`}
     onAction={(action) => { if (!EMBED || action !== 'choose-region') onCheckAction(action) }} />
 
@@ -639,7 +639,7 @@ export default function App() {
   // it measure, where else was it observed, a second method, the data. What A and B are, and whether it is a
   // candidate, stand beside the image. Results first; second methods and provenance details stay folded. Every panel stays mounted.
   const tabs: InspectorTab<InspectId>[] = [
-    { id: 'quality', label: 'Quality', count: checks.length, alert: blocking, content: evidence || pending('lines', 'Loading the checks…') },
+    { id: 'quality', label: 'Image checks', count: undefined, alert: blocking, content: evidence || pending('lines', 'Loading the checks…') },
     { id: 'measure', label: 'Measure', content: <>
       {manifest && positionTrack && <PositionChart track={positionTrack} subject={followedHere ? 'the selected source' : 'the target'}
         detector={manifest.detector} onFollowTarget={followedHere ? () => setFollowed(null) : undefined} />}

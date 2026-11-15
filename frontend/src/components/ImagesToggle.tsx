@@ -3,8 +3,8 @@ import { useId, type KeyboardEvent } from 'react'
 export type ImagesKind = 'exposures' | 'stacks'
 
 const OPTIONS: { kind: ImagesKind; label: string; hint: string }[] = [
-  { kind: 'exposures', label: 'Exposures', hint: 'Every single exposure: its exact time and wavelength. Best for motion.' },
-  { kind: 'stacks', label: 'Stacks', hint: 'One deeper image per epoch: fainter sources show, but motion within an epoch smears.' },
+  { kind: 'exposures', label: 'Single images', hint: 'Exposures · Best for following a moving object. Each image is one moment in time.' },
+  { kind: 'stacks', label: 'Combined images', hint: 'Stacks · Combines a visit’s images to reveal faint objects. Moving objects may look blurred.' },
 ]
 
 // Which images A and B are: single exposures or one stack per epoch. A segmented switch across the column above the
@@ -24,7 +24,7 @@ export function ImagesToggle({ value, onChange, disabled = false }: { value: Ima
   }
   return (
     <div className="images-toggle">
-      <span className="side-label" aria-hidden="true">Images</span>
+      <span className="side-label" aria-hidden="true">1 · Choose your images</span>
       <div className="segments" role="radiogroup" aria-label="Images" aria-describedby={hintId} onKeyDown={onKeyDown}>
         {OPTIONS.map((option) => (
           <button key={option.kind} type="button" role="radio" value={option.kind} aria-checked={value === option.kind}

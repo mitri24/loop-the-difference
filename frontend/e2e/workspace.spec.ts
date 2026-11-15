@@ -140,7 +140,8 @@ test('fixture: name search, compare, playback, quality and source metadata stay 
   await expect(page.locator('.stamp')).toContainText('2026-09-10')
   await expect(await openTab(page, 'data')).toContainText('TEST_FIXTURE')
   await expect(page.locator('.stamp')).toContainText('2026-09-10')
-  // The changes of A and B come by themselves; the difference is a view of the same pair.
+  // The compact disclosure keeps the current pair analysis and its difference view.
+  await page.locator('.changes > summary').click()
   await expect(page.locator('.changes')).toContainText('1 change ≥ 5σ')
   await page.getByRole('button', { name: 'Show the difference' }).click()
   await expect(page.locator('.change-summary')).toHaveText('1 change ≥ 5σ between A and B: 1 needs verification')
@@ -575,11 +576,25 @@ test('fixture: Mark detected sources in two frames lists candidate marks A and B
     await page.getByRole('button', { name: /^Mark source at RA .* in frame 2$/ }).click()
     await expect(panel.locator('.candidate-marks li')).toHaveText([/^◎ A · 2026-03-10 12:00 UTC .*\(S\/N 122\)/, /^◎ B · 2026-09-10 12:00 UTC/])
     await expect(panel).toContainText('Unverified candidate – needs verification')
-    await hitTarget(panel.getByRole('button', { name: 'Clear marks' }))
+    await panel.getByRole('button', { name: '+ Add object', exact: true }).click()
+    await expect(panel.locator('.candidate-marks li')).toHaveCount(0)
+    await page.getByRole('button', { name: /^Mark source at RA .* in frame 2$/ }).click()
+    await expect(panel.locator('.candidate-marks li')).toHaveCount(1)
+    await expect(page.locator('.viewer .candidate-mark')).toHaveCount(3)
+    await page.reload()
+    await expect(panel.getByRole('button', { name: 'Object 2 · 1/2', exact: true })).toBeVisible()
+    await page.locator('summary', { hasText: 'Detected sources' }).click()
+    await panel.getByRole('button', { name: 'Object 1 · 2/2', exact: true }).click()
+    await expect(panel.locator('.candidate-marks li')).toHaveCount(2)
+    await panel.getByRole('button', { name: 'Object 2 · 1/2', exact: true }).click()
+    await panel.getByRole('button', { name: 'Clear this object’s marks' }).click()
+    await expect(page.locator('.viewer .candidate-mark')).toHaveCount(2)
+    await panel.getByRole('button', { name: 'Object 1 · 2/2', exact: true }).click()
+    await hitTarget(panel.getByRole('button', { name: 'Clear this object’s marks' }))
     const scroll = await page.evaluate(() => document.documentElement.scrollWidth)
     expect(scroll).toBeLessThanOrEqual(width + 1)
     await page.screenshot({ path: info.outputPath(`candidate-${width}.png`) })
-    await panel.getByRole('button', { name: 'Clear marks' }).click()
+    await panel.getByRole('button', { name: 'Clear this object’s marks' }).click()
     await expect(panel.locator('.candidate-marks li')).toHaveCount(0)
     // Image path (beside and under the images): arming pauses playback; a click in the image marks the frame shown
     // there at that position, drawn on the image as ◎ A. The stamp on the image does not mark.
@@ -592,9 +607,9 @@ test('fixture: Mark detected sources in two frames lists candidate marks A and B
     await expect(panel.locator('.candidate-marks li')).toHaveCount(0)
     await page.locator('.viewer .viewport img:visible').click()
     await expect(panel.locator('.candidate-marks li')).toHaveText([/^◎ A · 2026-0\d-10 12:00 UTC · RA .* Dec 89\.26\d+° .* · position as clicked$/])
-    await expect(page.locator('.viewer .viewport .candidate-mark')).toHaveText('A')
+    await expect(page.locator('.viewer .viewport .candidate-mark')).toHaveText('1A')
     await mark.click()
-    await panel.getByRole('button', { name: 'Clear marks' }).click()
+    await panel.getByRole('button', { name: 'Clear this object’s marks' }).click()
     await expect(page.locator('.viewer .viewport .candidate-mark')).toHaveCount(0)
     await page.getByRole('button', { name: 'Show frame B' }).click()
   }
@@ -632,7 +647,7 @@ test('fixture: the marks file keeps marks, frames and verdict; its link opens th
   const marks = [/^◎ A · 2026-03-10 12:00 UTC .*\(S\/N 122\)$/, /^◎ B · 2026-09-10 12:00 UTC · .* · position as clicked$/]
   await expect(panel.locator('.candidate-marks li')).toHaveText(marks)
   await panel.getByRole('radio', { name: 'possible artifact' }).check()
-  const [download] = await Promise.all([page.waitForEvent('download'), panel.getByRole('button', { name: 'Download marks' }).click()])
+  const [download] = await Promise.all([page.waitForEvent('download'), panel.getByRole('button', { name: 'Export evidence (JSON)' }).click()])
   expect(download.suggestedFilename()).toMatch(/^candidate-marks-.+-\d{4}-\d{2}-\d{2}\.json$/)
   const file = JSON.parse(await readFile(await download.path(), 'utf8'))
   // The address bar carries the marks too: a reload or a copied address keeps them.
@@ -1001,7 +1016,7 @@ test('fixture: the overview map expands over the page without moving anything, d
   }
   const docked = (await canvas.boundingBox())!
   // A comparison mode does not move the map.
-  await page.getByRole('radio', { name: 'Stacks' }).click()
+  await page.getByRole('radio', { name: 'Combined images' }).click()
   expect(await canvas.boundingBox()).toEqual(docked)
   // Escape closes the topmost layer first: a header menu, then the expanded map, then a sheet.
   await expand.click()
@@ -1081,4 +1096,44 @@ test('fixture: an example shown by coordinates keeps its label in the search fie
   expect((await requested).postDataJSON()).toMatchObject({ ra: '308.5364', dec: '-22.9153', detector: 3 })
   await expect(search).toHaveValue('Pluto · known dwarf planet (2026)')
   expect(resolved).toBe(false)
+})
+
+
+test('fixture: clear image choices and plain language warnings fit all widths', async ({ page }, info) => {
+  await fixtures(page, { ...manifest, checks: [
+    { code: 'WAVELENGTH_MISMATCH', severity: 'blocker', message: 'Different wavelengths', detail: 'Test mismatch', affects: ['difference'] },
+    { code: 'FLAGGED_PIXELS', severity: 'warning', message: 'Flagged', detail: 'Test flag', affects: ['obs:fixture-0'] },
+    { code: 'MIXED_RELEASES', severity: 'info', message: 'Mixed', detail: 'Test releases', affects: [] },
+  ] })
+  for (const width of [320, 375, 390, 600, 768, 1024, 1280, 1366, 1440, 1920]) {
+    await page.setViewportSize({ width, height: 900 })
+    await page.goto('/?ra=37.954542&dec=89.264111&fov=0.2&band=6')
+    await hitTarget(page.getByRole('radio', { name: 'Single images', exact: true }))
+    await hitTarget(page.getByRole('radio', { name: 'Combined images', exact: true }))
+    await page.locator('.player-side').evaluate(el => el.scrollTop = 0)
+    const alignment = await page.locator('.pair-panel .pair-col-head').evaluateAll(heads => heads.map(head => ({
+      badge: head.querySelector('.pair-letter')!.getBoundingClientRect().top,
+      picker: head.querySelector('.pair-pick')!.getBoundingClientRect().top,
+    })))
+    expect(Math.abs(alignment[0].badge - alignment[1].badge)).toBeLessThanOrEqual(1)
+    expect(Math.abs(alignment[0].picker - alignment[1].picker)).toBeLessThanOrEqual(1)
+    await page.screenshot({ path: info.outputPath(`images-${width}.png`) })
+    const quality = await openTab(page, 'quality')
+    await expect(quality).toContainText('Brightness cannot be compared with this pair')
+    await hitTarget(quality.getByRole('button', { name: 'Find images in the same light band' }))
+    await expect(quality.locator('.check-context').first()).not.toHaveAttribute('open')
+    expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(width + 1)
+    await page.screenshot({ path: info.outputPath(`checks-${width}.png`) })
+    await closeInspector(page)
+  }
+})
+
+
+test('fixture: adding objects remains available beyond twenty', async ({ page }) => {
+  await fixtures(page)
+  await page.goto('/?ra=37.954542&dec=89.264111&fov=0.2&band=6')
+  const objects = page.getByRole('group', { name: 'Marked objects', exact: true })
+  for (let index = 0; index < 25; index++) await objects.getByRole('button', { name: '+ Add object', exact: true }).click()
+  await expect(objects.getByRole('button', { name: /^Object / })).toHaveCount(26)
+  await expect(objects.getByRole('button', { name: '+ Add object', exact: true })).toBeEnabled()
 })

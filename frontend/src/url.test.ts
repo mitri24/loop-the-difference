@@ -103,3 +103,41 @@ describe('the blink pair in a link', () => {
     expect(readPair('?ra=1&dec=2&a=%20&b=obs-b')).toBeNull()
   })
 })
+
+
+describe('multiple marked objects in shared links', () => {
+  it('keeps each object separate even when they share an observation', () => {
+    const marks = [
+      { obs_id: 'frame-1', ra: 10, dec: 20, object: 0 },
+      { obs_id: 'frame-2', ra: 11, dec: 21, object: 0 },
+      { obs_id: 'frame-1', ra: 30, dec: 40, object: 1 },
+    ]
+    expect(readMarks(toSearch(POLARIS, false, marks))).toEqual(marks)
+  })
+  it('rejects invalid object indices and positions', () => {
+    expect(readMarks('?objectmark=-1:obs:10,20&objectmark=1.5:obs:10,20&objectmark=1:obs:10,99')).toEqual([])
+  })
+})
+
+
+it('round-trips more than twenty objects without truncating their marks', () => {
+  const marks = Array.from({ length: 125 }, (_, object) => [
+    { obs_id: 'first', ra: 10, dec: 20, object },
+    { obs_id: 'second', ra: 11, dec: 21, object },
+  ]).flat()
+  expect(readMarks(toSearch(POLARIS, false, marks))).toEqual(marks)
+})
+
+
+it('preserves the requested comparison link, its marked position and selected A/B observations', () => {
+  const search = '?ra=27.198635&dec=89.314570&fov=0.2&band=6&mark=2025W42_1A_0084_1%3A21.830601%2C89.283490&a=2025W39_1A_0467_4&b=2026W38_1A_0567_1'
+  const query = readQuery(search)!
+  const marks = readMarks(search)
+  const pair = readPair(search)
+  expect(query).toMatchObject({ ra: '27.198635', dec: '89.314570', fov: 0.2, band: 6 })
+  expect(marks).toEqual([{ obs_id: '2025W42_1A_0084_1', ra: 21.830601, dec: 89.283490 }])
+  expect(pair).toEqual({ a: '2025W39_1A_0467_4', b: '2026W38_1A_0567_1' })
+  const restored = toSearch(query, false, marks, pair)
+  expect(readMarks(restored)).toEqual(marks)
+  expect(readPair(restored)).toEqual(pair)
+})

@@ -12,7 +12,7 @@ import { DistantTrackCheck } from './TrackCheck'
 import { TrackSummary } from './TrackSummary'
 
 interface Props {
-  candidate: Pick<Candidate, 'marks' | 'notice' | 'armed' | 'setArmed' | 'clear'> & Partial<Pick<Candidate, 'verdict' | 'setVerdict'>>
+  candidate: Pick<Candidate, 'marks' | 'notice' | 'armed' | 'setArmed' | 'clear'> & Partial<Pick<Candidate, 'verdict' | 'setVerdict' | 'objects' | 'activeObject' | 'selectObject' | 'newObject'>>
   // Why marking on the sky is off right now; null when it is possible.
   blocked: string | null
   track: PossibleTrack | null
@@ -31,10 +31,16 @@ interface Props {
 }
 
 // Beside the image: what to do next, the marks so far and what they still need.
-export function CandidatePanel({ candidate: { marks, notice, armed, setArmed, clear, verdict, setVerdict }, blocked, track, known, visits, distant, followup, sources = true, onDownload, children }: Props) {
+export function CandidatePanel({ candidate: { marks, notice, armed, setArmed, clear, verdict, setVerdict, objects, activeObject, selectObject, newObject }, blocked, track, known, visits, distant, followup, sources = true, onDownload, children }: Props) {
   return (
     <section className="candidate-check" aria-labelledby="candidate-heading">
-      <h3 id="candidate-heading">Candidate check</h3>
+      <h3 id="candidate-heading">3 · Your objects</h3>
+      {objects && <div className="object-chooser" role="group" aria-label="Marked objects">
+        {objects.map((object) => <button key={object.index} type="button" aria-pressed={activeObject === object.index}
+          onClick={() => selectObject?.(object.index)}>Object {object.index + 1} · {object.count}/2</button>)}
+        <button type="button" onClick={newObject}>+ Add object</button>
+      </div>}
+      <p className="candidate-hint">One object at a time: mark it in two images. Add another object to keep a separate pair.</p>
       {marks.length < 2 && (
         <p className="candidate-next">
           {marks.length === 0 ? 'Spotted motion? Mark the object in two frames' : 'Now mark it in another frame'}
@@ -67,11 +73,12 @@ export function CandidatePanel({ candidate: { marks, notice, armed, setArmed, cl
           </KnownObjectCheck>
           {visits && <Precovery track={track} marks={marks} {...visits} detector={known.detector}
             followsTarget={followsTarget(known.motion, marks) ? known.target : null} />}
+          {onDownload && <p className="candidate-hint">To reopen or share your work, use Share in the top bar. The JSON export is a technical record of this object’s marks, images and assessment.</p>}
           <div className="candidate-actions">
             {onDownload && <button type="button" onClick={onDownload} title="A JSON file with the marks, their frames and detections, the possible track, your verdict and a link that opens them here again">
-              <span aria-hidden="true">↓</span> Download marks
+              <span aria-hidden="true">↓</span> Export evidence (JSON)
             </button>}
-            <button type="button" onClick={clear}>Clear marks</button>
+            <button type="button" onClick={clear}>Clear this object’s marks</button>
           </div>
         </>
       )}
