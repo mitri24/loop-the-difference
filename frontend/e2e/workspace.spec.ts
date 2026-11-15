@@ -286,7 +286,7 @@ test('fixture: backend outage keeps retry and a new detector request usable', as
   expect((await requested).postDataJSON().detector).toBe(3)
   await expect(page).toHaveURL(/band=3/)
   await page.reload()
-  await expect(page.locator('.target-summary')).toContainText('D3')
+  await expect(page.getByLabel('Search band')).toHaveValue('3')
 })
 
 test('map keyboard navigation and using map center connect to the real request contract', async ({ page }) => {
@@ -568,4 +568,124 @@ test('fixture: observation history opens beside the comparison and closes withou
       await expect(page.locator('.bottom-bar')).toHaveCount(0)
     }
   }
+})
+
+test('fixture: the target, detector and blocked difference are named once', async ({ page }) => {
+  await fixtures(page, { ...manifest, epochs: 1, frames: [frame(0)], differences: [] })
+  await page.setViewportSize({ width: 1440, height: 900 })
+  await page.goto('/?ra=37.954542&dec=89.264111&band=6&fov=0.2')
+  await expect(page.locator('.stamp')).toBeVisible()
+  // The search bar names the target and its detector; the viewer head does not repeat them.
+  await expect(page.getByTestId('sky-search')).toHaveValue('37.954542, 89.264111')
+  await expect(page.getByLabel('Search band')).toHaveValue('6')
+  const head = page.locator('.viewer-head')
+  await expect(head).not.toContainText('37.954542')
+  await expect(head).not.toContainText('D6')
+  // A blocked difference: the greyed tab and its reason, without "Difference unavailable" again.
+  await expect(page.getByRole('radio', { name: 'Difference' })).toBeDisabled()
+  await expect(head).toContainText('At least two epochs are needed.')
+  await expect(head).not.toContainText('unavailable')
+  // One way into the observation history; its count stands on that button, not again in the panel.
+  await expect(page.getByTestId('dock-timeline')).toHaveCount(0)
+  const trigger = page.getByRole('button', { name: 'Observation history' })
+  await expect(trigger).toContainText('4')
+  await trigger.click()
+  const summary = page.locator('#timeline-panel .history-summary')
+  await expect(summary).toContainText('2 epochs')
+  await expect(summary).toContainText('4 in D6')
+  await expect(summary).not.toContainText('observations')
+  // The Data panel repeats neither the search bar nor the Evidence checks or the coverage.
+  await page.getByTestId('dock-data').click()
+  const region = page.locator('#data-panel .data-section').first()
+  await expect(region).toContainText('0.2°')
+  await expect(region).not.toContainText('37.954542')
+  await expect(page.locator('#data-panel')).toContainText('Image preparation')
+  await expect(page.locator('#data-panel')).not.toContainText('SPHEREx coverage')
+  await expect(page.locator('#data-panel').getByRole('region', { name: 'Checks for this view' })).toHaveCount(0)
+  await page.getByTestId('dock-evidence').click()
+  await expect(page.locator('#evidence-panel .science-note')).toBeVisible()
+})
+
+test('fixture: an unedited search field keeps the comparison position, an edited one is resolved as a name', async ({ page }) => {
+  await fixtures(page)
+  await page.goto('/')
+  await page.getByRole('button', { name: 'Examples' }).click()
+  await page.locator('.hud-chips').getByRole('button', { name: 'Polaris', exact: true }).click()
+  const search = page.getByTestId('sky-search')
+  await expect(search).toHaveValue('Polaris')
+  await expect(page.locator('.stamp')).toBeVisible()
+  // Escape without an open panel leaves the focus where it is.
+  await search.focus()
+  await page.keyboard.press('Escape')
+  await expect(search).toBeFocused()
+  await page.getByTestId('dock-target').click()
+  await page.getByText('Enter precise coordinates', { exact: true }).click()
+  await page.getByLabel('Right ascension').fill('10.0')
+  const again = page.waitForRequest(r => r.url().endsWith('/api/frames') && r.method() === 'POST')
+  await search.press('Enter')
+  expect((await again).postDataJSON()).toMatchObject({ ra: '02:31:49.09', dec: '+89:15:50.8' })
+  await expect(page.locator('.stamp')).toBeVisible()
+  await search.fill('')
+  await search.fill('Polaris')
+  const resolved = page.waitForRequest(r => r.url().includes('/api/resolve'))
+  await search.press('Enter')
+  await resolved
+  await expect(page).toHaveURL(/name=Polaris/)
+})
+
+test('fixture: a failed name search is resolved again on Enter', async ({ page }) => {
+  await fixtures(page)
+  let attempts = 0
+  await page.route('**/api/resolve?**', route => ++attempts === 1
+    ? route.fulfill({ status: 404, json: { detail: 'Unknown target: Polaris' } })
+    : route.fulfill({ json: { name: 'Polaris', ra: manifest.ra, dec: manifest.dec } }))
+  await page.goto('/')
+  const search = page.getByTestId('sky-search')
+  await search.fill('Polaris')
+  await search.press('Enter')
+  await expect(page.getByRole('alert')).toContainText('Unknown target')
+  await search.press('Enter')
+  await expect(page).toHaveURL(/name=Polaris/)
+  expect(attempts).toBe(2)
+})
+
+test('fixture: a panel narrows the search bar without overlapping or clipping its neighbours', async ({ page }) => {
+  await fixtures(page)
+  await page.goto('/?ra=37.954542&dec=89.264111&band=6&fov=0.2')
+  await expect(page.locator('.stamp')).toBeVisible()
+  for (const [width, height] of [[1024, 768], [1280, 800], [1440, 900], [1920, 1080]]) {
+    await page.setViewportSize({ width, height })
+    for (const open of [false, true]) {
+      if (open) await page.getByRole('button', { name: 'Observation history' }).click()
+      const parts = await page.locator('.brand, .global-search, .examples-toggle, .share-button').evaluateAll(els => els
+        .filter(e => getComputedStyle(e).display !== 'none' && e.getClientRects().length > 0)
+        .map(e => { const r = e.getBoundingClientRect(); return { left: r.left, right: r.right, clipped: e.scrollWidth > e.clientWidth + 1 } })
+        .sort((a, b) => a.left - b.left))
+      for (let i = 1; i < parts.length; i++) expect(parts[i].left, `${width}px, panel ${open}`).toBeGreaterThanOrEqual(parts[i - 1].right - 1)
+      expect(parts.some(part => part.clipped), `${width}px, panel ${open}`).toBe(false)
+      await page.getByRole('button', { name: 'Examples' }).click()
+      const chips = (await page.locator('.hud-chips').boundingBox())!
+      expect(chips.x).toBeGreaterThanOrEqual(0)
+      await page.getByRole('button', { name: 'Examples' }).click()
+      if (open) await page.keyboard.press('Escape')
+    }
+  }
+})
+
+test('fixture: an example shown by coordinates keeps its label in the search field and takes a new detector', async ({ page }) => {
+  await fixtures(page)
+  await page.goto('/')
+  await page.getByRole('button', { name: 'Examples' }).click()
+  await page.getByRole('button', { name: 'Pluto', exact: true }).click()
+  const search = page.getByTestId('sky-search')
+  await expect(search).toHaveValue('Pluto · known dwarf planet (2026)')
+  await expect(page.locator('.stamp')).toBeVisible()
+  let resolved = false
+  page.on('request', (request) => { if (request.url().includes('/api/resolve')) resolved = true })
+  await page.getByLabel('Search band').selectOption('3')
+  const requested = page.waitForRequest(r => r.url().endsWith('/api/frames') && r.method() === 'POST')
+  await search.press('Enter')
+  expect((await requested).postDataJSON()).toMatchObject({ ra: '308.5364', dec: '-22.9153', detector: 3 })
+  await expect(search).toHaveValue('Pluto · known dwarf planet (2026)')
+  expect(resolved).toBe(false)
 })

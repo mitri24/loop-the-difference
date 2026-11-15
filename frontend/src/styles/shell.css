@@ -16,8 +16,8 @@
 }
 
 /* Search bar: its own row, so Aladin's corner tools stay uncovered. */
-.hud { grid-area:hud; position:relative; z-index:var(--z-chrome); padding:10px 16px; background:var(--surface-0); min-width:0; }
-.hud-row { display:grid; grid-template-columns:minmax(0,1fr) minmax(260px,560px) minmax(0,1fr); align-items:center; gap:16px; min-width:0; }
+.hud { grid-area:hud; position:relative; z-index:var(--z-chrome); padding:10px 16px; background:var(--surface-0); min-width:0; container-type:inline-size; }
+.hud-row { display:grid; grid-template-columns:minmax(max-content,1fr) minmax(260px,560px) minmax(max-content,1fr); align-items:center; gap:16px; min-width:0; }
 .brand { display:flex; align-items:center; white-space:nowrap; font-size:var(--text-xs); font-weight:550; color:var(--muted); }
 .global-search { display:flex; align-items:center; gap:8px; min-width:0; padding:4px 4px 4px 14px; border:1px solid var(--border-strong); border-radius:999px; background:var(--surface-1); }
 .global-search:focus-within { border-color:var(--accent); }
@@ -28,10 +28,13 @@
 .global-search .search-submit { display:grid; place-items:center; flex:none; width:34px; min-height:34px; padding:0; border-radius:50%; }
 .header-actions { display:flex; justify-content:flex-end; align-items:center; gap:8px; }
 .share-button,.examples-toggle { min-height:32px; padding:4px 8px; background:transparent; border-color:transparent; color:var(--muted); font-size:var(--text-xs); }
-.hud-chips { position:absolute; top:calc(100% - 2px); right:16px; display:flex; flex-wrap:wrap; gap:6px; width:min(360px,calc(100vw - 32px)); padding:12px; border:1px solid var(--border-strong); border-radius:var(--radius-md); background:var(--surface-1); box-shadow:0 8px 24px #0006; }
+.hud-chips { position:absolute; top:calc(100% - 2px); right:16px; display:flex; flex-wrap:wrap; gap:6px; width:min(360px,calc(100cqw - 32px)); padding:12px; border:1px solid var(--border-strong); border-radius:var(--radius-md); background:var(--surface-1); box-shadow:0 8px 24px #0006; }
 .hud-chips[hidden] { display:none; }
 .chip { flex:none; min-height:32px; padding:var(--space-1) var(--space-3); border-radius:999px; font-size:var(--text-xs); background:var(--surface-2); }
 @media (max-width:1000px) { .brand { display:none; } .hud-row { grid-template-columns:minmax(0,1fr) auto; } }
+/* A panel beside the stage narrows the bar: leave out what does not fit instead of overlapping it. */
+@container (max-width:640px) { .brand { display:none; } .hud-row { grid-template-columns:minmax(0,1fr) auto; } }
+@container (max-width:420px) { .share-button { display:none; } }
 @media (max-width:700px) { .hud { padding:8px; } .hud-row { gap:6px; } .search-mark { display:none; } .global-search { padding-left:12px; } .examples-toggle { padding:4px; } }
 
 .stage { grid-area:main; position:relative; min-width:0; min-height:0; overflow:hidden; }
@@ -62,7 +65,6 @@
 /* The SPHEREx cutout viewer: modes at the image, the image as large as the stage allows. */
 .viewer { position:absolute; inset:0; display:flex; flex-direction:column; min-width:0; }
 .viewer-head { flex:none; display:flex; flex-wrap:wrap; align-items:center; gap:var(--space-2) var(--space-3); padding:var(--space-2) var(--space-3); border-bottom:1px solid var(--border); }
-.viewer-head .target-summary { padding:0; border:0; flex-direction:column; gap:0; min-width:0; }
 .viewer-head .mode-switch { flex:1 1 280px; max-width:420px; flex-direction:row; align-items:center; }
 .back-button { background:transparent; }
 .viewer-body { flex:1; min-height:0; overflow-y:auto; overscroll-behavior:contain; padding:var(--space-3); display:flex; flex-direction:column; gap:var(--space-3); container-type:size; scrollbar-width:thin; }
@@ -175,7 +177,6 @@
 .history-trigger { flex:none; gap:var(--space-2); font-size:var(--text-xs); }
 .history-trigger[aria-expanded="true"] { border-color:var(--accent); color:var(--accent); }
 .history-count { padding:0 6px; border-radius:var(--radius-sm); background:var(--surface-2); font-variant-numeric:tabular-nums; }
-.history-context { margin:0 0 var(--space-3); color:var(--muted); overflow-wrap:anywhere; }
 .history-summary { display:flex; flex-wrap:wrap; gap:var(--space-3); padding-bottom:var(--space-3); margin-bottom:var(--space-3); border-bottom:1px solid var(--border); font-size:var(--text-xs); }
 .history-summary span { display:flex; flex-direction:column; }
 .history-summary strong { font-size:var(--text-lg, 18px); color:var(--text); }
