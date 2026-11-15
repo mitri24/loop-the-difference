@@ -1,0 +1,12 @@
+/* The loading bar replaces the status line: it lies on the dividing line under the viewer head. */
+.viewer-head { position:relative; }
+.load-progress { position:relative; height:2px; overflow:hidden; }
+.viewer-head > .load-progress { position:absolute; left:0; right:0; bottom:-1px; }
+.load-progress > span { display:block; height:100%; background:var(--accent); transition:width 300ms ease-out; }
+/* Before the worker knows how many images it fetches: a moving segment, no fill that pretends progress. */
+.load-progress.searching > span { width:30%; animation:load-progress-sweep 1.4s ease-in-out infinite; }
+/* All images fetched, the final images and checks are being prepared. */
+.load-progress.finishing > span { animation:load-progress-pulse 1.2s ease-in-out infinite; }
+@keyframes load-progress-sweep { from { transform:translateX(-100%); } to { transform:translateX(340%); } }
+@keyframes load-progress-pulse { 50% { opacity:.45; } }
+@media (prefers-reduced-motion:reduce) { .load-progress.searching > span { width:100%; opacity:.45; } }

@@ -15,6 +15,7 @@ import { DataPanel } from './components/DataPanel'
 import { DifferenceView } from './components/DifferenceView'
 import { Dock } from './components/Dock'
 import { FloatingPanel } from './components/FloatingPanel'
+import { LoadProgress } from './components/LoadProgress'
 import { LayersSection } from './components/LayersSection'
 import { ModeSwitch } from './components/ModeSwitch'
 import { ObservationTimeline } from './components/ObservationTimeline'
@@ -70,7 +71,6 @@ export default function App() {
   const [error, setError] = useState<string | null>(null)
   const [motion, setMotion] = useState<ProperMotion | null>(null)
   const [busy, setBusy] = useState(false)
-  const [cancelled, setCancelled] = useState(false)
   const [status, setStatus] = useState('Choose a target or explore the map.')
   const [skyLayer, setSkyLayer] = useState('Loading sky survey…')
   const [skyUnavailable, setSkyUnavailable] = useState(false)
@@ -140,7 +140,6 @@ export default function App() {
     lastRequest.current = { query: requested, name: targetName }
     searchShows.current = null
     setBusy(true)
-    setCancelled(false)
     setError(null)
     setJob(null)
     setSummary(null)
@@ -242,12 +241,6 @@ export default function App() {
     if (target === searchShows.current) show({ ...base, ra: query.ra, dec: query.dec })
     else void run(base, target)
   }, [run, query, show])
-  const cancel = () => {
-    controller.current?.abort()
-    setBusy(false)
-    setCancelled(true)
-    setStatus('Stopped waiting. You can retry or choose another region.')
-  }
 
   useEffect(() => {
     const timer = INITIAL ? window.setTimeout(() => void run(INITIAL), 0) : undefined
@@ -323,20 +316,11 @@ export default function App() {
 
   const statusBlock = (
     <>
-      <div className="comparison-status" role="status" aria-live="polite">
-        <span className={busy ? 'status-dot busy' : 'status-dot'} aria-hidden="true" />
-        <span>{status}</span>
-      </div>
-      {busy && (
-        <div className="loading-state">
-          <progress aria-label="Preparing observations" {...(job && job.total > 0 ? { max: job.total, value: job.progress } : {})} />
-          <p>{hasFrames ? 'You can inspect the preview while the remaining observations load.' : 'Fetching the first observations from IRSA…'}</p>
-          <button type="button" onClick={cancel}>Stop waiting</button>
-        </div>
-      )}
+      {/* Shown as the loading bar on the viewer head; the words are for screen readers. */}
+      <p className="comparison-status sr-only" role="status" aria-live="polite">{status}</p>
       {error && <div className="notice error" role="alert"><strong>Comparison unavailable</strong><p>{error}</p>
         {!EMBED && (centred.ra !== query.ra || centred.dec !== query.dec) && <p>The map still shows the previous position.</p>}</div>}
-      {(!busy && (error || cancelled || (!hasFrames && job))) && (
+      {(!busy && (error || (!hasFrames && job))) && (
         <div className="recovery-actions">
           <button type="button" onClick={() => void run(lastRequest.current.query, lastRequest.current.name)}>Retry</button>
           {!EMBED && <button type="button" onClick={() => { setStage('explore'); setPanel('target') }}>Choose another region</button>}
@@ -344,7 +328,7 @@ export default function App() {
       )}
     </>
   )
-  const emptyState = !busy && !hasFrames && !error && !cancelled && (EMBED && !job
+  const emptyState = !busy && !hasFrames && !error && (EMBED && !job
     ? <p className="muted">Add ra and dec to the URL, e.g. ?ra=02:31:49.09&amp;dec=+89:15:50.8&amp;embed=1</p>
     : <div className="empty-state">
       <span className="empty-reticle" aria-hidden="true" />
@@ -374,7 +358,7 @@ export default function App() {
   const analysisView = panel === 'blink' ? 'blink' : panel === 'analysis-difference' ? 'difference'
     : panel === 'timeline' ? 'observations' : panel === 'spectrum' ? 'spectrum' : panel === 'evidence' ? 'evidence' : panel === 'layers' ? 'layers' : null
 
-  if (EMBED) return <main className="embed-workspace">{modeSwitch}{statusBlock}{emptyState}{viewer}{qualityChecks}{scienceNote}<p className="muted">SPHEREx · {manifest?.collection ?? summary?.collection ?? 'IRSA archive'}</p></main>
+  if (EMBED) return <main className="embed-workspace">{modeSwitch}<LoadProgress busy={busy} job={job} />{statusBlock}{emptyState}{viewer}{qualityChecks}{scienceNote}<p className="muted">SPHEREx · {manifest?.collection ?? summary?.collection ?? 'IRSA archive'}</p></main>
 
   const loadFirst = <p className="muted">Load a comparison first: choose a target in the search bar.</p>
   // Observation history opens from the viewer head, next to the images it describes; the dock does not repeat it.
@@ -394,6 +378,7 @@ export default function App() {
           <div className="viewer-head">
             <button type="button" className="back-button" onClick={() => setStage('explore')}><span aria-hidden="true">←</span> Back to sky</button>
             {modeSwitch}
+            <LoadProgress busy={busy} job={job} />
             {summary && <button type="button" className="history-trigger" aria-expanded={panel === 'timeline'}
               aria-controls="floating-panel" onClick={(event) => togglePanel('timeline', event.currentTarget)}>
               <span aria-hidden="true">◷</span> Observation history
