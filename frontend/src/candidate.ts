@@ -5,6 +5,7 @@ import { useEffect, useState } from 'react'
 import { skyToFrame } from './motion'
 import { MATCH_STYLE, degText } from './sourceLayer'
 import type { DetectedSource, Frame, FrameManifest } from './types'
+import type { LinkMark } from './url'
 
 export interface Mark {
   obs_id: string
@@ -110,22 +111,49 @@ export function candidateState(e: Evidence): CandidateState {
   return 'unverified'
 }
 
-export type Candidate = ReturnType<typeof useCandidate>
+/** Marks from a shared link in this comparison's frames, by the same rules as clicks; unknown frames are counted. */
+export function placeLinkMarks(manifest: Pick<FrameManifest, 'frames' | 'pixel_scale_arcsec'>, linked: LinkMark[]) {
+  let marks: Mark[] = []
+  let missing = 0
+  for (const link of linked) {
+    const frame = manifest.frames.find((f) => f.obs_id === link.obs_id)
+    const next = frame && addMark(marks, snapMark(frame, link.ra, link.dec, manifest.pixel_scale_arcsec))
+    if (next && 'marks' in next) marks = next.marks
+    else missing += 1
+  }
+  return { marks, missing }
+}
 
-/** Marks of one comparison: a new job id clears them; `allowed` false disarms sky clicks. */
-export function useCandidate(jobId: string | null, allowed: boolean) {
-  const [state, setState] = useState({ jobId, marks: [] as Mark[], notice: '' })
+export type Candidate = ReturnType<typeof useCandidate>
+const START = { marks: [] as Mark[], notice: '', verdict: VERDICTS[0] as Verdict }
+
+/** Marks of one comparison: a new job id clears them; `allowed` false disarms clicks. Marks from a shared link
+ * belong to the first comparison: they are placed once its final frames are there (`final`), and dropped when
+ * another comparison starts first. New marks start without a verdict. */
+export function useCandidate(jobId: string | null, allowed: boolean, final: FrameManifest | null = null, linked: LinkMark[] = []) {
+  const [state, setState] = useState({ jobId, ...START })
   const [armed, setArmed] = useState(false)
-  if (state.jobId !== jobId) setState({ jobId, marks: [], notice: '' })
+  const [pending, setPending] = useState<{ marks: LinkMark[]; jobId: string | null }>({ marks: linked, jobId: null })
+  if (state.jobId !== jobId) setState({ jobId, ...START })
   if (armed && !allowed) setArmed(false)
+  if (pending.marks.length > 0 && jobId && pending.jobId !== jobId) {
+    setPending(pending.jobId === null ? { ...pending, jobId } : { marks: [], jobId: null })
+  } else if (pending.marks.length > 0 && jobId && pending.jobId === jobId && state.jobId === jobId && final?.frames.length) {
+    const placed = placeLinkMarks(final, pending.marks)
+    setPending({ marks: [], jobId: null })
+    setState({ jobId, ...START, marks: placed.marks,
+      notice: placed.missing ? `${placed.missing} ${placed.missing === 1 ? 'mark' : 'marks'} from the link could not be placed: ${placed.missing === 1 ? 'its frame is' : 'their frames are'} not in this comparison.` : '' })
+  }
   const add = (mark: Mark) =>
     setState((old) => {
       const next = addMark(old.marks, mark)
-      return 'error' in next ? { ...old, notice: next.error } : { ...old, marks: next.marks, notice: '' }
+      return 'error' in next ? { ...old, notice: next.error } : { ...old, marks: next.marks, notice: '', verdict: START.verdict }
     })
   return {
     marks: state.marks,
     notice: state.notice,
+    verdict: state.verdict,
+    setVerdict: (verdict: Verdict) => setState((old) => ({ ...old, verdict })),
     armed,
     setArmed,
     markSource: (frame: Frame, source: DetectedSource) => add(markFromSource(frame, source)),
@@ -134,7 +162,7 @@ export function useCandidate(jobId: string | null, allowed: boolean) {
       if (!insideFrame(ra, dec, manifest)) return setState((old) => ({ ...old, notice: OUTSIDE_FRAME }))
       add(snapMark(frame, ra, dec, manifest.pixel_scale_arcsec))
     },
-    clear: () => setState((old) => ({ ...old, marks: [], notice: '' })),
+    clear: () => setState((old) => ({ ...old, ...START })),
   }
 }
 

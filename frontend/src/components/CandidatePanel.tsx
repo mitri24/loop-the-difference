@@ -8,7 +8,7 @@ import { Precovery } from './Precovery'
 import { TrackSummary } from './TrackSummary'
 
 interface Props {
-  candidate: Pick<Candidate, 'marks' | 'notice' | 'armed' | 'setArmed' | 'clear'>
+  candidate: Pick<Candidate, 'marks' | 'notice' | 'armed' | 'setArmed' | 'clear'> & Partial<Pick<Candidate, 'verdict' | 'setVerdict'>>
   // Why marking on the sky is off right now; null when it is possible.
   blocked: string | null
   track: PossibleTrack | null
@@ -18,10 +18,12 @@ interface Props {
   sources?: boolean
   // Every SPHEREx visit of the field and the obs_ids in the blink (stack members included); null until the archive answered.
   visits?: { observations: Observation[]; inBlink: string[] } | null
+  // Saves the marks with their frames, detections, track and verdict, and the link that opens them again.
+  onDownload?: () => void
 }
 
 // Beside the image: what to do next, the marks so far and what they still need.
-export function CandidatePanel({ candidate: { marks, notice, armed, setArmed, clear }, blocked, track, known, visits, sources = true, children }: Props) {
+export function CandidatePanel({ candidate: { marks, notice, armed, setArmed, clear, verdict, setVerdict }, blocked, track, known, visits, sources = true, onDownload, children }: Props) {
   return (
     <section className="candidate-check" aria-labelledby="candidate-heading">
       <h3 id="candidate-heading">Candidate check</h3>
@@ -49,13 +51,18 @@ export function CandidatePanel({ candidate: { marks, notice, armed, setArmed, cl
             ))}
           </ol>
           <KnownObjectCheck key={marks.map((m) => `${m.obs_id}:${m.ra}:${m.dec}`).join()} marks={marks} {...known}
-            evidence={trackEvidence(track)}>
+            evidence={trackEvidence(track)} verdict={verdict} onVerdict={setVerdict}>
             {track && <TrackSummary track={track} />}
             {children}
           </KnownObjectCheck>
           {visits && <Precovery track={track} marks={marks} {...visits} detector={known.detector}
             followsTarget={followsTarget(known.motion, marks) ? known.target : null} />}
-          <button type="button" onClick={clear}>Clear marks</button>
+          <div className="candidate-actions">
+            {onDownload && <button type="button" onClick={onDownload} title="A JSON file with the marks, their frames and detections, the possible track, your verdict and a link that opens them here again">
+              <span aria-hidden="true">↓</span> Download marks
+            </button>}
+            <button type="button" onClick={clear}>Clear marks</button>
+          </div>
         </>
       )}
     </section>

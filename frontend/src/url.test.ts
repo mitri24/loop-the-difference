@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { POLARIS, readEmbed, readQuery, toSearch } from './url'
+import { POLARIS, readEmbed, readMarks, readQuery, toSearch } from './url'
 
 describe('target in the URL', () => {
   it('needs both coordinates', () => {
@@ -64,5 +64,27 @@ describe('target in the URL', () => {
     expect(readQuery(toSearch(barnard))).toEqual(barnard)
     expect(readQuery('?ra=1&dec=2&name=%20')).not.toHaveProperty('name')
     expect(toSearch(POLARIS)).not.toContain('name=')
+  })
+})
+
+describe('candidate marks in the URL', () => {
+  it('round-trip with the frame and the position, obs_ids with colons included', () => {
+    const marks = [
+      { obs_id: '2025W41_2B_0137_3', ra: 38.024731, dec: 89.269481 },
+      { obs_id: 'ivo://irsa/spherex:2025W42_1A_0001_1', ra: 359.5, dec: -12.5 },
+    ]
+    const search = toSearch(POLARIS, false, marks)
+    expect(readQuery(search)).toEqual(POLARIS)
+    expect(readMarks(search)).toEqual(marks)
+  })
+
+  it('drops malformed marks and keeps at most two', () => {
+    expect(readMarks('?mark=abc&mark=:1,2&mark=a:1&mark=a:1,95&mark=a:1,2,3&mark=a:x,2')).toEqual([])
+    expect(readMarks('?mark=a:1,2&mark=b:3,4&mark=c:5,6').map((m) => m.obs_id)).toEqual(['a', 'b'])
+    expect(readMarks('?mark=a:-10,2&mark=b:370,2')).toEqual([{ obs_id: 'a', ra: 350, dec: 2 }, { obs_id: 'b', ra: 10, dec: 2 }])
+  })
+
+  it('stay out of a link without marks', () => {
+    expect(toSearch(POLARIS)).not.toContain('mark')
   })
 })
