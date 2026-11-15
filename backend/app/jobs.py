@@ -1,4 +1,6 @@
 import hashlib
+import json
+from collections.abc import Callable
 from contextlib import suppress
 from functools import lru_cache
 
@@ -7,19 +9,22 @@ from rq import Queue
 from rq.exceptions import NoSuchJobError
 from rq.job import Job, JobStatus
 
+from app import followup
 from app.archive import collection_key, spherex_collections
 from app.config import Settings
-from app.models import FrameJob, FrameManifest, Spectrum, SpectrumJob
+from app.models import FollowupJob, FrameJob, FrameManifest, SpectrumJob
 from app.tasks import (
     PIPELINE_VERSION,
     SPECTRUM_VERSION,
+    build_followup,
     build_frames,
     build_spectrum,
     manifest_path,
 )
 
 QUEUE_NAME = "frames"
-# Jobs that take minutes (spectra) run on a worker of their own, so they never delay a frame job.
+# Jobs that take minutes (spectra, follow-ups) run on a worker of their own, so they never delay
+# a frame job.
 SLOW_QUEUE = "slow"
 JOB_TIMEOUT_S = 900
 # A cold spectrum downloads up to MAX_SPECTRUM_POINTS cutouts; IRSA alone took ~30 min for 200.
@@ -88,10 +93,55 @@ def submit_spectrum(redis: Redis, settings: Settings, ra: float, dec: float) -> 
     """Like `submit`, but the spectrum is small: it lives in the job result, not in the cache."""
     collections = spherex_collections(settings)
     job_id = spectrum_job_id(collection_key(collections), ra, dec)
-    current = spectrum_status(redis, job_id)
+    kwargs = {"ra": ra, "dec": dec, "collections": collections}
+    return _submit_result(
+        redis, settings, SpectrumJob, job_id, build_spectrum, kwargs, SPECTRUM_TIMEOUT_S
+    )
+
+
+def spectrum_status(redis: Redis, job_id: str) -> SpectrumJob:
+    return _result_status(redis, SpectrumJob, job_id)
+
+
+def followup_job_id(collection: str, params: dict) -> str:
+    key = f"followup|{collection}|{json.dumps(params, sort_keys=True)}|v{followup.VERSION}"
+    return hashlib.sha256(key.encode()).hexdigest()[:16]
+
+
+def submit_followup(redis: Redis, settings: Settings, params: dict) -> FollowupJob:
+    """Like `submit_spectrum`; at most followup.MAX_CUTOUTS cutouts fit the frame job timeout."""
+    collections = spherex_collections(settings)
+    job_id = followup_job_id(collection_key(collections), params)
+    kwargs = {**params, "collections": collections}
+    return _submit_result(
+        redis, settings, FollowupJob, job_id, build_followup, kwargs, JOB_TIMEOUT_S
+    )
+
+
+def followup_status(redis: Redis, job_id: str) -> FollowupJob:
+    return _result_status(redis, FollowupJob, job_id)
+
+
+# Jobs whose small result lives in the job itself, with the field that holds it.
+ResultJob = SpectrumJob | FollowupJob
+_RESULT_FIELD = {SpectrumJob: "spectrum", FollowupJob: "followup"}
+
+
+def _submit_result(
+    redis: Redis,
+    settings: Settings,
+    model: type[ResultJob],
+    job_id: str,
+    function: Callable[..., dict],
+    kwargs: dict,
+    timeout_s: int,
+) -> ResultJob:
+    """A running job or a complete result is reused; anything else starts over on the slow queue."""
+    current = _result_status(redis, model, job_id)
     if current.status in ("queued", "started"):
         return current
-    if current.status == "finished" and current.spectrum and current.spectrum.complete:
+    result = getattr(current, _RESULT_FIELD[model])
+    if current.status == "finished" and result and result.complete:
         return current
     queue = Queue(SLOW_QUEUE, connection=redis)
     if queue.count > settings.max_queued:
@@ -99,36 +149,37 @@ def submit_spectrum(redis: Redis, settings: Settings, ra: float, dec: float) -> 
     with suppress(NoSuchJobError):
         Job.fetch(job_id, connection=redis).delete()
     queue.enqueue(
-        build_spectrum,
-        kwargs={"ra": ra, "dec": dec, "collections": collections},
+        function,
+        kwargs=kwargs,
         job_id=job_id,
-        job_timeout=SPECTRUM_TIMEOUT_S,
+        job_timeout=timeout_s,
         result_ttl=86400,
         failure_ttl=600,
     )
-    return SpectrumJob(job_id=job_id, status="queued")
+    return model(job_id=job_id, status="queued")
 
 
-def spectrum_status(redis: Redis, job_id: str) -> SpectrumJob:
+def _result_status(redis: Redis, model: type[ResultJob], job_id: str) -> ResultJob:
+    field = _RESULT_FIELD[model]
     try:
         job = Job.fetch(job_id, connection=redis)
     except NoSuchJobError:
-        return SpectrumJob(job_id=job_id, status="not_found")
+        return model(job_id=job_id, status="not_found")
     state = job.get_status()
     if state == JobStatus.FINISHED:
         result = job.return_value()
         if result is None:
-            return SpectrumJob(job_id=job_id, status="not_found")
-        return SpectrumJob(
-            job_id=job_id, status="finished", spectrum=Spectrum.model_validate(result)
-        )
+            return model(job_id=job_id, status="not_found")
+        return model(job_id=job_id, status="finished", **{field: result})
     if state in (JobStatus.QUEUED, JobStatus.STARTED):
         running = "started" if state == JobStatus.STARTED else "queued"
         progress, total = int(job.meta.get("progress", 0)), int(job.meta.get("total", 0))
-        return SpectrumJob(job_id=job_id, status=running, progress=progress, total=total)
+        return model(job_id=job_id, status=running, progress=progress, total=total)
     # Failed, stopped or cancelled (e.g. a worker restart): the next request starts it again.
-    error = _last_error(job) if state == JobStatus.FAILED else f"Spectrum job {state.value}"
-    return SpectrumJob(job_id=job_id, status="failed", error=error)
+    error = (
+        _last_error(job) if state == JobStatus.FAILED else f"{field.capitalize()} job {state.value}"
+    )
+    return model(job_id=job_id, status="failed", error=error)
 
 
 def status(redis: Redis, settings: Settings, job_id: str) -> FrameJob:
