@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
+import { Skeleton } from './Skeleton'
 import { createSmallBodies, getSmallBodiesJob } from '../api'
 import { MAX_GAP_DAYS, epochFor } from '../smallBodyLayer'
 import type { SmallBodiesJob, SmallBodiesRequest, SmallBody, SmallBodyEpoch } from '../types'
@@ -84,9 +85,12 @@ export function SmallBodies({
       {!ready && <p className="muted">Needs frames: the lookup uses their observation times.</p>}
       {job?.status === 'not_found' && <p className="notice">The lookup expired – look it up again.</p>}
       {running && job && (
-        <p className="progress" role="status">
-          {progressText(job)}
-        </p>
+        <div aria-busy="true">
+          <p className="progress" role="status">
+            {progressText(job)}
+          </p>
+          <Skeleton variant="line" lines={Math.max(1, job.total)} />
+        </div>
       )}
       {(error ?? job?.error) && (
         <p className="notice error" role="alert">

@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
+import { Skeleton } from '../components/Skeleton'
 import type { AladinInstance, ImageLayer, GraphicOverlay } from 'aladin-lite'
 import { api, API_BASE } from './api/client'
 import type { BandName, DifferenceResult, Mode, ObservationSearch, SequenceResult, SpectrumResult, Target } from './api/types'
@@ -143,7 +144,7 @@ const caveat = <p className="small muted">Changes and residuals need verificatio
 // only say they wait for it.
 function Waiting({ wb, what }: { wb: Workbench; what: string }) {
   if (wb.search) return null
-  return <p className="small muted">{wb.error ? `${what} needs the archive search, which failed: retry it under Coverage.` : `${what} starts after the archive search (Coverage) finishes.`}</p>
+  return <p className="small muted">{wb.error ? `${what} needs the archive search, which failed: retry it in the Coverage tab.` : `${what} starts after the archive search (Coverage tab) finishes.`}</p>
 }
 
 export function AnalysisPartView({ wb, part }: { wb: Workbench; part: AnalysisPart }) {
@@ -155,7 +156,10 @@ export function AnalysisPartView({ wb, part }: { wb: Workbench; part: AnalysisPa
     {target.pm_ra_mas_yr != null && target.pm_dec_mas_yr != null && <p className="small muted">
       Analysis position: Gaia DR3 at J{target.epoch_jyear} · RA {target.ra.toFixed(6)}° · Dec {target.dec.toFixed(6)}°, moved with its proper motion
     </p>}
-    {searching && <p role="status">Searching IRSA observations…</p>}
+    {searching && <div className="analysis-loading" aria-busy="true">
+      <p role="status" className="sr-only">Searching IRSA observations…</p>
+      <Skeleton variant="chart" /><Skeleton variant="line" lines={3} />
+    </div>}
     {error && <div className="alert alert--fail" role="alert">{error}<button className="btn" onClick={() => void load()}>Retry observation search</button></div>}
     {search && <>
       {search.checks.some(check => check.code === 'archive_error') && <div className="alert alert--warn" role="status">
@@ -205,6 +209,7 @@ export function AnalysisPartView({ wb, part }: { wb: Workbench; part: AnalysisPa
       </details>
       {result && <p className="small muted">{result.frames.length} aligned frames · {result.band} · {result.grid.fov_arcmin}′ field · {result.mode}</p>}
       {sequence.running && sequence.job && <Progress value={sequence.job.progress} message={sequence.job.message} />}
+      {sequence.running && <Skeleton variant="image" />}
       {sequence.error && <p className="alert alert--fail" role="alert">{sequence.error}</p>}
       {result && !frames?.length && <p className="alert alert--warn">No usable frames. Inspect the checks below or try another detector or sequence algorithm.</p>}
       {result && frames && frames.length > 0 && <BlinkPlayer key={sequence.job?.id} frames={frames} grid={result.grid} index={index} onIndex={setIndex} showOnSky={showOnSky} onShowOnSky={setShowOnSky} />}

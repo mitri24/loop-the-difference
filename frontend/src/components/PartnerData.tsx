@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
+import { Skeleton } from './Skeleton'
 import { getNeossat } from '../api'
 import type { NeossatCoverage } from '../types'
 
@@ -63,10 +64,13 @@ export function useNeossat(ra: string, dec: string): { state: NeossatState; retr
 export function NeossatLine({ state, onRetry }: { state: NeossatState; onRetry: () => void }) {
   if (state.status === 'loading') {
     return (
-      <p role="status" className="muted">
-        NEOSSat (CSA):{' '}
-        {state.slow ? 'CADC is slow for this field – asking again…' : 'checking the CADC archive…'}
-      </p>
+      <div aria-busy="true">
+        <p role="status" className="muted">
+          NEOSSat (CSA):{' '}
+          {state.slow ? 'CADC is slow for this field – asking again…' : <span className="sr-only">checking the CADC archive…</span>}
+        </p>
+        {!state.slow && <Skeleton variant="line" />}
+      </div>
     )
   }
   if (state.status === 'error') {
