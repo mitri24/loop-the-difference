@@ -222,3 +222,25 @@ def test_target_is_flagged_only_within_two_pixels_of_the_target():
 
     unusable[10 + 2, 10], unusable[10 + 3, 10] = False, True
     assert not target_is_flagged(unusable, wcs, RA, DEC)
+
+
+_REQUEST = httpx.Request("GET", "https://irsa.example/cutout.fits")
+
+
+@pytest.mark.parametrize(
+    ("error", "reason"),
+    [
+        (
+            httpx.HTTPStatusError("busy", request=_REQUEST, response=httpx.Response(503)),
+            "HTTP 503 Service Unavailable, after 5 attempts",
+        ),
+        (
+            httpx.HTTPStatusError("gone", request=_REQUEST, response=httpx.Response(404)),
+            "HTTP 404 Not Found, not retried",
+        ),
+        (httpx.ReadTimeout("slow"), "no answer within 90 s, after 5 attempts"),
+        (httpx.ConnectError("refused"), "ConnectError, after 5 attempts"),
+    ],
+)
+def test_failure_reason_names_the_answer_or_timeout_and_the_retries(error, reason):
+    assert frames.failure_reason(error, 90.0) == reason

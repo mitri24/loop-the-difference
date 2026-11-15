@@ -87,6 +87,16 @@ def _retryable(exc: httpx.HTTPError) -> bool:
     return isinstance(exc, httpx.TransportError)
 
 
+def failure_reason(exc: httpx.HTTPError, timeout_s: float) -> str:
+    """Why the archive did not deliver a cutout (its answer or a timeout) and if it was retried."""
+    tries = f"after {DOWNLOAD_ATTEMPTS} attempts" if _retryable(exc) else "not retried"
+    if isinstance(exc, httpx.HTTPStatusError):
+        return f"HTTP {exc.response.status_code} {exc.response.reason_phrase}, {tries}"
+    if isinstance(exc, httpx.TimeoutException):
+        return f"no answer within {timeout_s:g} s, {tries}"
+    return f"{type(exc).__name__}, {tries}"
+
+
 def unusable_bits(flags_header: fits.Header) -> int:
     """Bitmask of the UNUSABLE_FLAGS planes, read from the header's mask-plane names."""
     bits = 0
