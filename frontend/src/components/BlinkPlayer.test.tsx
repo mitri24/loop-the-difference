@@ -34,7 +34,7 @@ describe('BlinkPlayer', () => {
     // The table comes after the image: image left, A and B beside it.
     expect(html.indexOf('class="viewport"')).toBeLessThan(html.indexOf('class="pair-table"'))
     expect(html.indexOf('Show frame A')).toBeLessThan(html.indexOf('Show frame B'))
-    expect(html).toContain('<optgroup label="Epoch 2"><option value="1" selected="">2026-05-01 10:00 UTC</option></optgroup>')
+    expect(html).toContain('<optgroup label="Epoch 2 (UTC)"><option value="1" selected="">2026-05-01 10:00</option></optgroup>')
     // "All" at the thumbnails plays every frame.
     expect(html).toContain('title="Play every frame in time order">▶ All</button>')
     expect(html).not.toMatch(/Before|After/)

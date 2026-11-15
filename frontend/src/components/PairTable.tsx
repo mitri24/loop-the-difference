@@ -82,7 +82,10 @@ export function PairTable({ frames, pair, index, letter, grid, motion, predictio
         {/* Pressed while the image shows this letter, like the stamp. */}
         <button type="button" className="pair-letter" aria-pressed={letter === name} aria-label={`Show frame ${name}`}
           onClick={() => onShow(which)}>{name}</button>
-        <select className="pair-pick" aria-label={`Frame ${name}`} value={pair[which]} onChange={(event) => onChoose(which, Number(event.target.value))}>
+        {/* The choice reads as short text (the thumbnails' numbers); the list it opens names every frame by date. */}
+        <label className="pair-pick">
+          <span aria-hidden="true">frame {pair[which] + 1} of {frames.length} ▾</span>
+          <select aria-label={`Frame ${name}`} value={pair[which]} onChange={(event) => onChoose(which, Number(event.target.value))}>
           {epochGroups.map(([epoch, members]) => (
             <optgroup key={epoch} label={`Epoch ${epoch + 1} (UTC)`}>
               {members.map((i) => (
@@ -90,7 +93,8 @@ export function PairTable({ frames, pair, index, letter, grid, motion, predictio
               ))}
             </optgroup>
           ))}
-        </select>
+          </select>
+        </label>
       </div>
     )
   }

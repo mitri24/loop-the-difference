@@ -78,7 +78,7 @@
 .sky-area.overview.collapsed .sky-stage { visibility:hidden; pointer-events:none; width:var(--map-w); height:calc(var(--map-w) * .75); }
 .overview-bar { position:relative; height:36px; display:flex; align-items:center; justify-content:space-between; gap:var(--space-2); padding:0 var(--space-1) 0 var(--space-3); font-size:var(--text-xs); }
 .overview-bar > span:first-child { min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
-.overview-bar button { min-height:28px; padding:0 var(--space-2); background:transparent; font-size:var(--text-xs); }
+.overview-bar button { flex:none; min-height:28px; padding:0 var(--space-2); background:transparent; font-size:var(--text-xs); white-space:nowrap; }
 .overview-actions { display:flex; gap:var(--space-1); }
 .overview-bar .overview-icon { width:28px; min-width:28px; padding:0; font-size:var(--text-md); }
 /* Expanded: the map opens large over the page, under the search bar and the viewer head (mode switch, section bar)
