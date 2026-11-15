@@ -17,13 +17,17 @@ from astropy.wcs import WCS, FITSFixedWarning
 from PIL import Image
 from reproject import reproject_interp
 
+from app import cutouts
+
 SPHEREX_PIXEL_SCALE_ARCSEC = 6.15
 # A cutout is aligned with the detector, the target grid with north: √2 covers any rotation.
 ROTATION_MARGIN = 1.42
 DOWNLOAD_ATTEMPTS = 5
-RETRY_BASE_S = 2.0
+RETRY_BASE_S = 1.0
 # IRSA answers "503 Server busy, retry later" under load.
 _RETRY_STATUS = {429, 500, 502, 503, 504}
+# IRSA's cutout service answers 503 to parallel requests: at most two at a time per process.
+_IRSA_SLOTS = threading.BoundedSemaphore(2)
 # Spectral resolving power per detector as IRSA lists it for the spectral images (band N = DN),
 # https://caltech-ipac.github.io/spherex-archive-documentation/spherex-data-products; the median
 # λ/bandwidth of the DR1 WCS-WAVE tables lies within about 0.5 of it. One resolution element is λ/R.
@@ -91,10 +95,13 @@ def fetch_cutout(client: httpx.Client, url: str, directory: Path) -> Path:
     path = cutout_path(directory, url)
     if path.exists():
         return path
+    # The public S3 copy serves the pixels in a few byte ranges, without IRSA's queue.
+    if cutouts.fetch_from_s3(client, url, path):
+        return path
     partial = path.with_name(f"{path.name}.{os.getpid()}-{threading.get_ident()}.part")
     for attempt in range(1, DOWNLOAD_ATTEMPTS + 1):
         try:
-            with client.stream("GET", url) as response:
+            with _IRSA_SLOTS, client.stream("GET", url) as response:
                 response.raise_for_status()
                 with partial.open("wb") as file:
                     for chunk in response.iter_bytes():

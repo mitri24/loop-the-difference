@@ -50,6 +50,7 @@ import { countSources, useSourceLayer } from './sourceLayer'
 import { targetText } from './targets'
 import type { DetectedSource, FrameJob, ObservationSummary, ProperMotion } from './types'
 import { addressFor, POLARIS, readEmbed, readMarks, readPair, readQuery, toSearch, type TargetQuery, type ViewMode } from './url'
+import { downloadExport } from './exportData'
 import { PHONE, useMedia } from './useMedia'
 
 const INITIAL = readQuery(window.location.search)
@@ -458,6 +459,18 @@ export default function App() {
   // The worker finds the changes of every A/B pair the blink shows (final images only); a finished small-body lookup
   // explains them again.
   const pairChanges = usePairDifference(job, pair ?? linkedPair, smallBodies.job)
+  // Export: one file with everything on screen, always offered; before a comparison it holds the search. The
+  // spectral fingerprint runs inside its check (FingerprintCheck), so the app does not hold it.
+  const exportAll = () => {
+    const objects = candidate.objects.map((object) => ({
+      index: object.index, name: object.name, marks: candidate.allMarks.filter((mark) => mark.object === object.index),
+      verdict: object.index === candidate.activeObject ? candidate.verdict : null,
+      verdictChosen: object.index === candidate.activeObject ? candidate.verdictChosen : null,
+    }))
+    setShareStatus(downloadExport({ link: link(), target: targetText(query), query, motion, summary, jobId: job?.job_id ?? null,
+      manifest: manifest ?? null, objects, pair, pairChanges, smallBodies: smallBodies.epochs, distant: distant.track,
+      followup: followup.followup, fingerprint: null, spectrum: quick.spectrum, exported: new Date(), base: window.location.href }))
+  }
   // Everything the layers show on the sky for the shown frame, on its SPHEREx image too.
   const imageMarks = useMemo<ImageMark[]>(() => {
     if (!frame || showDifference) return []
@@ -688,7 +701,8 @@ export default function App() {
     <div className="shell" data-testid="planet-x-shell" ref={shellRef}>
       <a className="skip-link" href="#sky-map">Skip to the sky map</a>
       <SearchBar tools={<HeaderTools items={PANELS} open={panel} onToggle={togglePanel}
-        actions={[{ id: 'share', label: 'Share', title: 'Copy this comparison link with your markers included', onClick: () => void share() }]} />} onDraftChange={setDraft} value={name} onChange={(value) => { searchShows.current = null; setName(value) }} draft={draft} busy={busy} onShow={show} onFind={find} onSurprise={() => void surpriseMe()} />
+        actions={[{ id: 'share', label: 'Share', title: 'Copy this comparison link with your markers included', onClick: () => void share() },
+          { id: 'export', label: 'Export', title: 'Download all data of this comparison as a JSON file: search, observations, frames with their metadata, your marked objects, A/B changes and lookups', onClick: exportAll }]} />} onDraftChange={setDraft} value={name} onChange={(value) => { searchShows.current = null; setName(value) }} draft={draft} busy={busy} onShow={show} onFind={find} onSurprise={() => void surpriseMe()} />
 
       <div className={`stage ${stage}`}>
         <section className="viewer" aria-label="SPHEREx images of the region" hidden={stage !== 'investigate'}>

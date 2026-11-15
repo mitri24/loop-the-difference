@@ -1,3 +1,4 @@
+import { readFile } from 'node:fs/promises'
 import { test, expect, type Page, type Locator } from '@playwright/test'
 import type { FrameJob, FrameManifest, ObservationSummary, PairDifferenceJob } from '../src/types'
 
@@ -317,6 +318,16 @@ test('share copies canonical comparison link and embed remains usable', async ({
   await expect(page.locator('.player')).toBeVisible()
 })
 
+test('Export is offered before any comparison and saves the search', async ({ page }) => {
+  await fixtures(page)
+  await page.goto('/')
+  const [download] = await Promise.all([page.waitForEvent('download'), page.getByRole('button', { name: 'Export', exact: true }).click()])
+  expect(download.suggestedFilename()).toMatch(/^loop-the-difference-.+-\d{4}-\d{2}-\d{2}\.json$/)
+  const file = JSON.parse(await readFile(await download.path(), 'utf8'))
+  expect(file).toMatchObject({ format: 'loop-the-difference/export@1', comparison: null, objects: [], query: { band: 6 } })
+  await expect(page.getByRole('status').filter({ hasText: 'Exported the search only – no comparison loaded yet' })).toBeVisible()
+})
+
 test('a link carries A and B: it opens on them, and the address follows a swap', async ({ page }) => {
   await fixtures(page)
   await page.goto('/?ra=37.954542&dec=89.264111&band=6&a=fixture-1&b=fixture-0')
@@ -628,7 +639,7 @@ test('fixture: Mark detected sources in two frames lists candidate marks A and B
   await expect(panel.getByRole('button', { name: 'Mark in this frame' })).toHaveAttribute('aria-pressed', 'false')
 })
 
-test('fixture: sharing includes markers and reopens them without a JSON export', async ({ page }) => {
+test('fixture: sharing includes markers and reopens them; Export saves the marks with the frames and the link', async ({ page }) => {
   const detected = (index: number) => ({ ...frame(index), sources: [{ ra: manifest.ra + 0.05 * (index + 1), dec: manifest.dec - 0.02,
     x: 40, y: 50, peak_mjy_sr: 2, snr: 122, match: 'none' as const, catalog_id: null, separation_arcsec: null,
     catalog_mag: null, catalog_band: null }] })
@@ -647,8 +658,19 @@ test('fixture: sharing includes markers and reopens them without a JSON export',
   await expect(panel.locator('.candidate-marks li')).toHaveText(marks)
   await panel.getByRole('radio', { name: 'possible artifact' }).check()
   await panel.getByRole('textbox', { name: 'Object name' }).fill('Moving candidate')
-  await expect(panel.getByText('Share in the top bar copies a link with your markers included.', { exact: false })).toBeVisible()
+  await expect(panel.getByText('Share in the top bar copies a link with your markers included', { exact: false })).toBeVisible()
+  // One trigger per action: the export lives in the header only, and holds the marks, the frames and the link back.
   await expect(panel.getByRole('button', { name: /Export/ })).toHaveCount(0)
+  const [download] = await Promise.all([page.waitForEvent('download'), page.getByRole('button', { name: 'Export', exact: true }).click()])
+  expect(download.suggestedFilename()).toMatch(/^loop-the-difference-.+-\d{4}-\d{2}-\d{2}\.json$/)
+  const file = JSON.parse(await readFile(await download.path(), 'utf8'))
+  expect(file).toMatchObject({ format: 'loop-the-difference/export@1', query: { band: 6 }, pair: { a: 'fixture-0', b: 'fixture-1' },
+    objects: [{ name: 'Moving candidate', verdict: 'possible artifact', verdict_chosen: true,
+      marks: [{ letter: 'A', position: 'detection', detection: { snr: 122 }, frame: { obs_id: 'fixture-0', detector: 6, source_url: 'https://example.test/fixture-0' } },
+        { letter: 'B', position: 'as clicked', detection: null, frame: { obs_id: 'fixture-1' } }] }] })
+  expect(file.comparison.frames).toHaveLength(2)
+  expect(file.link).toContain('mark=fixture-0')
+  await expect(page.getByRole('status').filter({ hasText: 'Exported 2 frames, 1 object' })).toBeVisible()
   await page.evaluate(() => {
     Object.defineProperty(navigator, 'clipboard', { configurable: true, value: {
       writeText: async (value: string) => { (window as Window & { sharedLink?: string }).sharedLink = value },

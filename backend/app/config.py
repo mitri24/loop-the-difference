@@ -12,7 +12,8 @@ class Settings(BaseSettings):
     redis_url: str = "redis://redis:6379/0"
     cache_dir: Path = Path("/data/cache")
     http_timeout_s: float = 90.0
-    download_workers: int = 4
+    # Parallel cutout downloads; S3 byte ranges cope, IRSA itself is throttled in frames.py.
+    download_workers: int = 8
     max_queued: int = 20
     # Comma-separated queues for this worker process, see .env.example.
     worker_queues: str = ""
