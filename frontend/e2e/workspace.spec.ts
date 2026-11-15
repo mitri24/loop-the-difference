@@ -454,6 +454,25 @@ test('fixture: reduced motion blinks at 1 s and pauses after 20 swaps', async ({
   await expect(page.locator('.player')).toContainText('Paused after 20 swaps (reduced motion) – press Play to continue')
 })
 
+test('fixture: what the layers show on the sky also stands on the SPHEREx image, and goes with the layer', async ({ page }) => {
+  const detected = (index: number) => ({ ...frame(index), sources: [{ ra: manifest.ra + 0.01, dec: manifest.dec - 0.01,
+    x: 40, y: 50, peak_mjy_sr: 2, snr: 122, match: 'none' as const, catalog_id: null, separation_arcsec: null,
+    catalog_mag: null, catalog_band: null }] })
+  await fixtures(page, { ...manifest, frames: [detected(0), detected(1)] })
+  await page.setViewportSize({ width: 1440, height: 900 })
+  await page.goto('/?ra=37.954542&dec=89.264111&fov=0.2&band=6')
+  const marks = page.locator('.viewer .viewport .image-mark')
+  // "Sources detected in the shown frame" is on by default: its marker stands on the image too.
+  await expect(marks).toHaveCount(1)
+  await expect(marks.first()).toHaveClass(/source-none/)
+  await expect(marks.first().locator('title')).toHaveText(/no catalogue match, needs verification/)
+  await openSheet(page, 'layers')
+  await page.locator('.layers-section').getByLabel('Sources detected in the shown frame').uncheck()
+  await expect(marks).toHaveCount(0)
+  await page.locator('.layers-section').getByLabel('Sources detected in the shown frame').check()
+  await expect(marks).toHaveCount(1)
+})
+
 test('fixture: Mark detected sources in two frames lists candidate marks A and B', async ({ page }, info) => {
   const detected = (index: number) => ({ ...frame(index), sources: [{ ra: manifest.ra + 0.05 * (index + 1), dec: manifest.dec - 0.02,
     x: 40, y: 50, peak_mjy_sr: 2, snr: 122, match: 'none' as const, catalog_id: null, separation_arcsec: null,

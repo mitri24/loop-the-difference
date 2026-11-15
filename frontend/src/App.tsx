@@ -6,6 +6,8 @@ import { createFrames, getFrameJob, getObservations, resolveName } from './api'
 import { AboutPanel } from './components/AboutPanel'
 import { compatiblePair, stampText, type BlinkLetter, type BlinkPair } from './blink'
 import { blockedReason, CANDIDATE_CAVEAT, type CheckActionId } from './checkGuide'
+import { NO_MARKS, type LayerKey, type SkyMark } from './catalogLayers'
+import type { ImageMark } from './components/ImageMarks'
 import { BlinkPlayer } from './components/BlinkPlayer'
 import { CandidatePanel } from './components/CandidatePanel'
 import { TrackCheck } from './components/TrackCheck'
@@ -38,7 +40,7 @@ import { checkFrames, possibleTrack } from './track'
 import { useTrackLayer } from './trackLayer'
 import { sliceForDetector } from './sky'
 import { sliceText, useCubeWavelengths, useSkySlice } from './skyCube'
-import { useSmallBodyLayer } from './smallBodyLayer'
+import { epochFor, smallBodyMarkers, useSmallBodyLayer } from './smallBodyLayer'
 import { countSources, useSourceLayer } from './sourceLayer'
 import { targetText } from './targets'
 import type { FrameJob, ObservationSummary, ProperMotion } from './types'
@@ -91,6 +93,8 @@ export default function App() {
   const [sourcesOnSky, setSourcesOnSky] = useState(true)
   const [smallBodiesOnSky, setSmallBodiesOnSky] = useState(true)
   const [plateOnSky, setPlateOnSky] = useState(false)
+  // The catalogue markers that are on in Layers, reported by CatalogLegend, for the SPHEREx images as well.
+  const [catalogMarks, setCatalogMarks] = useState<Record<LayerKey, SkyMark[]>>(NO_MARKS)
   const [skySlice, setSkySlice] = useState(() => sliceForDetector((INITIAL ?? POLARIS).band))
   const [sliceBand, setSliceBand] = useState((INITIAL ?? POLARIS).band)
   const [viewRevision, setViewRevision] = useState(0)
@@ -369,6 +373,21 @@ export default function App() {
     mjds: manifest.frames.filter((f, i, all) => all.findIndex((g) => g.epoch === f.epoch) === i).map((f) => f.mjd).slice(0, 6),
   } : null)
   useSmallBodyLayer(sky, smallBodies.epochs, frame?.mjd ?? null, smallBodiesOnSky)
+  // Everything the layers show on the sky for the shown frame, on its SPHEREx image too.
+  const imageMarks = useMemo<ImageMark[]>(() => {
+    if (!frame || showDifference) return []
+    const marks: ImageMark[] = (['gaia', 'wise', 'simbad', 'skybot'] as LayerKey[])
+      .flatMap((key) => catalogMarks[key].map((mark) => ({ ...mark, kind: key })))
+    const epoch = smallBodiesOnSky ? epochFor(smallBodies.epochs, frame.mjd) : null
+    if (epoch) marks.push(...smallBodyMarkers(epoch, frame.mjd).map((body) => ({ ra: body.ra, dec: body.dec, name: body.data.label, kind: 'sbident' as const })))
+    if (sourcesOnSky && frame.sources) {
+      marks.push(...frame.sources.map((source) => ({ ra: source.ra, dec: source.dec,
+        kind: source.match === 'none' ? 'source-none' as const : source.match === 'unknown' ? 'source-unknown' as const : 'source-match' as const,
+        name: `Detected · S/N ${source.snr.toFixed(0)} · ${source.match === 'none' ? 'no catalogue match, needs verification'
+          : source.match === 'unknown' ? 'catalogue unavailable' : `${source.catalog_id ?? source.match}`}` })))
+    }
+    return marks
+  }, [frame, showDifference, catalogMarks, smallBodiesOnSky, smallBodies.epochs, sourcesOnSky])
 
   // The actions the checks offer (EvidencePanel, the Difference reason): each does what its label says.
   const onCheckAction = (action: CheckActionId) => {
@@ -445,7 +464,7 @@ export default function App() {
     </>
     : <BlinkPlayer key={`${job.job_id}-${manifest.preview ? manifest.frames[0]?.url : 'final'}`} frames={manifest.frames} checks={checks} grid={manifest} motion={motion} predictions={predictions}
       onIndexChange={showFrame} onPairChange={setPair} seek={seek} pairRequest={pairRequest} active={EMBED || stage === 'investigate'} showShare={EMBED}
-      controls={imagesToggle} changes={changes} />)
+      controls={imagesToggle} changes={changes} marks={imageMarks} />)
   const evidence = manifest && <EvidencePanel checks={checks} manifest={manifest} frameLabel={`this comparison · ${manifest.frames.length} ${manifest.frames.length === 1 ? 'image' : 'images'}`}
     onAction={(action) => { if (!EMBED || action !== 'choose-region') onCheckAction(action) }} />
 
@@ -637,7 +656,8 @@ export default function App() {
             trackShown={track.length > 0} possibleTrackShown={predictions.length > 0} skySlice={skySlice} onSkySliceChange={setSkySlice} cubeActive={cubeActive}
             smallBodyEpochs={smallBodies.epochs} smallBodiesOnSky={smallBodiesOnSky} onSmallBodiesOnSkyChange={setSmallBodiesOnSky}
             plateAvailable={!!motion} plateOnSky={plateOnSky} onPlateOnSkyChange={setPlateOnSky} plate={plate}
-            framesBlocked={showDifference ? 'The difference image is shown in the viewer. Frames and their detected sources go back on the sky in the other modes.' : undefined} />}
+            framesBlocked={showDifference ? 'The difference image is shown in the viewer. Frames and their detected sources go back on the sky in the other modes.' : undefined}
+            onCatalogMarks={setCatalogMarks} />}
           {analysisTarget && <><h3>Exposure footprints</h3><div ref={setFootprintsSlot} /></>}
         </section>
         <section id="about-panel" hidden={panel !== 'about'}>
