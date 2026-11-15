@@ -75,7 +75,16 @@
 .sky-area.overview.collapsed { width:auto; height:36px; }
 .sky-area.overview.collapsed .sky-stage { visibility:hidden; pointer-events:none; width:var(--map-w); height:calc(var(--map-w) * .75); }
 .overview-bar { position:relative; height:36px; display:flex; align-items:center; justify-content:space-between; gap:var(--space-2); padding:0 var(--space-1) 0 var(--space-3); font-size:var(--text-xs); }
+.overview-bar > span:first-child { min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
 .overview-bar button { min-height:28px; padding:0 var(--space-2); background:transparent; font-size:var(--text-xs); }
+.overview-actions { display:flex; gap:var(--space-1); }
+/* Expanded: the map opens large over the page, under the search bar and the viewer head (mode switch, section bar)
+   and under any sheet; its bar keeps the corner and the column width, so nothing moves. Escape or Dock brings it back. */
+@media (width > 700px) {
+  .stage.investigate > .sky-area.overview.expanded { display:contents; }
+  .sky-area.overview.expanded > .overview-bar { grid-area:map; align-self:start; z-index:var(--z-chrome); width:var(--map-w); margin:var(--hud-pad-y) var(--space-3) 0 0; background:var(--surface-1); border:1px solid var(--border-strong); border-radius:var(--radius-md); }
+  .sky-area.overview.expanded > .sky-stage { grid-row:2 / -1; grid-column:1 / -1; inset:calc(var(--map-below) + var(--space-2)) var(--space-3) var(--space-3) auto; width:clamp(var(--map-w), 50%, 900px); z-index:var(--z-chrome); background:var(--surface-1); border:1px solid var(--border-strong); border-radius:var(--radius-md); box-shadow:0 12px 32px var(--shadow-color); }
+}
 
 /* The SPHEREx cutout viewer: modes at the image, the image as large as the stage allows. */
 .viewer { position:absolute; inset:0; display:flex; flex-direction:column; min-width:0; }
@@ -240,6 +249,7 @@
   .stage.investigate > .viewer { flex:1; min-height:0; }
   .sky-area.overview { flex:none; width:auto; max-width:none; height:min(calc(var(--map-w) * .75 + 36px), 50%); margin:0; border-width:1px 0 0; border-radius:0; }
   .sky-area.overview.collapsed { height:36px; }
+  .overview-expand { display:none; }
 }
 @media (max-height:600px) and (min-width:701px) {
 

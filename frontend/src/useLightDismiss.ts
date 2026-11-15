@@ -17,12 +17,12 @@ export function useLightDismiss(open: boolean, setOpen: (open: boolean) => void,
       const target = event.target as Node
       if (!trigger.current?.contains(target) && !menu.current?.contains(target)) setOpen(false)
     }
-    document.addEventListener('keydown', onKey)
-    // Capture: the sky map handles its own presses and must still close the menu.
+    // Capture: an open menu is the topmost layer, so its Escape and presses come before those of the page and the map.
+    document.addEventListener('keydown', onKey, true)
     document.addEventListener('pointerdown', onOutside, true)
     document.addEventListener('focusin', onOutside)
     return () => {
-      document.removeEventListener('keydown', onKey)
+      document.removeEventListener('keydown', onKey, true)
       document.removeEventListener('pointerdown', onOutside, true)
       document.removeEventListener('focusin', onOutside)
     }
