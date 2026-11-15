@@ -62,6 +62,21 @@ summary { cursor:pointer; min-height:32px; padding:5px 0; font-size:13px; }
 .player { display:flex; flex-direction:column; gap:14px; min-width:0; }
 .viewport { position:relative; width:100%; aspect-ratio:1; background:var(--sky-bg); border:1px solid var(--border); }
 .viewport img { position:absolute; inset:0; width:100%; height:100%; image-rendering:pixelated; }
+/* Zoom and pan (imageZoom.ts): the image and everything placed on the sky sit in one layer that zooms; marks keep
+   their size on screen (--mark-scale), placeholders and errors keep the viewport's box (--unzoom). At 1× a touch
+   still scrolls the page and a pinch zooms the image; zoomed, the image takes every pointer. */
+.viewport { touch-action:pan-x pan-y; }
+.viewport.zoomed { touch-action:none; cursor:grab; }
+.viewport.zoomed:active { cursor:grabbing; }
+.viewport.zoomed.marking { cursor:crosshair; }
+.viewport-clip { position:absolute; inset:0; }
+.viewport.zoomed .viewport-clip { overflow:hidden; }
+.viewport-sky { position:absolute; inset:0; transform-origin:0 0; }
+.viewport-sky > .image-error { transform-origin:0 0; transform:var(--unzoom, none); }
+.viewport-sky .reticle,.viewport-sky .marker,.viewport-sky .candidate-mark { transform:translate(-50%,-50%) scale(var(--mark-scale, 1)); }
+.viewport-sky .search-area { border-width:calc(2px * var(--mark-scale, 1)); }
+.zoom-buttons { display:flex; gap:var(--space-1); }
+.zoom-buttons button { min-width:32px; padding-inline:var(--space-1); font-variant-numeric:tabular-nums; }
 /* Layer markers on the SPHEREx image (components/ImageMarks.tsx): the map's symbols and colours, thin, with a dark
    halo so they read on bright and dark sky alike. */
 .image-marks { position:absolute; inset:0; width:100%; height:100%; overflow:visible; pointer-events:none; }
