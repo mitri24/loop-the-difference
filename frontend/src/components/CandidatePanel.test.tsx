@@ -24,6 +24,7 @@ describe('CandidatePanel', () => {
     const html = render([mark('a', '2026-04-25T21:55:00Z')], null, true)
     expect(html).toContain('Now mark it in another frame')
     expect(html).toContain('aria-pressed="true"')
+    expect(html).toContain('Click the object in the image')
     expect(html).toContain('A · 2026-04-25 21:55 UTC')
     expect(html).toContain('Unverified candidate – needs verification')
   })

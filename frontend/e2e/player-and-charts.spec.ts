@@ -92,7 +92,7 @@ test('the inspector: a tab per kind, arrow keys between tabs, the image never mo
   await page.goto(`/?ra=${manifest.ra}&dec=${manifest.dec}&fov=0.2&band=6`)
   await expect(page.locator('.player')).toBeVisible()
   const image = await page.locator('.viewer .viewport').boundingBox()
-  for (const id of ['frame', 'quality', 'candidate', 'measure', 'coverage', 'analysis', 'data']) {
+  for (const id of ['frame', 'quality', 'measure', 'coverage', 'analysis', 'data']) {
     await page.getByTestId(`inspect-${id}`).click()
     await expect(page.getByTestId(`inspect-${id}`)).toHaveAttribute('aria-selected', 'true')
     await expect(page.locator(`#inspect-panel-${id}`)).toBeVisible()

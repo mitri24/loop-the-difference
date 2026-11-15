@@ -93,7 +93,20 @@
 .viewer-head { flex:none; display:flex; flex-wrap:wrap; align-items:center; gap:var(--space-2) var(--space-3); padding:var(--space-2) var(--space-3); border-bottom:1px solid var(--border); }
 .viewer-head .mode-switch { flex:1 1 280px; max-width:420px; flex-direction:row; align-items:center; }
 .back-button { background:transparent; }
-.viewer-body { flex:1; min-height:0; overflow-y:auto; overscroll-behavior:contain; padding:var(--space-3); display:flex; flex-direction:column; gap:var(--space-3); container-type:size; scrollbar-width:thin; }
+.viewer-body { flex:1; min-height:0; overflow-y:auto; overscroll-behavior:contain; padding:var(--space-3); display:flex; flex-direction:column; container-type:size; scrollbar-width:thin; }
+/* The images and, beside them, the candidate check (marks are set by clicking the image). The stage is the size
+   container the player fits into; the check scrolls on its own. */
+.viewer-split { flex:1; min-height:0; display:flex; gap:var(--space-3); }
+.viewer-stage { flex:1; min-width:0; display:flex; flex-direction:column; gap:var(--space-3); container-type:size; }
+.candidate-side { flex:none; width:clamp(240px, 30cqw, 360px); min-height:0; overflow-y:auto; overscroll-behavior:contain; scrollbar-width:thin; display:flex; flex-direction:column; gap:var(--space-3); padding-left:var(--space-3); border-left:1px solid var(--border); font-size:var(--text-sm); }
+.candidate-side > .candidate-check { padding-top:0; border-top:0; }
+/* Too narrow for both side by side (tablets, phones): the check follows under the images, the body scrolls, and the
+   player fits the viewer body as before. */
+@container (max-width:759px) {
+  .viewer-split { flex:none; flex-direction:column; }
+  .viewer-stage { flex:none; container-type:normal; }
+  .candidate-side { width:auto; overflow:visible; padding:var(--space-3) 0 0; border-left:0; border-top:1px solid var(--border); }
+}
 /* One screen, no page scrolling: the A/B pair as the image's header, thumbnails | image, the transport bar under
    the image. --img is the largest square that leaves room for the header, the bar and a notice above the player
    (--reserve); the viewer body is the size container. */
@@ -103,7 +116,7 @@
   display:grid; grid-template-columns:var(--rail) var(--img); grid-template-rows:var(--head) var(--img) auto auto;
   grid-template-areas:'head head' 'rail view' 'bar bar' 'note note'; gap:var(--gap); justify-content:center; align-items:start;
 }
-.viewer-body:has(> .notice) > .player { --reserve:calc(56px + var(--space-3)); }
+.viewer-stage:has(> .notice) > .player { --reserve:calc(56px + var(--space-3)); }
 /* The pair and the bar may be wider than a small image (at least 560 px where the viewer has them), so the dates
    and the controls never squeeze; below about 480 px of viewer the bar wraps into two rows: reserve them. */
 @container (max-width:499px) {

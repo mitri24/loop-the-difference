@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { markerPosition } from './motion'
+import { frameToSky, markerPosition, skyToFrame } from './motion'
 import type { ProperMotion } from './types'
 
 // Gaia DR3 4472832130942575872 (Barnard's Star), from backend/tests/fixtures/gaia_barnard.csv
@@ -36,5 +36,25 @@ describe('proper-motion marker', () => {
     expect(at.x).toBeCloseTo(0.5, 6)
     expect(at.y).toBeCloseTo(0.5, 6)
     expect(markerPosition(BARNARD, MJD_2025_5, J2000.ra, J2000.dec, 0.05)).toBeNull()
+  })
+})
+
+describe('frameToSky', () => {
+  it('inverts skyToFrame, also at the pole and across RA 0', () => {
+    for (const [ra0, dec0] of [[38.02, 89.27], [0.01, -10], [210, 45]]) {
+      for (const [x, y] of [[0.5, 0.5], [0.1, 0.9], [0.83, 0.27]]) {
+        const sky = frameToSky(x, y, ra0, dec0, 0.2)
+        const back = skyToFrame(sky.ra, sky.dec, ra0, dec0, 0.2)
+        expect(back!.x).toBeCloseTo(x, 9)
+        expect(back!.y).toBeCloseTo(y, 9)
+      }
+    }
+  })
+
+  it('puts the centre on the field centre and east to the left', () => {
+    const centre = frameToSky(0.5, 0.5, 120, 30, 0.2)
+    expect(centre.ra).toBeCloseTo(120, 9)
+    expect(centre.dec).toBeCloseTo(30, 9)
+    expect(frameToSky(0.2, 0.5, 120, 30, 0.2).ra).toBeGreaterThan(120)
   })
 })

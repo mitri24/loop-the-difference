@@ -18,7 +18,7 @@ interface Props {
   visits?: { observations: Observation[]; inBlink: string[] } | null
 }
 
-// Directly under the blink: what to do next, the marks so far and what they still need.
+// Beside the image: what to do next, the marks so far and what they still need.
 export function CandidatePanel({ candidate: { marks, notice, armed, setArmed, clear }, blocked, track, known, visits, children }: Props) {
   return (
     <section className="candidate-check" aria-labelledby="candidate-heading">
@@ -33,7 +33,7 @@ export function CandidatePanel({ candidate: { marks, notice, armed, setArmed, cl
       </button>
       <p className="candidate-hint">
         {blocked ?? (armed
-          ? 'Click the object inside the SPHEREx frame on the sky. "Mark" in Detected sources works too.'
+          ? 'Click the object in the image; the mark also appears on the map. "Mark" in Detected sources works too.'
           : 'Or use "Mark" next to a detected source.')}
       </p>
       <p className="candidate-notice" role="status" aria-live="polite">{notice}</p>

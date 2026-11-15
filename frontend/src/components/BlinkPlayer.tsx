@@ -13,7 +13,8 @@ import {
   type BlinkLetter,
   type BlinkPair,
 } from '../blink'
-import { markerPosition, skyToFrame } from '../motion'
+import { MARK_LETTERS, type Mark } from '../candidate'
+import { frameToSky, markerPosition, skyToFrame } from '../motion'
 import { SEARCH_AREA_LABEL, type Prediction } from '../track'
 import type { Check, Frame, FrameManifest, ProperMotion } from '../types'
 import { CheckBadge, checksForFrame } from './EvidencePanel'
@@ -38,6 +39,11 @@ interface Props {
   // Sets A and/or B (Set A / Set B in the frame details, "Choose a compatible pair" in the checks) and blinks
   // the pair; a new object each time.
   pairRequest?: { pair: Partial<BlinkPair> } | null
+  // Candidate check: while marking is armed, a click on the image marks that position in the frame shown.
+  marking?: boolean
+  onMark?: (frame: Frame, ra: number, dec: number) => void
+  // The user's marks A and B, drawn where they are on the image.
+  marks?: Mark[]
 }
 
 // One layout without page scrolling: the A/B pair as the image's header (with Swap), thumbnails | image, one
@@ -55,6 +61,9 @@ export function BlinkPlayer({
   showShare = true,
   seek = null,
   pairRequest = null,
+  marking = false,
+  onMark,
+  marks = [],
 }: Props) {
   const [reduced] = useState(prefersReducedMotion)
   const [pair, setPair] = useState<BlinkPair | null>(() => defaultBlinkPair(frames))
@@ -257,7 +266,17 @@ export function BlinkPlayer({
         </div>
       )}
 
-      <div className="viewport">
+      <div
+        className={marking ? 'viewport marking' : 'viewport'}
+        title={marking ? 'Click the object to mark it in this frame' : undefined}
+        onClick={(event) => {
+          if (!marking || !onMark || (event.target instanceof Element && event.target.closest('button, a'))) return
+          const box = event.currentTarget.getBoundingClientRect()
+          const at = frameToSky((event.clientX - box.left) / box.width, (event.clientY - box.top) / box.height, grid.ra, grid.dec, grid.size_deg)
+          setPlaying(false)
+          onMark(frame, at.ra, at.dec)
+        }}
+      >
         {/* Load only the visible frame and its next playback partner. */}
         {[index, nextIndex(index, count, blinkPair)].filter((i, n, all) => all.indexOf(i) === n).map((i) => {
           const f = frames[i]
@@ -285,6 +304,15 @@ export function BlinkPlayer({
             title={`Possible track, search area ${SEARCH_AREA_LABEL}`}
           />
         )}
+        {marks.map((mark, i) => {
+          const at = skyToFrame(mark.ra, mark.dec, grid.ra, grid.dec, grid.size_deg)
+          return at && (
+            <span key={mark.obs_id} className={mark.obs_id === frame.obs_id ? 'image-mark current' : 'image-mark'}
+              style={{ left: `${at.x * 100}%`, top: `${at.y * 100}%` }} title={`Your mark ${MARK_LETTERS[i]}${mark.obs_id === frame.obs_id ? ', set in this frame' : ''}`}>
+              <span aria-hidden="true">◎</span>{MARK_LETTERS[i]}
+            </span>
+          )
+        })}
         <span className="stamp">{stampText(frame, letter)}</span>
         <CheckBadge checks={checksForFrame(checks, frame)} />
       </div>
