@@ -97,7 +97,12 @@ def resolve(
         raise HTTPException(
             status_code=504, detail="Name lookup timed out – try coordinates"
         ) from None
-    return ResolvedTarget(name=name, ra=ra, dec=dec, proper_motion=find_proper_motion(ra, dec))
+    return ResolvedTarget(
+        name=name,
+        ra=ra,
+        dec=dec,
+        proper_motion=find_proper_motion(ra, dec, cache_dir=settings.cache_dir),
+    )
 
 
 @app.get("/api/observations")
