@@ -44,7 +44,7 @@ import { epochFor, smallBodyMarkers, useSmallBodyLayer } from './smallBodyLayer'
 import { countSources, useSourceLayer } from './sourceLayer'
 import { targetText } from './targets'
 import type { FrameJob, ObservationSummary, ProperMotion } from './types'
-import { POLARIS, readEmbed, readMarks, readQuery, toSearch, type TargetQuery, type ViewMode } from './url'
+import { POLARIS, readEmbed, readMarks, readPair, readQuery, toSearch, type TargetQuery, type ViewMode } from './url'
 import { downloadMarks } from './markExport'
 import { PHONE, useMedia } from './useMedia'
 
@@ -52,6 +52,8 @@ const INITIAL = readQuery(window.location.search)
 const EMBED = readEmbed(window.location.search)
 // Candidate marks in a shared link belong to its comparison: they are placed once its frames are there (not embedded).
 const LINKED_MARKS = INITIAL && !EMBED ? readMarks(window.location.search) : []
+// A link's A and B (obs_ids), set once its comparison's final images are there.
+const LINKED_PAIR = INITIAL ? readPair(window.location.search) : null
 const POLARIS_CENTER = { ra: 37.954542, dec: 89.264111 }
 const MAX_FRAMES = 12
 const usesStacks = (mode: ViewMode) => mode !== 'exposures'
@@ -362,14 +364,25 @@ export default function App() {
   const linkComparison = !!INITIAL && query.ra === INITIAL.ra && query.dec === INITIAL.dec && query.fov === INITIAL.fov
     && query.band === INITIAL.band && usesStacks(query.mode) === usesStacks(INITIAL.mode)
   const candidate = useCandidate(job?.job_id ?? null, !markBlocked, manifest && !manifest.preview && linkComparison ? manifest : null, LINKED_MARKS)
-  // The address bar carries the marks (the link's, until they are placed): a reload or a copied address keeps them.
+  // The address bar carries the marks (the link's, until they are placed) and A and B: a reload or a copied address
+  // keeps them.
   const urlMarks = candidate.marks.length > 0 ? candidate.marks : candidate.linked
+  const pairIds = useMemo(() => (manifest && !manifest.preview && pair && manifest.frames[pair.a] && manifest.frames[pair.b]
+    ? { a: manifest.frames[pair.a].obs_id, b: manifest.frames[pair.b].obs_id } : null), [manifest, pair])
+  // The link's A and B in its own comparison's final images: the player starts on them.
+  const linkedPair = useMemo(() => {
+    if (!LINKED_PAIR || !linkComparison || !manifest || manifest.preview) return null
+    const a = manifest.frames.findIndex((f) => f.obs_id === LINKED_PAIR.a)
+    const b = manifest.frames.findIndex((f) => f.obs_id === LINKED_PAIR.b)
+    return a >= 0 && b >= 0 && a !== b ? { a, b } : null
+  }, [manifest, linkComparison])
   useEffect(() => {
-    if (!EMBED) window.history.replaceState(null, '', toSearch(query, EMBED, urlMarks))
-  }, [query, urlMarks])
+    // While the link's comparison loads, its A and B stay in the address.
+    if (!EMBED) window.history.replaceState(null, '', toSearch(query, EMBED, urlMarks, pairIds ?? (linkComparison ? LINKED_PAIR : null)))
+  }, [query, urlMarks, pairIds, linkComparison])
   useMarkLayer(sky, candidate.marks)
   // The link opens this comparison with the marks set in it.
-  const link = () => new URL(toSearch(query, EMBED, candidate.marks), window.location.href).href
+  const link = () => new URL(toSearch(query, EMBED, candidate.marks, pairIds), window.location.href).href
   const share = async () => {
     try {
       await navigator.clipboard.writeText(link())
@@ -503,7 +516,7 @@ export default function App() {
       {!EMBED && candidateSide}
     </>
     : <BlinkPlayer key={`${job.job_id}-${manifest.preview ? manifest.frames[0]?.url : 'final'}`} frames={manifest.frames} checks={checks} grid={manifest} motion={motion} predictions={predictions}
-      onIndexChange={showFrame} onPairChange={setPair} seek={seek} pairRequest={pairRequest} active={EMBED || stage === 'investigate'} showShare={EMBED}
+      onIndexChange={showFrame} onPairChange={setPair} seek={seek} pairRequest={pairRequest} initialPair={linkedPair} active={EMBED || stage === 'investigate'} showShare={EMBED}
       controls={imagesToggle} changes={changes} marks={imageMarks} candidate={!EMBED && candidateSide}
       marking={candidate.armed} candidateMarks={candidate.marks} onMark={(shown, ra, dec) => candidate.markAt(shown, manifest, ra, dec)} />)
   const evidence = manifest && <EvidencePanel checks={checks} manifest={manifest} frameLabel={`this comparison · ${manifest.frames.length} ${manifest.frames.length === 1 ? 'image' : 'images'}`}

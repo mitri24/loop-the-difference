@@ -48,6 +48,15 @@ describe('BlinkPlayer', () => {
     expect(html.indexOf('difference image')).toBeGreaterThan(html.indexOf('class="pair-table"'))
   })
 
+  it('starts on a shared link\'s A and B when they are given, else on the default pair', () => {
+    const frames = [frame(0, '2025-11-10T07:08:30Z'), frame(1, '2026-05-01T10:00:00Z'), frame(2, '2026-11-01T10:00:00Z')]
+    const linked = renderToStaticMarkup(<BlinkPlayer frames={frames} grid={grid} motion={null} initialPair={{ a: 1, b: 2 }} />)
+    expect(linked).toContain('A · 2026-05-01 10:00 UTC')
+    // An impossible pair falls back to the default.
+    const fallback = renderToStaticMarkup(<BlinkPlayer frames={frames} grid={grid} motion={null} initialPair={{ a: 1, b: 1 }} />)
+    expect(fallback).toContain('A · 2025-11-10 07:08 UTC')
+  })
+
   it('keeps one frame in the plain player with Play disabled and says there is nothing to blink against', () => {
     const html = renderToStaticMarkup(<BlinkPlayer frames={[frame(0, '2025-11-10T07:08:30Z')]} grid={grid} motion={null} />)
     expect(html).not.toContain('pair-table')

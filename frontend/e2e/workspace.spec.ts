@@ -246,6 +246,15 @@ test('share copies canonical comparison link and embed remains usable', async ({
   await expect(page.locator('.player')).toBeVisible()
 })
 
+test('a link carries A and B: it opens on them, and the address follows a swap', async ({ page }) => {
+  await fixtures(page)
+  await page.goto('/?ra=37.954542&dec=89.264111&band=6&a=fixture-1&b=fixture-0')
+  await expect(page.locator('.stamp')).toContainText('A · 2026-09-10 12:00 UTC')
+  await expect(page).toHaveURL(/a=fixture-1&b=fixture-0/)
+  await page.getByRole('button', { name: 'Swap A and B' }).click()
+  await expect(page).toHaveURL(/a=fixture-0&b=fixture-1/)
+})
+
 test('fixture: image fetch failure offers a working retry', async ({ page }) => {
   await fixtures(page)
   let failed = true
