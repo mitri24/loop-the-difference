@@ -36,6 +36,13 @@ describe('distant-object track on the sky', () => {
     expect(circles.map((c) => c.radius_arcsec)).toEqual([FLOOR, FLOOR, FLOOR, FLOOR, 15, 15, 15, 15])
   })
 
+  it('widens each circle by the model error, as the check does', () => {
+    const near = track([20, 2000], [61172])
+    const loose = { ...near, hypotheses: near.hypotheses.map((h) => ({ ...h, points: h.points.map((p) => ({ ...p, model_error_arcsec: 12 })) })) }
+    // 2σ of 5″ plus 12″: past the 1.5-pixel floor.
+    expect(distantTrackShapes(loose, null, PIXEL).circles.map((c) => c.radius_arcsec)).toEqual([17, 17])
+  })
+
   it('labels the distances on one image only', () => {
     const { labels } = distantTrackShapes(track(GRID_AU, [61172, 60957]), 60957, PIXEL)
     expect(labels.map((l) => [l.label, l.mjd])).toEqual([['20 AU', 60957], ['40 AU', 60957], ['100 AU', 60957], ['2000 AU', 60957]])

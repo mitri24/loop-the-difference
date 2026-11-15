@@ -37,7 +37,7 @@ from app.config import Settings, get_settings
 from app.coords import parse_dec, parse_jpl_dec, parse_ra
 from app.frames import target_grid
 from app.models import SmallBodiesJob, SmallBodiesRequest, SmallBody, SmallBodyEpoch
-from app.tasks import _report
+from app.tasks import report
 
 SBIDENT_URL = "https://ssd-api.jpl.nasa.gov/sb_ident.api"
 HORIZONS_URL = "https://ssd.jpl.nasa.gov/api/horizons.api"
@@ -78,6 +78,13 @@ def job_id_for(ra: float, dec: float, size_deg: float, mjds: list[float]) -> str
     return hashlib.sha256(key.encode()).hexdigest()[:16]
 
 
+def sbident_observer(spherex: Position | None) -> dict[str, str]:
+    """SBIdent's observer: SPHEREx's geocentric position with zero velocity, else the geocentre."""
+    if spherex:
+        return {"xobs": ",".join(f"{km:.3f}" for km in spherex) + ",0,0,0"}
+    return {"mpc-code": "500"}
+
+
 def query_params(
     ra: float, dec: float, size_deg: float, mjd: float, spherex: Position | None = None
 ) -> dict[str, str]:
@@ -86,13 +93,8 @@ def query_params(
     # RA widths are coordinate degrees; the square is widest at its edge nearest the pole.
     ra_half = min(180.0, half / math.cos(math.radians(min(abs(dec) + half, 90.0))))
     dec_text = Angle(dec, u.deg).to_string(unit=u.deg, sep="-", precision=1, pad=True)
-    observer = (
-        {"xobs": ",".join(f"{km:.3f}" for km in spherex) + ",0,0,0"}
-        if spherex
-        else {"mpc-code": "500"}
-    )
     return {
-        **observer,
+        **sbident_observer(spherex),
         "obs-time": f"{mjd + 2400000.5:.5f}",
         "fov-ra-center": Angle(ra, u.deg).to_string(unit=u.hour, sep="-", precision=2, pad=True),
         # SBIdent wants M instead of a minus sign.
@@ -253,7 +255,7 @@ def epoch_bodies(
 def find_small_bodies(ra: float, dec: float, size_deg: float, mjds: list[float]) -> dict:
     """Worker job: every epoch's known small bodies; epochs run in parallel, in time order."""
     cache_dir = get_settings().cache_dir
-    _report(0, len(mjds))
+    report(0, len(mjds))
     positions = spherex_positions(mjds, cache_dir)
     with ThreadPoolExecutor(max_workers=PARALLEL_EPOCHS) as pool:
         futures = [
@@ -261,7 +263,7 @@ def find_small_bodies(ra: float, dec: float, size_deg: float, mjds: list[float])
             for mjd in mjds
         ]
         for done, _ in enumerate(as_completed(futures), start=1):
-            _report(done, len(mjds))
+            report(done, len(mjds))
     return {"epochs": [future.result().model_dump() for future in futures]}
 
 

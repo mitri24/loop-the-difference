@@ -250,6 +250,14 @@ async def wise_cone(
 # ---------------------------------------------------------------- solar-system objects
 SBIDENT_URL = "https://ssd-api.jpl.nasa.gov/sb_ident.api"
 SBIDENT_TIMEOUT_S = 300.0  # measured ~150 s for a 0.4° field (QUALITY.md §3)
+# SBIdent looks from SPHEREx when JPL Horizons gives its position, as in backend/app/smallbodies.py
+# (horizons_params and parse_horizons are the same code there, backend/tests/test_smallbodies.py).
+HORIZONS_URL = "https://ssd.jpl.nasa.gov/api/horizons.api"
+# "SPHEREx (spacecraft)" in JPL Horizons; its ephemeris starts at launch (2025-03-12).
+SPHEREX_HORIZONS_ID = "-163182"
+HORIZONS_TIMEOUT = httpx.Timeout(60.0, connect=10.0)
+# Geocentric ICRF position in km.
+Position = tuple[float, float, float]
 
 
 def _sexa_ra(deg: float) -> str:
@@ -279,27 +287,95 @@ def _parse_dec_dms(text: str) -> float:
     return sign * (d + m / 60 + s / 3600)
 
 
+def horizons_params(mjds: list[float]) -> dict[str, str]:
+    """SPHEREx's geometric geocentric ICRF position (km) at the epoch times (UTC), as CSV."""
+    return {
+        "format": "json",
+        "COMMAND": f"'{SPHEREX_HORIZONS_ID}'",
+        "OBJ_DATA": "'NO'",
+        "MAKE_EPHEM": "'YES'",
+        "EPHEM_TYPE": "'VECTORS'",
+        "CENTER": "'500@399'",
+        "REF_PLANE": "'FRAME'",
+        "REF_SYSTEM": "'ICRF'",
+        "OUT_UNITS": "'KM-S'",
+        "VEC_TABLE": "'1'",
+        "VEC_CORR": "'NONE'",
+        "CSV_FORMAT": "'YES'",
+        "TIME_TYPE": "'UT'",
+        "TLIST_TYPE": "'MJD'",
+        "TLIST": " ".join(f"'{mjd:.5f}'" for mjd in mjds),
+    }
+
+
+def parse_horizons(payload: dict) -> dict[float, Position]:
+    """Position per epoch time (MJD to 1e-5 d); Horizons answers a failure in `error`."""
+    if "error" in payload:
+        raise ValueError(payload["error"])
+    table = payload["result"].split("$$SOE", 1)[1].split("$$EOE", 1)[0]
+    positions = {}
+    for line in table.strip().splitlines():
+        jd, _, x, y, z = (cell.strip() for cell in line.split(",")[:5])
+        positions[round(float(jd) - 2400000.5, 5)] = (float(x), float(y), float(z))
+    return positions
+
+
+async def spherex_position(mjd: float, client: httpx.AsyncClient) -> Position | None:
+    """SPHEREx's geocentric position at one time, kept once JPL Horizons answered; None
+    without an answer (before launch, Horizons down)."""
+    when = round(mjd, 5)
+    if when in _SPHEREX_AT:
+        return _SPHEREX_AT[when]
+    try:
+        r = await client.get(HORIZONS_URL, params=horizons_params([mjd]), timeout=HORIZONS_TIMEOUT)
+        r.raise_for_status()
+        position = parse_horizons(r.json()).get(when)
+    except (httpx.HTTPError, ValueError, KeyError, IndexError):
+        return None
+    if position is not None:
+        _SPHEREX_AT[when] = position
+    return position
+
+
+_SPHEREX_AT: dict[float, Position] = {}
+
+
+def sbident_observer(spherex: Position | None) -> dict[str, str]:
+    """SBIdent's observer: SPHEREx's geocentric position with zero velocity, else the geocentre."""
+    if spherex:
+        return {"xobs": ",".join(f"{km:.3f}" for km in spherex) + ",0,0,0"}
+    return {"mpc-code": "500"}
+
+
 async def sbident_field(
     ra: float, dec: float, half_width_deg: float, mjd: float, client: httpx.AsyncClient
-) -> list[SolarSystemObject]:
+) -> tuple[str, list[SolarSystemObject]]:
     """Known asteroids and comets in a square field at one instant (JPL SBIdent).
 
-    Observer = geocentre (MPC code 500). SPHEREx is in low-Earth orbit: the parallax
-    error is < ~10" for main-belt objects, so matching radii include that margin."""
+    Observer = SPHEREx at that instant (JPL Horizons), passed as `xobs` with zero velocity,
+    so the rates stay geocentric. Without its position the geocentre (MPC code 500): SPHEREx
+    is in low-Earth orbit, ~7,000 km from it, which shifts main-belt objects by up to ~10"
+    and near-Earth objects by arcminutes. Returns the observer used and the objects."""
     from astropy.time import Time
 
-    key = _cache_key(f"sb{mjd:.4f}", ra, dec, half_width_deg)
+    spherex = await spherex_position(mjd, client)
+    observer = "SPHEREx" if spherex else "geocentre"
+    key = _cache_key(f"sb{mjd:.4f}{observer}", ra, dec, half_width_deg)
     if key in _SB_CACHE:
-        return _SB_CACHE[key]
+        return observer, _SB_CACHE[key]
     when = Time(mjd, format="mjd", scale="utc").strftime("%Y-%m-%d_%H:%M:%S")
+    # RA widths are coordinate degrees; the square is widest at its edge nearest the pole.
+    ra_half = min(
+        180.0, half_width_deg / math.cos(math.radians(min(abs(dec) + half_width_deg, 90.0)))
+    )
     r = await client.get(
         SBIDENT_URL,
         params={
-            "mpc-code": "500",
+            **sbident_observer(spherex),
             "obs-time": when,
             "fov-ra-center": _sexa_ra(ra),
             "fov-dec-center": _sexa_dec(dec),
-            "fov-ra-hwidth": f"{half_width_deg:.4f}",
+            "fov-ra-hwidth": f"{ra_half:.4f}",
             "fov-dec-hwidth": f"{half_width_deg:.4f}",
             "two-pass": "true",
             "suppress-first-pass": "true",
@@ -321,10 +397,11 @@ async def sbident_field(
                 ra_rate_arcsec_h=_float(d.get('RA rate ("/h)')) or 0.0,
                 dec_rate_arcsec_h=_float(d.get('Dec rate ("/h)')) or 0.0,
                 mjd=mjd,
+                observer=observer,
             )
         )
     _SB_CACHE[key] = out
-    return out
+    return observer, out
 
 
 _SB_CACHE: dict[tuple, list[SolarSystemObject]] = {}

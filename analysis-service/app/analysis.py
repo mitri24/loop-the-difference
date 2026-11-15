@@ -813,9 +813,10 @@ def _vet_residuals(
             vm = f"V={sso.vmag:.1f}, " if sso.vmag is not None else ""
             speed = math.hypot(sso.ra_rate_arcsec_h, sso.dec_rate_arcsec_h)
             kind, known = "solar_system", sso.name
+            seen = "seen from SPHEREx" if sso.observer == "SPHEREx" else "geocentric"
             expl = (
                 f'Known solar-system object {sso.name} ({vm}{speed:.0f}"/h) predicted '
-                f'{sso_sep:.0f}" away at this epoch (JPL SBIdent, geocentric). '
+                f'{sso_sep:.0f}" away at this epoch (JPL SBIdent, {seen}). '
                 "Residual explained by a known asteroid/comet."
             )
         elif bright is not None and (best is None or (best.mag or 99) > (bright.mag or 99)):
@@ -918,6 +919,22 @@ def _nearest(
     return best, best_sep
 
 
+_SEEN = {
+    "SPHEREx": "seen from SPHEREx (its position from JPL Horizons)",
+    "geocentre": "seen from the geocentre, as JPL Horizons gave no SPHEREx position "
+    '(SPHEREx is in low-Earth orbit: up to ~10" off for main-belt objects, arcminutes '
+    "for near-Earth objects)",
+}
+
+
+def _observers_detail(seen_a: str, seen_b: str) -> str:
+    """Where SBIdent looked from at each epoch, as it happened."""
+    epochs = (
+        f"A and B {_SEEN[seen_a]}" if seen_a == seen_b else f"A {_SEEN[seen_a]}; B {_SEEN[seen_b]}"
+    )
+    return f"JPL Small-Body Identification API, {epochs}."
+
+
 async def run_solar_system_check(diff_id: str, progress: Progress) -> DifferenceResult:
     """Ask JPL SBIdent which known asteroids/comets were in the field at the epochs of
     A and B, then re-explain the residuals. Slow (1-3 min per epoch), hence a job."""
@@ -929,7 +946,7 @@ async def run_solar_system_check(diff_id: str, progress: Progress) -> Difference
     progress(0.05, "Asking JPL SBIdent for known asteroids and comets (1-3 min)")
     try:
         async with httpx.AsyncClient(follow_redirects=True) as client:
-            sso_a, sso_b = await asyncio.gather(
+            (seen_a, sso_a), (seen_b, sso_b) = await asyncio.gather(
                 sbident_field(grid.ra, grid.dec, half, ctx.a.meta.mjd, client),
                 sbident_field(grid.ra, grid.dec, half, ctx.b.meta.mjd, client),
             )
@@ -952,13 +969,14 @@ async def run_solar_system_check(diff_id: str, progress: Progress) -> Difference
                         name=o.name, epoch=label, x=dx, y=dy, vmag=o.vmag, date_utc=frame.date_utc
                     )
                 )
+    # The query box is wider than the image toward the pole: count what lies on it, as marked.
+    on_image = {e: sum(1 for m in markers if m.epoch == e) for e in ("A", "B")}
     check = Check(
         code="solar_system",
         severity="ok" if n_sso == 0 else "info",
-        title=f"Known asteroids/comets: {len(sso_a)} at A, {len(sso_b)} at B; "
+        title=f"Known asteroids/comets on the image: {on_image['A']} at A, {on_image['B']} at B; "
         f"{n_sso} residual(s) explained",
-        detail="JPL Small-Body Identification API, geocentric positions (SPHEREx is in "
-        'low-Earth orbit: up to ~10" parallax for main-belt objects).',
+        detail=_observers_detail(seen_a, seen_b),
     )
     checks = [c for c in ctx.result.checks if c.code != "solar_system"] + [check]
     n_unknown = sum(1 for r in residuals if r.known_source is None)

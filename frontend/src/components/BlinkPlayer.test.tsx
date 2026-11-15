@@ -56,6 +56,17 @@ describe('BlinkPlayer', () => {
     expect(html).toContain('plus and minus zoom the image, 0 fits it')
   })
 
+  it('offers Blink and Swipe for a pair, Blink first; a single frame has nothing to swipe', () => {
+    const frames = [frame(0, '2025-11-10T07:08:30Z'), frame(1, '2026-05-01T10:00:00Z')]
+    const html = renderToStaticMarkup(<BlinkPlayer frames={frames} grid={grid} motion={null} />)
+    expect(html).toContain('role="radiogroup" aria-label="Compare A and B"')
+    expect(html).toContain('<button type="button" role="radio" aria-checked="true">Blink</button>')
+    expect(html).toContain('aria-checked="false" title="A left, B right of a line you move, with the same zoom">Swipe</button>')
+    expect(html).not.toContain('swipe-line')
+    const single = renderToStaticMarkup(<BlinkPlayer frames={[frame(0, '2025-11-10T07:08:30Z')]} grid={grid} motion={null} />)
+    expect(single).not.toContain('Compare A and B')
+  })
+
   it('shows what is passed above and below the table', () => {
     const frames = [frame(0, '2025-11-10T07:08:30Z'), frame(1, '2026-05-01T10:00:00Z')]
     const html = renderToStaticMarkup(<BlinkPlayer frames={frames} grid={grid} motion={null}

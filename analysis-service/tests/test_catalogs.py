@@ -22,18 +22,38 @@ NO_TABLE = b"""<?xml version="1.0"?>
 </RESOURCE></VOTABLE>"""
 
 
-@pytest.mark.asyncio
-async def test_sbident_parsing_on_recorded_response():
-    body = json.loads((DATA / "sbident_sample.json").read_text())
+HORIZONS = json.loads((DATA / "horizons_spherex.json").read_text())
+SBIDENT = json.loads((DATA / "sbident_sample.json").read_text())
+
+
+def _jpl(horizons: httpx.Response, asked: list[httpx.Request]):
+    """JPL's two services: Horizons for SPHEREx's position, then SBIdent."""
 
     def handler(request: httpx.Request) -> httpx.Response:
-        assert request.url.params["mpc-code"] == "500"
-        assert request.url.params["fov-ra-center"] == "08-00-00.00"
-        return httpx.Response(200, json=body)
+        asked.append(request)
+        return (
+            horizons
+            if request.url.host == "ssd.jpl.nasa.gov"
+            else httpx.Response(200, json=SBIDENT)
+        )
 
+    return handler
+
+
+@pytest.mark.asyncio
+async def test_sbident_parsing_on_recorded_response():
+    asked: list[httpx.Request] = []
     catalogs._SB_CACHE.clear()
-    async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as client:
-        objs = await catalogs.sbident_field(120.0, 20.0, 0.2, 61055.0, client)
+    catalogs._SPHEREX_AT.clear()
+    # Horizons down: SBIdent looks from the geocentre.
+    transport = httpx.MockTransport(_jpl(httpx.Response(503), asked))
+    async with httpx.AsyncClient(transport=transport) as client:
+        observer, objs = await catalogs.sbident_field(120.0, 20.0, 0.2, 61055.0, client)
+    sbident = asked[-1].url.params
+    assert observer == "geocentre"
+    assert (sbident["mpc-code"], sbident["fov-ra-center"]) == ("500", "08-00-00.00")
+    assert "xobs" not in sbident
+    assert {o.observer for o in objs} == {"geocentre"}
     assert len(objs) == 3
     first = objs[0]
     assert first.name == "39467 (1978 RA7)"
@@ -211,3 +231,72 @@ async def test_cadc_service_failure_is_a_warning_not_an_error():
         res = await catalogs.cadc_images(10.0, 20.0, 0.05, client)
     assert res.collections == [] and res.checks[0].code == "cadc_unavailable"
     assert "TESS" in res.excluded_collections
+
+
+@pytest.mark.asyncio
+async def test_sbident_looks_from_spherex_where_horizons_gives_its_position():
+    asked: list[httpx.Request] = []
+    catalogs._SB_CACHE.clear()
+    catalogs._SPHEREX_AT.clear()
+    transport = httpx.MockTransport(_jpl(httpx.Response(200, json=HORIZONS), asked))
+    async with httpx.AsyncClient(transport=transport) as client:
+        observer, objs = await catalogs.sbident_field(120.0, 20.0, 0.2, 60989.25, client)
+        again = await catalogs.sbident_field(120.0, 20.0, 0.2, 60989.25, client)
+    horizons, sbident = (r.url.params for r in asked)
+    assert (horizons["COMMAND"], horizons["CENTER"], horizons["TLIST"]) == (
+        "'-163182'",
+        "'500@399'",
+        "'60989.25000'",
+    )
+    # The recorded geocentric position of SPHEREx at 2025-11-10 06:00 UTC, velocity zero.
+    assert sbident["xobs"] == "2559.544,-1082.631,6444.070,0,0,0"
+    assert "mpc-code" not in sbident
+    assert observer == "SPHEREx" and {o.observer for o in objs} == {"SPHEREx"}
+    assert again == (observer, objs) and len(asked) == 2
+
+
+@pytest.mark.asyncio
+async def test_spherex_position_is_none_before_launch_or_without_an_answer():
+    catalogs._SPHEREX_AT.clear()
+    error = {"error": 'No ephemeris for target "SPHEREx (spacecraft)" prior to A.D. 2025-MAR-12'}
+    for answer in (
+        httpx.Response(200, json=error),
+        httpx.Response(502),
+        httpx.Response(200, text="<html>"),
+    ):
+        transport = httpx.MockTransport(lambda request, answer=answer: answer)
+        async with httpx.AsyncClient(transport=transport) as client:
+            assert await catalogs.spherex_position(60000.0, client) is None
+    assert catalogs._SPHEREX_AT == {}
+
+
+@pytest.mark.asyncio
+async def test_a_field_looked_up_from_the_geocentre_is_asked_again_once_horizons_answers():
+    asked: list[httpx.Request] = []
+    catalogs._SB_CACHE.clear()
+    catalogs._SPHEREX_AT.clear()
+    async with httpx.AsyncClient(
+        transport=httpx.MockTransport(_jpl(httpx.Response(503), asked))
+    ) as client:
+        first, _ = await catalogs.sbident_field(120.0, 20.0, 0.2, 60989.25, client)
+    answering = httpx.MockTransport(_jpl(httpx.Response(200, json=HORIZONS), asked))
+    async with httpx.AsyncClient(transport=answering) as client:
+        second, objs = await catalogs.sbident_field(120.0, 20.0, 0.2, 60989.25, client)
+    sbident = [r.url.params for r in asked if r.url.host == "ssd-api.jpl.nasa.gov"]
+    assert (first, second) == ("geocentre", "SPHEREx")
+    assert ["mpc-code" in p for p in sbident] == [True, False]
+    assert sbident[1]["xobs"].endswith(",0,0,0") and {o.observer for o in objs} == {"SPHEREx"}
+
+
+@pytest.mark.asyncio
+async def test_sbident_field_is_as_wide_in_ra_as_the_square_at_its_edge_nearest_the_pole():
+    asked: list[httpx.Request] = []
+    catalogs._SB_CACHE.clear()
+    catalogs._SPHEREX_AT.clear()
+    async with httpx.AsyncClient(
+        transport=httpx.MockTransport(_jpl(httpx.Response(503), asked))
+    ) as client:
+        await catalogs.sbident_field(120.0, 60.0, 0.2, 61055.0, client)
+    params = asked[-1].url.params
+    # 0.2° at Dec 60.2° spans 0.2 / cos(60.2°) ≈ 0.402° of RA; Dec keeps 0.2°.
+    assert (params["fov-ra-hwidth"], params["fov-dec-hwidth"]) == ("0.4024", "0.2000")

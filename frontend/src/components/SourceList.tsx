@@ -7,6 +7,8 @@ interface Props {
   onSelect: (ra: number, dec: number) => void
   // Keyboard path of the candidate check: mark this source in the shown frame.
   onMark?: (source: DetectedSource) => void
+  // Measures this source in every SPHEREx visit (the quick-look spectrum in Measure).
+  onSpectrum?: (source: DetectedSource) => void
   maxRows?: number
 }
 
@@ -22,7 +24,7 @@ function rowText(source: DetectedSource) {
 }
 
 // Every point source of the shown frame with the catalogue that lists something there.
-export function SourceList({ frame, onSelect, onMark, maxRows = 50 }: Props) {
+export function SourceList({ frame, onSelect, onMark, onSpectrum, maxRows = 50 }: Props) {
   if (!frame) return <p className="source-empty">Sources appear once frames are loaded.</p>
   const sources = frame.sources
   if (!sources) {
@@ -73,6 +75,12 @@ export function SourceList({ frame, onSelect, onMark, maxRows = 50 }: Props) {
                 <button type="button" className="source-mark" onClick={() => onMark(source)}
                   aria-label={`Mark source at RA ${fmt(source.ra)} Dec ${fmt(source.dec)} in frame ${frame.index + 1}`}>
                   Mark
+                </button>
+              )}
+              {onSpectrum && (
+                <button type="button" className="source-mark" onClick={() => onSpectrum(source)}
+                  aria-label={`Spectrum of the source at RA ${fmt(source.ra)} Dec ${fmt(source.dec)}`}>
+                  Spectrum
                 </button>
               )}
             </li>

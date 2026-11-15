@@ -1,5 +1,7 @@
+import ast
 import json
 import math
+import os
 from pathlib import Path
 
 import httpx
@@ -303,3 +305,25 @@ def _epoch_job():
             pass
 
     return _Job()
+
+
+ANALYSIS_CATALOGS = Path(__file__).resolve().parents[2] / "analysis-service" / "app" / "catalogs.py"
+
+
+def test_the_analysis_service_asks_horizons_for_spherex_with_the_same_code():
+    # The api image holds the backend only; the CI checkout (CI=true) must hold both.
+    if not ANALYSIS_CATALOGS.exists() and not os.environ.get("CI"):
+        pytest.skip("analysis-service is not in this checkout")
+
+    def definitions(path: Path) -> dict[str, str]:
+        """Functions by name, and module constants by the name they are assigned to."""
+        tree = ast.parse(path.read_text())
+        named = {n.name: ast.dump(n) for n in tree.body if isinstance(n, ast.FunctionDef)}
+        for node in tree.body:
+            if isinstance(node, ast.Assign) and isinstance(node.targets[0], ast.Name):
+                named[node.targets[0].id] = ast.dump(node.value)
+        return named
+
+    ours, theirs = definitions(Path(smallbodies.__file__)), definitions(ANALYSIS_CATALOGS)
+    shared = ("SPHEREX_HORIZONS_ID", "horizons_params", "parse_horizons", "sbident_observer")
+    assert [name for name in shared if ours[name] != theirs[name]] == []

@@ -76,6 +76,18 @@ summary { cursor:pointer; min-height:32px; padding:5px 0; font-size:13px; }
 .viewport-sky .reticle,.viewport-sky .marker,.viewport-sky .candidate-mark { transform:translate(-50%,-50%) scale(var(--mark-scale, 1)); }
 .viewport-sky .search-area { border-width:calc(2px * var(--mark-scale, 1)); }
 .zoom-buttons { display:flex; gap:var(--space-1); }
+/* Swipe: A whole, B cut at the line (in image coordinates, inside the zoomed layer); the line and its handle sit on the
+   viewport, so they stay where the user put them while the image zooms and pans. */
+.swipe-b { position:absolute; inset:0; }
+.swipe-line { position:absolute; top:0; bottom:0; z-index:1; width:0; border-left:2px solid var(--accent); transform:translateX(-1px); pointer-events:none; }
+.swipe-handle { position:absolute; top:50%; left:0; width:28px; height:44px; transform:translate(-50%,-50%); display:grid; place-items:center;
+  background:var(--surface-2); border:1px solid var(--accent); border-radius:var(--radius-sm); cursor:ew-resize; pointer-events:auto; touch-action:none; }
+.swipe-handle::before { content:'⇔'; color:var(--accent); font-size:14px; line-height:1; }
+.swipe-handle:focus-visible { outline:2px solid var(--focus-ring); outline-offset:2px; }
+.stamp.stamp-right { left:auto; right:6px; }
+.view-mode { display:inline-grid; grid-template-columns:repeat(2, auto); padding:2px; gap:2px; border:1px solid var(--border-strong); border-radius:var(--radius-md); background:var(--surface-2); }
+.view-mode [role='radio'] { min-height:28px; padding:0 var(--space-2); border:0; border-radius:calc(var(--radius-md) - 2px); background:transparent; color:var(--text-secondary); font-size:var(--text-sm); font-weight:600; }
+.view-mode [role='radio'][aria-checked='true'] { background:var(--accent); color:var(--text-on-accent); }
 .zoom-buttons button { min-width:32px; padding-inline:var(--space-1); font-variant-numeric:tabular-nums; }
 /* Layer markers on the SPHEREx image (components/ImageMarks.tsx): the map's symbols and colours, thin, with a dark
    halo so they read on bright and dark sky alike. */
@@ -315,6 +327,8 @@ summary { cursor:pointer; min-height:32px; padding:5px 0; font-size:13px; }
 .viz a:focus-visible { outline:none; }
 .viz a:focus-visible .viz-mark { stroke:var(--focus-ring); stroke-width:2.5; }
 .viz a:hover .viz-mark { stroke:var(--text-primary); }
+.source-map-point { cursor:pointer; }
+.source-map-point:hover .viz-mark { stroke:var(--text-primary); }
 
 /* Tooltip: value first (strong), then where and when; flips to the left of marks on the right half. */
 .viz-tooltip { position:absolute; z-index:2; display:flex; flex-direction:column; gap:1px; max-width:260px; padding:var(--space-1) var(--space-2);

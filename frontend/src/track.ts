@@ -86,7 +86,7 @@ export const REGIMES = {
   stellar: { icon: '★', word: 'Consistent with stellar proper motion', note: 'Straight-line prediction at every frame date.' },
   solarSystem: {
     icon: '⤳', word: 'Not a straight line across half a year – if one object, it is in the Solar System',
-    note: 'No straight-line prediction across epochs. For positions at assumed distances with Earth’s parallax, mark it in two frames of one epoch.',
+    note: 'No straight-line prediction across epochs; the distant-object track assumes distances and adds Earth’s parallax.',
   },
 } as const
 export type Regime = keyof typeof REGIMES
@@ -120,13 +120,14 @@ export function trackEvidence(track: PossibleTrack | null): Evidence {
   return { motion: track?.regime === 'stellar', fastMotion: track?.regime === 'fast' || track?.regime === 'solarSystem' }
 }
 
-// A detection counts as at the prediction within 2σ of the prediction, but never closer than
-// 1.5 SPHEREx pixels: centroids of the same blob scatter by about a pixel.
+// A detection counts as at the prediction within 2σ of the prediction plus the model's own error (the
+// distance model's model_error_arcsec; none for a straight line), but never closer than 1.5 SPHEREx
+// pixels: centroids of the same blob scatter by about a pixel.
 export const SEARCH_PIXELS = 1.5
 
-/** The search radius around a prediction: its 2σ, at least SEARCH_PIXELS. */
-export const searchRadius = (radiusArcsec: number, pixelScaleArcsec: number) =>
-  Math.max(radiusArcsec, SEARCH_PIXELS * pixelScaleArcsec)
+/** The search radius around a prediction: its 2σ plus the model error, at least SEARCH_PIXELS. */
+export const searchRadius = (radiusArcsec: number, pixelScaleArcsec: number, modelErrorArcsec = 0) =>
+  Math.max(radiusArcsec + modelErrorArcsec, SEARCH_PIXELS * pixelScaleArcsec)
 /** The predictions as the map and the blink draw them: each circle as wide as the search radius the check counts with. */
 export const searchCircles = (predictions: Prediction[], pixelScaleArcsec: number): Prediction[] =>
   predictions.map((p) => ({ ...p, radius_arcsec: searchRadius(p.radius_arcsec, pixelScaleArcsec) }))

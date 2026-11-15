@@ -1,6 +1,8 @@
 import type {
   DistantTrack,
   DistantTrackRequest,
+  FingerprintJob,
+  FingerprintRequest,
   FollowupJob,
   FollowupRequest,
   FrameJob,
@@ -94,11 +96,24 @@ export const createDistantTrack = (body: DistantTrackRequest, signal?: AbortSign
   })
 
 // Forced photometry along a possible track at the other visits, measured by the worker.
-export const createFollowup = (body: FollowupRequest) =>
+export const createFollowup = (body: FollowupRequest, signal?: AbortSignal) =>
   request<FollowupJob>('/api/followup', {
+    signal,
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(body),
   })
 
-export const getFollowupJob = (jobId: string) => request<FollowupJob>(`/api/followup/${jobId}`)
+export const getFollowupJob = (jobId: string, signal?: AbortSignal) => request<FollowupJob>(`/api/followup/${jobId}`, { signal })
+
+// The spectrum along one track of a follow-up, in the visits of every detector, measured by the worker.
+export const createFingerprint = (body: FingerprintRequest, signal?: AbortSignal) =>
+  request<FingerprintJob>('/api/followup/fingerprint', {
+    signal,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  })
+
+export const getFingerprintJob = (jobId: string, signal?: AbortSignal) =>
+  request<FingerprintJob>(`/api/followup/fingerprint/${jobId}`, { signal })

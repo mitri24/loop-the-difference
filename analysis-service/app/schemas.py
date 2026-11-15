@@ -267,7 +267,8 @@ class CadcSearch(BaseModel):
 
 
 class SolarSystemObject(BaseModel):
-    """Known asteroid/comet position from JPL SBIdent at one instant (geocentric)."""
+    """Known asteroid/comet position from JPL SBIdent at one instant, seen from SPHEREx when
+    JPL Horizons gave its position, else from the geocentre; rates geocentric."""
 
     name: str
     ra: float
@@ -276,6 +277,7 @@ class SolarSystemObject(BaseModel):
     ra_rate_arcsec_h: float = 0.0
     dec_rate_arcsec_h: float = 0.0
     mjd: float
+    observer: Literal["SPHEREx", "geocentre"] = "geocentre"
 
 
 class JobStatus(BaseModel):
