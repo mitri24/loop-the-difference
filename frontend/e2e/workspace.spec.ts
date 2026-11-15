@@ -97,8 +97,8 @@ for (const width of [320, 375, 390, 600, 768, 1024, 1280, 1366, 1440, 1920]) {
         await hitTarget(page.getByRole('button', { name: 'Close panel' }))
         if (id === 'target') await hitTarget(page.getByRole('button', { name: 'Compare this position' }))
       }
-      // Below 1024 px the panel lies over the sky; beside it on desktops, Aladin keeps its corners.
-      if (width < 1024) await page.getByRole('button', { name: 'Close panel' }).click()
+      // The sheet lies over the sky at every width (nothing moves); closed, Aladin's corners are free again.
+      await page.getByRole('button', { name: 'Close panel' }).click()
       for (const selector of ['.aladin-logo-container', '.aladin-fullScreen-control', '.aladin-widgets-toolbar']) {
         await fits(page, page.locator(selector))
         await hitTarget(page.locator(selector))
@@ -122,6 +122,8 @@ test('fixture: name search, compare, playback, quality and source metadata stay 
   await openSheet(page, 'layers')
   await expect(page.getByLabel('Photographic plate 1950 (POSS-I, STScI DSS) – position check')).toBeDisabled()
   await expect(page.locator('#plate-status')).toHaveText('Needs a star with Gaia DR3 motion (find it by name)')
+  // The sheet lies over the page; closed, the player and its table are free again.
+  await page.getByRole('button', { name: 'Close panel' }).click()
   await page.getByRole('button', { name: 'Play', exact: true }).click()
   await expect(page.getByRole('button', { name: 'Pause', exact: true })).toBeVisible()
   await page.getByRole('button', { name: 'Pause', exact: true }).click()

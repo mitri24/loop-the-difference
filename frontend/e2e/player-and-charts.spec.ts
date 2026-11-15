@@ -139,6 +139,12 @@ test('the inspector: a tab per kind, arrow keys between tabs, the image never mo
   expect(await page.locator('.viewer .viewport').boundingBox()).toEqual(image)
   await page.keyboard.press('Escape')
   expect(await page.locator('.inspector').boundingBox()).toEqual(docked)
+  // A sheet (Options, Layers, About) lies over the page: the image keeps its place and size.
+  await page.getByTestId('open-layers').click()
+  await expect(page.locator('.fpanel')).toBeVisible()
+  expect(await page.locator('.viewer .viewport').boundingBox()).toEqual(image)
+  await page.keyboard.press('Escape')
+  await expect(page.locator('.fpanel')).toBeHidden()
 })
 
 test('charts: tooltip on hover and keyboard focus, Table toggle, width follows the panel after the table', async ({ page }) => {

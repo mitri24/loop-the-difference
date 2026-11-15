@@ -224,7 +224,8 @@
 .resizer-y::after { left:50%; top:5px; height:2px; width:48px; transform:translateX(-50%); }
 
 /* The on-demand sheet beside the stage: width from its handle, only the body scrolls. */
-.fpanel { grid-area:panel; position:relative; z-index:var(--z-panel); display:flex; flex-direction:column; width:clamp(320px, var(--panel-w), min(60vw, 960px)); min-height:0; background:var(--surface-1); border-left:1px solid var(--border); }
+/* The sheet lies over the page at its right edge (left of the overview map): nothing beside it moves or shrinks. */
+.fpanel { grid-area:main; justify-self:end; position:relative; z-index:var(--z-panel); display:flex; flex-direction:column; width:clamp(320px, var(--panel-w), min(60vw, 960px)); max-width:100%; min-height:0; background:var(--surface-1); border-left:1px solid var(--border); box-shadow:-12px 0 32px var(--shadow-color); }
 .fpanel > .resizer-y { display:none; }
 .fpanel-header { flex:none; display:flex; align-items:center; justify-content:space-between; gap:var(--space-3); padding:var(--space-3) var(--space-4); border-bottom:1px solid var(--border); }
 .fpanel-header h2 { font-size:var(--text-lg); }
