@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { candidateState, type Mark } from './candidate'
-import { checkFrames, fitTrack, possibleTrack, predict, regime, trackEvidence } from './track'
+import { checkFrames, fitTrack, possibleTrack, predict, regime, searchCircles, trackEvidence } from './track'
 import type { DetectedSource, Frame } from './types'
 
 const mark = (mjd: number, ra: number, dec: number, sigma = 1): Mark => ({
@@ -135,5 +135,15 @@ describe('look back within SPHEREx', () => {
     expect(rows[2].prediction).toBeNull()
     const outside = check([frame('f7', FRAME_7.mjd), frame('f8', FRAME_8.mjd, []), frame('f10', FRAME_10.mjd)], { ...PLUTO_GRID, ra: 309, size_deg: 0.05 })
     expect(outside[0].result.kind).toBe('outside')
+  })
+})
+
+describe('search circles', () => {
+  it('draws each predicted circle as wide as the check counts: 2σ, at least 1.5 pixels', () => {
+    const at = (radius_arcsec: number) => ({ mjd: 61000, ra: 150, dec: 20, radius_arcsec })
+    const [small, wide] = searchCircles([at(3), at(12)], 6.15)
+    expect(small.radius_arcsec).toBeCloseTo(9.225, 6)
+    expect(wide).toEqual(at(12))
+    expect(searchCircles([], 6.15)).toEqual([])
   })
 })
