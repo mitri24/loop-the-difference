@@ -51,7 +51,7 @@ services:
       <<: *backend-environment
       SKYSHIFT_WORKER_QUEUES: frames
 
-  # Spectra and JPL small-body lookups take minutes: a worker of their own, so they never delay a frame job.
+  # Spectra, track follow-ups and JPL small-body lookups take minutes: a worker of their own, so they never delay a frame job.
   worker-slow:
     <<: *backend
     command: ["python", "-m", "app.worker"]

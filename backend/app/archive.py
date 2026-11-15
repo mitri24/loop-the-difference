@@ -192,6 +192,7 @@ def parse_sia_votable(content: bytes, collection: str | None = None) -> list[Obs
         if match is None:
             continue
         mjd = (float(row["t_min"]) + float(row["t_max"])) / 2
+        region = row.get("s_region")
         observations.append(
             Observation(
                 obs_id=str(row["obs_id"]),
@@ -203,6 +204,7 @@ def parse_sia_votable(content: bytes, collection: str | None = None) -> list[Obs
                 access_url=str(row["access_url"]),
                 cloud_url=parse_cloud_access(row.get("cloud_access")),
                 collection=collection,
+                s_region=None if region is None or np.ma.is_masked(region) else str(region),
             )
         )
     return sorted(observations, key=lambda o: o.mjd)

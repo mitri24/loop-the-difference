@@ -1,6 +1,8 @@
 import type {
   DistantTrack,
   DistantTrackRequest,
+  FollowupJob,
+  FollowupRequest,
   FrameJob,
   FrameRequest,
   NeossatCoverage,
@@ -79,9 +81,20 @@ export const getNeossat = (ra: string, dec: string) =>
   request<NeossatCoverage>(`/api/partners/neossat?${new URLSearchParams({ ra, dec })}`)
 
 // Pure math, answered at once: positions for each assumed distance (not an orbit).
-export const createDistantTrack = (body: DistantTrackRequest) =>
+export const createDistantTrack = (body: DistantTrackRequest, signal?: AbortSignal) =>
   request<DistantTrack>('/api/track/distant', {
+    signal,
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(body),
   })
+
+// Forced photometry along a possible track at the other visits, measured by the worker.
+export const createFollowup = (body: FollowupRequest) =>
+  request<FollowupJob>('/api/followup', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  })
+
+export const getFollowupJob = (jobId: string) => request<FollowupJob>(`/api/followup/${jobId}`)

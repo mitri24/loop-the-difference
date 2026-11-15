@@ -9,6 +9,7 @@ import httpx
 import numpy as np
 from rq import get_current_job
 
+from app import followup
 from app.archive import (
     collection_key,
     group_epochs,
@@ -430,6 +431,45 @@ def build_spectrum(ra: float, dec: float, collections: list[str] | None = None) 
         complete=len(downloaded) == len(selected) and not gaia_down and not failed,
         points=sorted(points, key=lambda point: point.wavelength_um),
         checks=checks,
+    ).model_dump()
+
+
+def build_followup(
+    ra: float,
+    dec: float,
+    detector: int,
+    marked: list[list],
+    marks: list[list[float]] | None = None,
+    distances: list[float] | None = None,
+    points: list[list[float]] | None = None,
+    collections: list[str] | None = None,
+) -> dict:
+    """Worker job: flux where a possible track puts the object at the other visits of one
+    detector, combined for every hypothesis (app/followup.py)."""
+    settings = get_settings()
+    collections = collections or spherex_collections(settings)
+
+    def search(at_ra: float, at_dec: float) -> tuple[list[Observation], list[str]]:
+        found, failed = search_observations(at_ra, at_dec, settings, collections)
+        return [o for o in found if o.detector == detector], failed
+
+    plan, failed = followup.search_and_plan(
+        search, ra, dec, marked, marks, distances, points, report=_report
+    )
+    _report(0, len(plan.cutouts))
+    downloaded, checks = download_cutouts(
+        [cutout.visit for cutout in plan.cutouts], [cutout.url for cutout in plan.cutouts], settings
+    )
+    checks += release_checks([obs for obs, _, _ in downloaded], failed)
+    return followup.evaluate(
+        plan,
+        downloaded,
+        checks,
+        collection=collection_key(collections),
+        ra=ra,
+        dec=dec,
+        detector=detector,
+        complete=len(downloaded) == len(plan.cutouts) and not failed,
     ).model_dump()
 
 

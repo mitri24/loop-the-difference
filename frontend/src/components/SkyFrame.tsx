@@ -5,6 +5,8 @@ import { Resizer } from './Resizer'
 interface Props {
   // Investigate: the sky becomes a small overview map; Explore: it fills the stage.
   overview: boolean
+  // Investigate: back to the whole sky (Explore), to choose another region.
+  onFullMap?: () => void
   children: ReactNode
 }
 
@@ -12,7 +14,7 @@ type MapSize = 'docked' | 'expanded' | 'minimized'
 
 // One element for both modes, so Aladin stays mounted and keeps its view, layers and catalogues. In Investigate
 // the overview map is docked in the top-right corner, expanded over the page (nothing moves) or minimized to its bar.
-export function SkyFrame({ overview, children }: Props) {
+export function SkyFrame({ overview, onFullMap, children }: Props) {
   const [size, setSize] = useState<MapSize>(() => viewportClass(window.innerWidth) === 'phone' ? 'minimized' : 'docked')
   // Height of the viewer head: the expanded map starts under it, so the mode switch and the section bar stay free.
   const [below, setBelow] = useState(0)
@@ -41,11 +43,14 @@ export function SkyFrame({ overview, children }: Props) {
       {overview && <div className="overview-bar">
         <span>Overview map</span>
         <span className="overview-actions">
-          {size !== 'minimized' && <button type="button" className="overview-expand" title={size === 'expanded' ? 'Back to the corner (Esc)' : 'Show the map large over the page'}
-            onClick={() => setSize(size === 'expanded' ? 'docked' : 'expanded')}>{size === 'expanded' ? 'Dock' : 'Expand'}</button>}
-          <button type="button" aria-expanded={size !== 'minimized'} onClick={() => setSize(size === 'minimized' ? 'docked' : 'minimized')}>
-            {size === 'minimized' ? 'Show map' : 'Minimize'}
-          </button>
+          {onFullMap && <button type="button" className="overview-full" title="The whole sky: choose another region" onClick={onFullMap}>Full map</button>}
+          {size !== 'minimized' && <button type="button" className="overview-expand overview-icon" aria-label={size === 'expanded' ? 'Dock' : 'Expand'}
+            title={size === 'expanded' ? 'Dock: back to the corner (Esc)' : 'Expand: the map large over the page'}
+            onClick={() => setSize(size === 'expanded' ? 'docked' : 'expanded')}><span aria-hidden="true">{size === 'expanded' ? '⤡' : '⤢'}</span></button>}
+          {size === 'minimized'
+            ? <button type="button" aria-expanded={false} onClick={() => setSize('docked')}>Show map</button>
+            : <button type="button" className="overview-icon" aria-expanded aria-label="Minimize" title="Minimize: fold the map to this bar"
+              onClick={() => setSize('minimized')}><span aria-hidden="true">–</span></button>}
         </span>
       </div>}
       {children}

@@ -59,13 +59,22 @@ summary { cursor:pointer; min-height:32px; padding:5px 0; font-size:13px; }
 .map-hint { color:var(--muted); }
 
 /* Shared comparison controls and provenance. */
-.mode-switch { display:flex; flex-direction:column; align-items:flex-start; gap:8px; font-size:12px; }
-.mode-switch [role='radiogroup'] { display:flex; width:100%; border:1px solid var(--border); border-radius:4px; }
-.mode-switch [role='radio'] { flex:1; min-width:0; border:0; border-radius:3px; background:transparent; padding:10px 6px; font-size:12px; }
-.mode-switch [role='radio'][aria-checked='true'],.blink-mode [aria-pressed='true'] { color:var(--accent); background:var(--accent-subtle); font-weight:650; }
 .player { display:flex; flex-direction:column; gap:14px; min-width:0; }
 .viewport { position:relative; width:100%; aspect-ratio:1; background:var(--sky-bg); border:1px solid var(--border); }
 .viewport img { position:absolute; inset:0; width:100%; height:100%; image-rendering:pixelated; }
+/* Layer markers on the SPHEREx image (components/ImageMarks.tsx): the map's symbols and colours, thin, with a dark
+   halo so they read on bright and dark sky alike. */
+.image-marks { position:absolute; inset:0; width:100%; height:100%; overflow:visible; pointer-events:none; }
+.image-mark > * { fill:none; stroke-width:1.6px; vector-effect:non-scaling-stroke; paint-order:stroke; pointer-events:stroke; }
+.image-mark { filter:drop-shadow(0 0 1px rgb(0 0 0 / .9)); }
+.image-mark.gaia { stroke:var(--cat-gaia); }
+.image-mark.wise { stroke:var(--cat-wise); }
+.image-mark.simbad { stroke:var(--cat-simbad); }
+.image-mark.skybot { stroke:var(--cat-skybot); }
+.image-mark.sbident { stroke:var(--cat-sbident); }
+.image-mark.source-match { stroke:var(--src-gaia); }
+.image-mark.source-none { stroke:var(--src-none); }
+.image-mark.source-unknown { stroke:var(--src-unknown); }
 .reticle { position:absolute; top:50%; left:50%; width:9%; aspect-ratio:1; transform:translate(-50%,-50%); border:1px solid var(--overlay-target); border-radius:50%; pointer-events:none; }
 .stamp { position:absolute; left:6px; bottom:6px; max-width:calc(100% - 12px); padding:2px 5px; background:var(--img-label-bg); font-size:11px; font-variant-numeric:tabular-nums; }
 .controls { display:flex; flex-wrap:wrap; align-items:center; gap:6px; }
@@ -506,7 +515,6 @@ summary { cursor:pointer; min-height:32px; padding:5px 0; font-size:13px; }
 .observation-strip { display:flex; gap:var(--space-1); overflow-x:auto; overflow-y:hidden; padding:2px; scrollbar-width:thin; }
 .observation-card { flex:0 0 64px; }
 .observation-preview { position:relative; display:block; width:100%; min-height:0; padding:0; aspect-ratio:1; overflow:hidden; background:var(--sky-bg); border:1px solid var(--border); border-radius:var(--radius-sm); }
-.observation-card.current .observation-preview { border-color:var(--accent); box-shadow:inset 0 0 0 1px var(--accent); }
 .observation-preview img { display:block; image-rendering:pixelated; width:100%; height:100%; object-fit:contain; }
 .observation-preview > span { position:absolute; bottom:0; left:0; right:0; padding:1px var(--space-1); background:var(--img-label-bg); color:var(--text-primary); font-size:10px; font-variant-numeric:tabular-nums; text-align:left; }
 .observation-preview .thumbnail-centre { position:absolute; top:50%; left:50%; width:14px; height:14px; transform:translate(-50%,-50%); border:1px solid var(--overlay-target); border-radius:50%; pointer-events:none; }
@@ -521,44 +529,70 @@ summary { cursor:pointer; min-height:32px; padding:5px 0; font-size:13px; }
 .frame-count { min-width:36px; color:var(--text-secondary); font-size:var(--text-xs); font-variant-numeric:tabular-nums; }
 .transport .speed { width:auto; flex:none; }
 .transport .speed input { width:72px; min-height:32px; }
-.blink-mode { display:flex; flex:none; border:1px solid var(--border); border-radius:var(--radius-sm); }
-.blink-mode button { min-width:0; min-height:38px; padding:0 var(--space-3); border:0; border-radius:3px; background:transparent; font-size:var(--text-xs); }
 
-/* A/B header over the image: each side its letter (shows it), the frame choice and λ (+ the release when A and B
-   differ), mirrored, with Swap between. Numbers in tabular figures. */
-.pair-head { display:grid; grid-template-columns:minmax(0,1fr) auto minmax(0,1fr); align-items:center; gap:var(--space-2); min-width:0; }
-.pair-side { display:grid; grid-template-columns:36px minmax(0,1fr); grid-template-rows:auto auto; gap:2px var(--space-2); align-items:center; min-width:0; }
-.pair-side.b { grid-template-columns:minmax(0,1fr) 36px; }
-.pair-side.b > .pair-letter { grid-column:2; grid-row:1 / span 2; }
-.pair-side.b > select,.pair-side.b > .pair-detail { grid-column:1; text-align:right; }
-.pair-side.b > .pair-detail { grid-row:2; }
-.pair-letter { grid-row:span 2; width:36px; min-height:36px; padding:0; font-weight:650; }
-.pair-letter[aria-pressed='true'] { color:var(--accent); border-color:var(--accent); background:var(--accent-subtle); }
-.pair-side select { width:100%; min-width:0; min-height:30px; padding:var(--space-1) var(--space-2); font-size:var(--text-xs); font-variant-numeric:tabular-nums; }
-.pair-detail { min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; color:var(--text-secondary); font-size:var(--text-xs); font-variant-numeric:tabular-nums; }
-.pair-swap { width:36px; min-width:36px; min-height:36px; padding:0; font-size:var(--text-md); }
-.frame-letter { color:var(--accent); }
-/* The shown frame (Frame tab): the essentials, the rest behind All details. */
-.frame-details { display:flex; flex-direction:column; gap:var(--space-2); }
-.frame-details-head { display:flex; flex-wrap:wrap; align-items:center; justify-content:space-between; gap:var(--space-2); }
-.frame-details-head h3 { margin:0; font-size:var(--text-md); }
-.pair-set { display:flex; gap:var(--space-1); }
-.pair-set button { min-height:28px; padding:2px var(--space-2); font-size:var(--text-xs); }
-.pair-set button[aria-pressed='true'] { color:var(--accent); border-color:var(--accent); background:var(--accent-subtle); }
-.frame-details .meta { grid-template-columns:max-content minmax(0,1fr); gap:var(--space-1) var(--space-3); font-size:var(--text-xs); font-variant-numeric:tabular-nums; }
-.frame-details .meta dd { margin:0; overflow-wrap:anywhere; }
+/* A and B beside the image (components/PairTable.tsx): one comparison table in text, like the header tools; the
+   images choice above it, the difference image below. Numbers in tabular figures. */
+.player-side { display:flex; flex-direction:column; gap:var(--space-3); min-width:0; font-size:var(--text-sm); }
+.side-label { margin:0; color:var(--text-secondary); font-size:var(--text-xs); font-weight:600; letter-spacing:.04em; text-transform:uppercase; }
+.images-toggle { display:flex; flex-wrap:wrap; align-items:center; gap:var(--space-1) var(--space-2); }
+.images-toggle [role='radio'] { min-height:28px; padding:0 var(--space-2); border:1px solid transparent; border-radius:999px; background:transparent; color:var(--text-secondary); font-size:var(--text-xs); }
+.images-toggle [role='radio']:hover { color:var(--text-primary); }
+.images-toggle [role='radio'][aria-checked='true'] { color:var(--accent); border-color:var(--accent); background:var(--accent-subtle); }
+.pair-panel { display:flex; flex-direction:column; gap:var(--space-2); min-width:0; }
+.pair-shown { display:flex; flex-wrap:wrap; align-items:center; gap:var(--space-1) var(--space-2); margin:0; color:var(--text-secondary); font-size:var(--text-xs); }
+.pair-table { width:100%; max-width:680px; border-collapse:collapse; table-layout:fixed; font-size:var(--text-xs); font-variant-numeric:tabular-nums; }
+.pair-table th[scope='row'] { width:80px; padding:5px var(--space-2) 5px 0; color:var(--text-secondary); font-weight:500; text-align:left; vertical-align:top; }
+.pair-table td { padding:5px var(--space-2); vertical-align:top; overflow-wrap:anywhere; }
+.pair-table tbody tr { border-top:1px solid var(--border); }
+.pair-table thead td,.pair-table thead th { padding:0 var(--space-2) var(--space-2); font-weight:400; text-align:left; vertical-align:bottom; }
+.pair-table thead td { padding-left:0; }
+/* Column head: the letter (shows it) over the frame choice, so the date gets the column's width. */
+.pair-col-head { display:flex; flex-direction:column; align-items:flex-start; gap:var(--space-1); min-width:0; }
+/* A and B have one colour each everywhere: amber A, light B – badge on the thumbnails, letter on the image, the
+   table heads. The letter itself always names them; the colour only helps to find them at a glance. */
+.pair-letter { flex:none; width:28px; min-width:28px; min-height:28px; padding:0; border-radius:999px; border-width:2px; font-weight:750; }
+.pair-letter.a { border-color:var(--accent); color:var(--accent); }
+.pair-letter.b { border-color:var(--text-primary); color:var(--text-primary); }
+.pair-letter.a[aria-pressed='true'] { background:var(--accent); color:var(--text-on-accent); }
+.pair-letter.b[aria-pressed='true'] { background:var(--text-primary); color:var(--surface-0); }
+.ab-badge { position:absolute; top:3px; left:3px; display:grid; place-items:center; width:20px; height:20px; border-radius:50%; font-size:11px; font-weight:800; line-height:1; box-shadow:0 0 0 2px var(--sky-bg); pointer-events:none; }
+.ab-badge.a { background:var(--accent); color:var(--text-on-accent); }
+.ab-badge.b { background:var(--text-primary); color:var(--surface-0); }
+.observation-card.is-a .observation-preview { border-color:var(--accent); box-shadow:inset 0 0 0 2px var(--accent); }
+.observation-card.is-b .observation-preview { border-color:var(--text-primary); box-shadow:inset 0 0 0 2px var(--text-primary); }
+/* The shown frame: a dashed ring outside, so it never hides whether it is A or B. */
+.observation-card.current .observation-preview { outline:2px dashed var(--text-secondary); outline-offset:1px; }
+.stamp-letter { font-weight:800; }
+.stamp-letter.a { color:var(--accent); }
+.stamp-letter.b { color:var(--text-primary); }
+.pair-pick { position:relative; display:inline-flex; align-items:center; min-height:28px; color:var(--text-primary); font-size:var(--text-xs); font-variant-numeric:tabular-nums; white-space:nowrap; border-bottom:1px dashed var(--border-strong); cursor:pointer; }
+/* The native list stays (keyboard, screen readers, phones), invisible over the short text. */
+.pair-pick > select { position:absolute; inset:0; width:100%; min-height:0; padding:0; opacity:0; cursor:pointer; }
+.pair-pick:focus-within { outline:2px solid var(--focus-ring); outline-offset:2px; }
+.pair-swap { width:28px; min-width:28px; min-height:28px; padding:0; border-color:transparent; background:transparent; font-size:var(--text-md); }
+.pair-verdict { margin:0; padding:var(--space-1) 0 var(--space-1) var(--space-2); border-left:3px solid var(--border-strong); font-size:var(--text-xs); }
+.pair-verdict.ok { border-left-color:var(--status-ok); }
+.pair-verdict.warn { border-left-color:var(--status-warn); }
+.pair-verdict.fail { border-left-color:var(--status-fail); }
+.pair-field { margin:0; font-size:var(--text-xs); }
+.pair-set,.text-button { min-height:28px; padding:0 var(--space-2); border-color:transparent; background:transparent; color:var(--accent); font-size:var(--text-xs); }
+.pair-set:hover,.text-button:hover { border-color:var(--accent); }
+.changes { display:flex; flex-direction:column; align-items:flex-start; gap:var(--space-1); padding-top:var(--space-2); border-top:1px solid var(--border); }
+.changes p { margin:0; font-size:var(--text-xs); }
+.view-back { display:flex; flex-wrap:wrap; align-items:center; gap:var(--space-2); font-size:var(--text-xs); }
 .player-side .meta { grid-template-columns:max-content minmax(0,1fr); gap:var(--space-1) var(--space-3); font-size:var(--text-xs); font-variant-numeric:tabular-nums; }
 .player-side .meta dd { margin:0; }
-/* Why Difference is unavailable, and what resolves it. */
-.mode-blocked { display:flex; flex-wrap:wrap; align-items:center; gap:var(--space-1) var(--space-2); }
-.mode-blocked-action { min-height:28px; padding:2px var(--space-2); font-size:var(--text-xs); }
 .diff-pickers { display:grid; gap:var(--space-2); }
 .diff-pickers select { min-height:32px; padding:var(--space-1) var(--space-2); }
 /* Marking in the image: a crosshair and the candidate colour round the image; marks A and B where they were set
    (the frame's own mark full, the other one faint). */
 .viewport.marking { cursor:crosshair; outline:2px solid var(--candidate); outline-offset:-2px; }
-.image-mark { position:absolute; width:18px; aspect-ratio:1; transform:translate(-50%,-50%); border:2px solid var(--candidate); border-radius:50%; box-shadow:0 0 0 1px #000, inset 0 0 0 1px #000; pointer-events:none; opacity:.5; }
-.image-mark::before { content:''; position:absolute; inset:3px; border:2px solid var(--candidate); border-radius:50%; }
-.image-mark-letter { position:absolute; left:calc(100% + 3px); top:50%; transform:translateY(-50%); color:var(--candidate); font-weight:700; font-size:13px; line-height:1; text-shadow:0 0 3px #000; }
-.image-mark.current { opacity:1; }
+/* While marking, a click on a layer marker (often right on the object) reaches the image. */
+.viewport.marking .image-mark > * { pointer-events:none; }
+.candidate-mark { position:absolute; width:18px; aspect-ratio:1; transform:translate(-50%,-50%); border:2px solid var(--candidate); border-radius:50%; box-shadow:0 0 0 1px #000, inset 0 0 0 1px #000; pointer-events:none; opacity:.5; }
+.candidate-mark::before { content:''; position:absolute; inset:3px; border:2px solid var(--candidate); border-radius:50%; }
+.candidate-mark-letter { position:absolute; left:calc(100% + 3px); top:50%; transform:translateY(-50%); color:var(--candidate); font-weight:700; font-size:13px; line-height:1; text-shadow:0 0 3px #000; }
+.candidate-mark.current { opacity:1; }
 .candidate-hint:empty { display:none; }
+/* The candidate check beside the image, under the A/B table (under the difference image in that mode). */
+.candidate-side { display:flex; flex-direction:column; gap:var(--space-3); min-width:0; font-size:var(--text-sm); }

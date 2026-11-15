@@ -39,7 +39,7 @@ async function fixtures(page:Page) {
 }
 // No sidebar: the analysis parts are tabs of the inspector under the overview map (on phones it opens with Inspect
 // under the images); controls open as sheets.
-const tabs = ['frame','quality','measure','coverage','analysis','data']
+const tabs = ['quality','measure','coverage','analysis','data']
 async function openTab(page:Page, id:string) {
   const toggle=page.locator('.inspect-toggle')
   if (await toggle.isVisible() && await toggle.getAttribute('aria-expanded')!=='true') await toggle.click()

@@ -78,8 +78,9 @@
 .sky-area.overview.collapsed .sky-stage { visibility:hidden; pointer-events:none; width:var(--map-w); height:calc(var(--map-w) * .75); }
 .overview-bar { position:relative; height:36px; display:flex; align-items:center; justify-content:space-between; gap:var(--space-2); padding:0 var(--space-1) 0 var(--space-3); font-size:var(--text-xs); }
 .overview-bar > span:first-child { min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
-.overview-bar button { min-height:28px; padding:0 var(--space-2); background:transparent; font-size:var(--text-xs); }
+.overview-bar button { flex:none; min-height:28px; padding:0 var(--space-2); background:transparent; font-size:var(--text-xs); white-space:nowrap; }
 .overview-actions { display:flex; gap:var(--space-1); }
+.overview-bar .overview-icon { width:28px; min-width:28px; padding:0; font-size:var(--text-md); }
 /* Expanded: the map opens large over the page, under the search bar and the viewer head (mode switch, section bar)
    and under any sheet; its bar keeps the corner and the column width, so nothing moves. Escape or Dock brings it back. */
 @media (width > 700px) {
@@ -90,74 +91,54 @@
 
 /* The SPHEREx cutout viewer: modes at the image, the image as large as the stage allows. */
 .viewer { position:absolute; inset:0; display:flex; flex-direction:column; min-width:0; }
-.viewer-head { flex:none; display:flex; flex-wrap:wrap; align-items:center; gap:var(--space-2) var(--space-3); padding:var(--space-2) var(--space-3); border-bottom:1px solid var(--border); }
-.viewer-head .mode-switch { flex:1 1 280px; max-width:420px; flex-direction:row; align-items:center; }
-.back-button { background:transparent; }
-.viewer-body { flex:1; min-height:0; overflow-y:auto; overscroll-behavior:contain; padding:var(--space-3); display:flex; flex-direction:column; container-type:size; scrollbar-width:thin; }
-/* The images and, beside them, the candidate check (marks are set by clicking the image). The stage is the size
-   container the player fits into; the check scrolls on its own. */
-.viewer-split { flex:1; min-height:0; display:flex; gap:var(--space-3); }
-.viewer-stage { flex:1; min-width:0; display:flex; flex-direction:column; gap:var(--space-3); container-type:size; }
-.candidate-side { flex:none; width:clamp(240px, 30cqw, 360px); min-height:0; overflow-y:auto; overscroll-behavior:contain; scrollbar-width:thin; display:flex; flex-direction:column; gap:var(--space-3); padding-left:var(--space-3); border-left:1px solid var(--border); font-size:var(--text-sm); }
-.candidate-side > .candidate-check { padding-top:0; border-top:0; }
-/* Too narrow for both side by side (tablets, phones), or the difference image with its own side column: the check
-   follows under the images, the body scrolls, and the player fits the viewer body as before. */
-.viewer-split.stacked { flex:none; flex-direction:column; }
-.viewer-split.stacked > .viewer-stage { flex:none; container-type:normal; }
-.viewer-split.stacked > .candidate-side { width:auto; overflow:visible; padding:var(--space-3) 0 0; border-left:0; border-top:1px solid var(--border); }
-@container (max-width:699px) {
-  .viewer-split { flex:none; flex-direction:column; }
-  .viewer-stage { flex:none; container-type:normal; }
-  .candidate-side { width:auto; overflow:visible; padding:var(--space-3) 0 0; border-left:0; border-top:1px solid var(--border); }
-}
-/* One screen, no page scrolling: the A/B pair as the image's header, thumbnails | image, the transport bar under
-   the image. --img is the largest square that leaves room for the header, the bar and a notice above the player
-   (--reserve); the viewer body is the size container. */
+/* The viewer head is the dividing line under the search bar that carries the loading bar; on phones it holds Inspect. */
+.viewer-head { position:relative; flex:none; display:flex; flex-wrap:wrap; align-items:center; gap:var(--space-2) var(--space-3); border-bottom:1px solid var(--border); }
+.viewer-body { flex:1; min-height:0; overflow-y:auto; overscroll-behavior:contain; padding:var(--space-3); display:flex; flex-direction:column; gap:var(--space-3); container-type:size; scrollbar-width:thin; }
+/* One screen, no page scrolling, left-aligned: thumbnails | image | A and B as a comparison table that fills the rest
+   of the width, the transport bar under the image. --img is the largest square that leaves the table its minimum
+   width and the bar (and a line above the player, --reserve) their height; the viewer body is the size container. */
 .viewer .player {
-  --rail:64px; --gap:var(--space-3); --head:48px; --bar:44px; --reserve:0px;
-  --img:clamp(120px, min(100cqw - var(--rail) - var(--gap), 100cqh - var(--reserve) - var(--head) - var(--bar) - 3 * var(--gap)), 1100px);
-  display:grid; grid-template-columns:var(--rail) var(--img); grid-template-rows:var(--head) var(--img) auto auto;
-  grid-template-areas:'head head' 'rail view' 'bar bar' 'note note'; gap:var(--gap); justify-content:center; align-items:start;
+  --rail:64px; --gap:var(--space-3); --bar:44px; --reserve:0px; --side-min:clamp(300px, 30cqw, 420px);
+  --img:clamp(120px, min(100cqw - var(--rail) - var(--side-min) - 2 * var(--gap), 100cqh - var(--reserve) - var(--bar) - 2 * var(--gap)), 1100px);
+  display:grid; grid-template-columns:var(--rail) var(--img) minmax(0,1fr); grid-template-rows:var(--img) auto auto;
+  grid-template-areas:'rail view side' 'bar bar side' 'note note side'; gap:var(--gap); justify-content:start; align-items:start;
 }
-.viewer-stage:has(> .notice) > .player { --reserve:calc(56px + var(--space-3)); }
-/* The pair and the bar may be wider than a small image (at least 560 px where the viewer has them), so the dates
-   and the controls never squeeze; below about 480 px of viewer the bar wraps into two rows: reserve them. */
+.viewer-body:has(> .notice) > .player,.viewer-body:has(> .view-back) > .player { --reserve:calc(44px + var(--space-3)); }
+/* Below about 480 px of viewer the bar wraps into two rows: reserve them. */
 @container (max-width:499px) {
   .viewer .player { --bar:88px; }
 }
-/* One frame: no thumbnails, no pair. */
+/* One frame: no thumbnails. */
 .viewer .player:not(:has(> .observation-gallery)) {
-  --rail:0px; --head:0px; grid-template-columns:var(--img); grid-template-rows:var(--img) auto auto; grid-template-areas:'view' 'bar' 'note';
+  --rail:0px; grid-template-columns:var(--img) minmax(0,1fr); grid-template-areas:'view side' 'bar side' 'note side';
 }
 .viewer .player > .observation-gallery { grid-area:rail; position:relative; width:var(--rail); height:var(--img); margin:0; overflow:hidden; }
-.viewer .observation-strip { position:absolute; inset:0; flex-direction:column; overflow-x:hidden; overflow-y:auto; }
+/* "All" plays every frame; the thumbnails scroll under it. */
+.viewer .observation-gallery > .play-all { position:absolute; top:0; left:0; right:0; min-height:28px; padding:0; border-color:transparent; background:transparent; color:var(--accent); font-size:var(--text-xs); }
+.viewer .observation-strip { position:absolute; inset:32px 0 0; flex-direction:column; overflow-x:hidden; overflow-y:auto; }
 .viewer .observation-card { flex:none; width:100%; }
-.viewer .player > .pair-head { grid-area:head; height:var(--head); }
-.viewer .player > .pair-head,.viewer .player > .controls { justify-self:center; width:min(100cqw, max(100%, 560px)); }
 .viewer .player > .viewport,.viewer .player > .diff-blocker { grid-area:view; width:var(--img); }
 .viewer .player > .controls { grid-area:bar; min-width:0; }
 .viewer .player > .notice { grid-area:note; }
-/* The difference view (its own slice of the refactor): image | side column with the epoch choice and legend. */
+.viewer .player > .player-side { grid-area:side; align-self:stretch; min-height:0; max-height:calc(var(--img) + var(--bar) + var(--gap)); overflow-y:auto; overscroll-behavior:contain; scrollbar-width:thin; }
+/* The difference view: image | side column with the epoch choice and legend. */
 .viewer .player.diff-player {
   --side-min:clamp(220px, 30cqw, 340px);
   --img:clamp(160px, min(100cqw - var(--side-min) - var(--gap), 100cqh - var(--reserve)), 1100px);
   --side:min(420px, max(var(--side-min), 100cqw - var(--img) - var(--gap)));
   grid-template-columns:var(--img) var(--side); grid-template-rows:auto; grid-template-areas:'view side';
 }
-.viewer .diff-player > .player-side { grid-area:side; align-self:stretch; min-height:0; max-height:var(--img); overflow-y:auto; overscroll-behavior:contain; scrollbar-width:thin; }
-/* Narrow viewers (phones): the pair stacks, A over B with Swap beside; the image keeps at least 280 px and the
-   page may scroll below it. */
-@container (max-width:499px) {
+.viewer .diff-player > .player-side { max-height:var(--img); }
+/* Narrow viewers (tablet columns, phones): the table goes under the image and the bar; the image keeps at least
+   280 px and the viewer may scroll below it. */
+@container (max-width:699px) {
   .viewer .player {
-    --head:68px;
-    --img:max(160px, min(100cqw - var(--rail) - var(--gap), max(280px, 100cqh - var(--reserve) - var(--head) - var(--bar) - 3 * var(--gap)), 1100px));
+    --img:max(120px, min(100cqw - var(--rail) - var(--gap), max(280px, 100cqh - var(--reserve) - var(--bar) - 2 * var(--gap)), 1100px));
+    grid-template-columns:var(--rail) var(--img); grid-template-rows:var(--img) auto auto auto;
+    grid-template-areas:'rail view' 'bar bar' 'note note' 'side side';
   }
-  .viewer .pair-head { grid-template-columns:minmax(0,1fr) auto; grid-template-rows:auto auto; row-gap:var(--space-1); }
-  .viewer .pair-head > .pair-swap { grid-column:2; grid-row:1 / span 2; }
-  .viewer .pair-side,.viewer .pair-side.b { grid-column:1; grid-row:1; grid-template-columns:32px auto minmax(0,1fr); grid-template-rows:auto; }
-  .viewer .pair-side.b { grid-row:2; }
-  .viewer .pair-side > *,.viewer .pair-side.b > * { grid-column:auto; grid-row:auto; text-align:left; }
-  .viewer .pair-side .pair-letter { width:32px; min-height:32px; }
+  .viewer .player:not(:has(> .observation-gallery)) { grid-template-columns:var(--img); grid-template-areas:'view' 'bar' 'note' 'side'; }
+  .viewer .player > .player-side { max-height:none; overflow:visible; }
   .viewer .player.diff-player { --img:clamp(160px, 100cqw, 1100px); grid-template-columns:var(--img); grid-template-rows:auto auto; grid-template-areas:'view' 'side'; }
   .viewer .diff-player > .player-side { max-height:none; overflow:visible; }
 }
@@ -184,7 +165,7 @@
 .inspector-panel svg,.inspector-panel table { max-width:100%; }
 .tab-loading { display:flex; flex-direction:column; gap:var(--space-3); }
 /* The loading player: the same grid, grey frames in place of the pair, the thumbnails, the image and the bar. */
-.player-skeleton .pair-head > .skeleton-lines { gap:var(--space-2); padding-block:var(--space-1); }
+.player-skeleton > .player-side { gap:var(--space-2); }
 .player-skeleton .transport { padding-block:var(--space-3); }
 .inspect-toggle { display:none; }
 /* A narrow inspector (the map column on tablets, a short landscape phone): the tabs in one row that scrolls sideways,
@@ -243,7 +224,8 @@
 .resizer-y::after { left:50%; top:5px; height:2px; width:48px; transform:translateX(-50%); }
 
 /* The on-demand sheet beside the stage: width from its handle, only the body scrolls. */
-.fpanel { grid-area:panel; position:relative; z-index:var(--z-panel); display:flex; flex-direction:column; width:clamp(320px, var(--panel-w), min(60vw, 960px)); min-height:0; background:var(--surface-1); border-left:1px solid var(--border); }
+/* The sheet lies over the page at its right edge (left of the overview map): nothing beside it moves or shrinks. */
+.fpanel { grid-area:main; justify-self:end; position:relative; z-index:var(--z-panel); display:flex; flex-direction:column; width:clamp(320px, var(--panel-w), min(60vw, 960px)); max-width:100%; min-height:0; background:var(--surface-1); border-left:1px solid var(--border); box-shadow:-12px 0 32px var(--shadow-color); }
 .fpanel > .resizer-y { display:none; }
 .fpanel-header { flex:none; display:flex; align-items:center; justify-content:space-between; gap:var(--space-3); padding:var(--space-3) var(--space-4); border-bottom:1px solid var(--border); }
 .fpanel-header h2 { font-size:var(--text-lg); }
@@ -308,13 +290,11 @@
   /* The overview map's bar spans the width under the images. */
   .stage.investigate > .sky-area.overview { align-self:stretch; }
   .stage.investigate > .inspector { position:relative; z-index:var(--z-chrome); flex:0 1 40%; min-height:160px; border-width:1px 0 0; border-radius:0; }
-  /* While inspecting, the image gives up its 280 px floor, so the pair, the image and the bar stay in view. */
+  /* While inspecting, the image gives up its 280 px floor, so the image and the bar stay in view. */
   .stage.investigate:has(> .inspector.open) .viewer .player {
-    --img:clamp(120px, min(100cqw - var(--rail) - var(--gap), 100cqh - var(--reserve) - var(--head) - var(--bar) - 3 * var(--gap)), 1100px);
+    --img:clamp(120px, min(100cqw - var(--rail) - var(--gap), 100cqh - var(--reserve) - var(--bar) - 2 * var(--gap)), 1100px);
   }
-  /* The viewer head in two rows: Back and Inspect, then the modes. */
-  .viewer-head > .inspect-toggle { order:1; }
-  .viewer-head > .mode-switch { order:2; flex:1 1 100%; max-width:none; }
+  .viewer-head { padding:var(--space-1) var(--space-3); }
   .stage.investigate > .inspector:not(.open) { display:none; }
   .shell:has(> .fpanel:not([hidden])) .stage.investigate > .inspector { display:none; }
   .inspector-close { display:inline-flex; }

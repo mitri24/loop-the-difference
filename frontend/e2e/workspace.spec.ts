@@ -97,8 +97,8 @@ for (const width of [320, 375, 390, 600, 768, 1024, 1280, 1366, 1440, 1920]) {
         await hitTarget(page.getByRole('button', { name: 'Close panel' }))
         if (id === 'target') await hitTarget(page.getByRole('button', { name: 'Compare this position' }))
       }
-      // Below 1024 px the panel lies over the sky; beside it on desktops, Aladin keeps its corners.
-      if (width < 1024) await page.getByRole('button', { name: 'Close panel' }).click()
+      // The sheet lies over the sky at every width (nothing moves); closed, Aladin's corners are free again.
+      await page.getByRole('button', { name: 'Close panel' }).click()
       for (const selector of ['.aladin-logo-container', '.aladin-fullScreen-control', '.aladin-widgets-toolbar']) {
         await fits(page, page.locator(selector))
         await hitTarget(page.locator(selector))
@@ -122,6 +122,8 @@ test('fixture: name search, compare, playback, quality and source metadata stay 
   await openSheet(page, 'layers')
   await expect(page.getByLabel('Photographic plate 1950 (POSS-I, STScI DSS) – position check')).toBeDisabled()
   await expect(page.locator('#plate-status')).toHaveText('Needs a star with Gaia DR3 motion (find it by name)')
+  // The sheet lies over the page; closed, the player and its table are free again.
+  await page.getByRole('button', { name: 'Close panel' }).click()
   await page.getByRole('button', { name: 'Play', exact: true }).click()
   await expect(page.getByRole('button', { name: 'Pause', exact: true })).toBeVisible()
   await page.getByRole('button', { name: 'Pause', exact: true }).click()
@@ -129,7 +131,7 @@ test('fixture: name search, compare, playback, quality and source metadata stay 
   await expect(page.locator('.stamp')).toContainText('2026-09-10')
   await expect(await openTab(page, 'data')).toContainText('TEST_FIXTURE')
   await expect(page.locator('.stamp')).toContainText('2026-09-10')
-  await page.getByRole('radio', { name: 'Difference', exact: true }).click()
+  await page.getByRole('button', { name: 'Show the later minus the earlier epoch' }).click()
   await expect(page.getByLabel('Epoch A (earlier)')).toBeVisible()
   await expect(page.getByLabel('Epoch B (later)')).toBeVisible()
   await expect(page.locator('.diff-legend')).toContainText('no change')
@@ -165,8 +167,8 @@ test('fixture: name resolution failure is actionable', async ({ page }) => {
 test('fixture: empty data and incompatible epochs are honest', async ({ page }) => {
   await fixtures(page, { ...manifest, epochs: 1, frames: [frame(0)], differences: [] })
   await page.goto('/?ra=37.954542&dec=89.264111&band=6&fov=0.2&mode=difference')
-  await expect(page.getByRole('radio', { name: 'Difference' })).toBeDisabled()
-  await expect(page.locator('.viewer')).toContainText('Difference needs observations from at least two epochs.')
+  // No greyed Difference tab: the difference image's place says why there is none.
+  await expect(page.locator('.changes')).toContainText('Difference needs observations from at least two epochs.')
   await expect(page.getByRole('button', { name: 'Play', exact: true })).toBeDisabled()
   await fixtures(page, { ...manifest, epochs: 0, frames: [], differences: [] })
   await page.reload()
@@ -227,8 +229,6 @@ test('keyboard: panel focus, Escape, About panel and reduced motion', async ({ p
   await expect(page.locator('.stamp')).toContainText('A · 2026-03-10 12:00 UTC')
   await page.keyboard.press('b')
   await expect(page.locator('.stamp')).toContainText('B ·')
-  await page.getByRole('button', { name: 'Step through all', exact: true }).click()
-  await expect(page.locator('.stamp')).not.toContainText('B ·')
   await page.keyboard.press('A')
   await expect(page.locator('.stamp')).toContainText('A · 2026-03-10 12:00 UTC')
 })
@@ -395,7 +395,7 @@ test('fixture: frames on the sky, layers, Gaia motion and spectrum keep their pl
   await page.getByTestId('sky-search').fill('Polaris')
   await page.getByTestId('sky-search').press('Enter')
   await expect(page).toHaveURL(/name=Polaris/)
-  await expect(page.locator('#inspect-panel-frame .frame-details')).toContainText('576402619921510144')
+  await expect(page.locator('.pair-table th[scope="row"]', { hasText: 'Gaia DR3' })).toHaveAttribute('title', /576402619921510144/)
   await openSheet(page, 'layers')
   const onSky = page.locator('.layers-section').getByLabel('SPHEREx frames on the sky')
   await expect(onSky).toBeChecked()
@@ -417,7 +417,7 @@ test('fixture: a shared link with a name adds the Gaia marker; new coordinates d
   await page.route('**/api/resolve?**', route => route.fulfill({ json: { name: 'Polaris', ra: manifest.ra, dec: manifest.dec, proper_motion: motion } }))
   await page.goto('/?ra=37.954542&dec=89.264111&fov=0.2&band=6&name=Polaris')
   await expect(page.locator('.player .marker')).toBeVisible()
-  await expect(page.locator('#inspect-panel-frame .frame-details')).toContainText('576402619921510144')
+  await expect(page.locator('.pair-table th[scope="row"]', { hasText: 'Gaia DR3' })).toHaveAttribute('title', /576402619921510144/)
   await openSheet(page, 'target')
   await page.getByText('Enter precise coordinates', { exact: true }).click()
   await page.getByLabel('Right ascension').fill('37.9')
@@ -425,7 +425,7 @@ test('fixture: a shared link with a name adds the Gaia marker; new coordinates d
   await expect(page).toHaveURL(/ra=37\.9&/)
   await expect(page.getByRole('button', { name: 'Play', exact: true })).toBeVisible()
   expect(page.url()).not.toContain('name=')
-  await expect(page.locator('#inspect-panel-frame .frame-details')).not.toContainText('Gaia DR3')
+  await expect(page.locator('.pair-table')).not.toContainText('Gaia DR3')
   await expect(page.locator('.player .marker')).toHaveCount(0)
 })
 
@@ -452,6 +452,25 @@ test('fixture: reduced motion blinks at 1 s and pauses after 20 swaps', async ({
   await page.clock.runFor(19_000)
   await expect(page.getByRole('button', { name: 'Play', exact: true })).toBeVisible()
   await expect(page.locator('.player')).toContainText('Paused after 20 swaps (reduced motion) – press Play to continue')
+})
+
+test('fixture: what the layers show on the sky also stands on the SPHEREx image, and goes with the layer', async ({ page }) => {
+  const detected = (index: number) => ({ ...frame(index), sources: [{ ra: manifest.ra + 0.01, dec: manifest.dec - 0.01,
+    x: 40, y: 50, peak_mjy_sr: 2, snr: 122, match: 'none' as const, catalog_id: null, separation_arcsec: null,
+    catalog_mag: null, catalog_band: null }] })
+  await fixtures(page, { ...manifest, frames: [detected(0), detected(1)] })
+  await page.setViewportSize({ width: 1440, height: 900 })
+  await page.goto('/?ra=37.954542&dec=89.264111&fov=0.2&band=6')
+  const marks = page.locator('.viewer .viewport .image-mark')
+  // "Sources detected in the shown frame" is on by default: its marker stands on the image too.
+  await expect(marks).toHaveCount(1)
+  await expect(marks.first()).toHaveClass(/source-none/)
+  await expect(marks.first().locator('title')).toHaveText(/no catalogue match, needs verification/)
+  await openSheet(page, 'layers')
+  await page.locator('.layers-section').getByLabel('Sources detected in the shown frame').uncheck()
+  await expect(marks).toHaveCount(0)
+  await page.locator('.layers-section').getByLabel('Sources detected in the shown frame').check()
+  await expect(marks).toHaveCount(1)
 })
 
 test('fixture: Mark detected sources in two frames lists candidate marks A and B', async ({ page }, info) => {
@@ -491,14 +510,15 @@ test('fixture: Mark detected sources in two frames lists candidate marks A and B
     await expect(panel.locator('.candidate-marks li')).toHaveCount(0)
     await page.locator('.viewer .viewport img:visible').click()
     await expect(panel.locator('.candidate-marks li')).toHaveText([/^◎ A · 2026-0\d-10 12:00 UTC · RA .* Dec 89\.26\d+° .* · position as clicked$/])
-    await expect(page.locator('.viewer .viewport .image-mark')).toHaveText('A')
+    await expect(page.locator('.viewer .viewport .candidate-mark')).toHaveText('A')
     await mark.click()
     await panel.getByRole('button', { name: 'Clear marks' }).click()
-    await expect(page.locator('.viewer .viewport .image-mark')).toHaveCount(0)
+    await expect(page.locator('.viewer .viewport .candidate-mark')).toHaveCount(0)
     await page.getByRole('button', { name: 'Show frame B' }).click()
   }
-  // Sky path on the full sky (Explore): armed, a click outside the frame explains itself, one inside marks the shown frame.
-  await page.getByRole('button', { name: 'Back to sky' }).click()
+  // Sky path on the full sky (Explore, "Full map" in the overview bar): armed, a click outside the frame explains
+  // itself, one inside marks the shown frame.
+  await page.getByRole('button', { name: 'Full map', exact: true }).click()
   await page.getByRole('button', { name: 'Mark a candidate on the sky' }).click()
   const onSky = page.getByRole('group', { name: 'Candidate marking on the sky' })
   const map = (await page.locator('.sky-view').boundingBox())!
@@ -512,7 +532,7 @@ test('fixture: Mark detected sources in two frames lists candidate marks A and B
   await expect(panel.getByRole('button', { name: 'Mark in this frame' })).toHaveAttribute('aria-pressed', 'false')
 })
 
-test('fixture: Explore picks a region on the sky, Investigate shows its images, Back to sky keeps everything', async ({ page }) => {
+test('fixture: Explore picks a region on the sky, Investigate shows its images, Full map and back keep everything', async ({ page }) => {
   await fixtures(page)
   await page.setViewportSize({ width: 1440, height: 900 })
   await page.goto('/')
@@ -531,7 +551,7 @@ test('fixture: Explore picks a region on the sky, Investigate shows its images, 
   await fits(page, page.locator('.sky-area.overview'))
   await page.getByRole('button', { name: 'Next frame', exact: true }).click()
   await expect(await openTab(page, 'quality')).toBeInViewport()
-  await page.getByRole('button', { name: 'Back to sky' }).click()
+  await page.getByRole('button', { name: 'Full map', exact: true }).click()
   await expect(page.locator('.viewer')).toBeHidden()
   await expect(page.locator('.inspector')).toBeHidden()
   await page.getByRole('button', { name: /^Back to images/ }).click()
@@ -580,9 +600,8 @@ test('fixture: vertical thumbnails select the large image and its own metadata',
     await page.setViewportSize({width,height:900})
     await page.goto('/?ra=37.954542&dec=89.264111')
     const gallery=page.getByRole('region',{name:'Observation images'})
-    // The shown frame's details are the Frame tab of the inspector (on phones: opened under the images).
-    await openTab(page,'frame')
-    const metadata=page.getByRole('region',{name:'Shown frame'})
+    // A and B stand as a table beside the image (under it on narrow viewers), with the shown frame above it.
+    const metadata=page.getByRole('region',{name:'A and B'})
     await expect(gallery.locator('.observation-card')).toHaveCount(12)
     await expect(gallery).not.toContainText('Coverage')
     await gallery.getByRole('button',{name:/^Show observation 12,/}).click()
@@ -590,7 +609,7 @@ test('fixture: vertical thumbnails select the large image and its own metadata',
     await expect(metadata).toContainText('2026-01-12')
     await expect(metadata).toContainText('96 %')
     await gallery.getByRole('button',{name:/^Show observation 11,/}).click()
-    await metadata.getByRole('button',{name:'Set A',exact:true}).click()
+    await metadata.getByRole('button',{name:'Use as A',exact:true}).click()
     await expect(page.getByRole('combobox',{name:'Frame A'})).toHaveValue('10')
     const last=gallery.getByRole('button',{name:/^Show observation 12,/})
     await last.focus()
@@ -603,10 +622,9 @@ test('fixture: vertical thumbnails select the large image and its own metadata',
     expect(Math.abs(rail.y-image.y)).toBeLessThan(2)
     expect(Math.abs(rail.height-image.height)).toBeLessThan(2)
     expect(rail.width).toBeLessThanOrEqual(90)
-    // Beside the image from 701 px (the inspector under the map), under it on phones.
+    // Beside the image where the viewer is wide enough, under it otherwise.
     const details=(await metadata.boundingBox())!
-    if(width>700) expect(details.x).toBeGreaterThanOrEqual(image.x+image.width)
-    else expect(details.y).toBeGreaterThanOrEqual(image.y)
+    expect(details.x>=image.x+image.width-1 || details.y>=image.y+image.height-1).toBe(true)
     expect(await page.evaluate(()=>document.documentElement.scrollWidth)).toBeLessThanOrEqual(width+1)
     if ([390,1440,1920].includes(width)) await page.screenshot({path:info.outputPath(`image-browser-${width}.png`)})
   }
@@ -649,9 +667,8 @@ test('fixture: the target, detector and blocked difference are named once', asyn
   const head = page.locator('.viewer-head')
   await expect(head).not.toContainText('37.954542')
   await expect(head).not.toContainText('D6')
-  // A blocked difference: the greyed tab carries its reason; the head stays quiet while Difference is not asked for.
-  await expect(page.getByRole('radio', { name: 'Difference' })).toBeDisabled()
-  await expect(page.getByRole('radio', { name: 'Difference' })).toHaveAttribute('title', /Difference needs observations from at least two epochs\./)
+  // A blocked difference: no greyed tab; the difference image's place beside the table says why, once.
+  await expect(page.locator('.changes')).toContainText('Difference needs observations from at least two epochs.')
   await expect(head).not.toContainText('Difference needs')
   await expect(head).not.toContainText('unavailable')
   // One way into the observation history; its count stands on the tab, not again in the panel.
