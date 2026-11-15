@@ -94,11 +94,12 @@ export const createDistantTrack = (body: DistantTrackRequest, signal?: AbortSign
   })
 
 // Forced photometry along a possible track at the other visits, measured by the worker.
-export const createFollowup = (body: FollowupRequest) =>
+export const createFollowup = (body: FollowupRequest, signal?: AbortSignal) =>
   request<FollowupJob>('/api/followup', {
+    signal,
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(body),
   })
 
-export const getFollowupJob = (jobId: string) => request<FollowupJob>(`/api/followup/${jobId}`)
+export const getFollowupJob = (jobId: string, signal?: AbortSignal) => request<FollowupJob>(`/api/followup/${jobId}`, { signal })

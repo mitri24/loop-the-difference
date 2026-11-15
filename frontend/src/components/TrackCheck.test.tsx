@@ -72,7 +72,7 @@ describe('DistantTrackCheck', () => {
     expect(html).toContain('2025-11-20 05:30 UTC · positions outside the field (nearest 1.9° from its centre)')
     expect(html).toContain('2026-05-31 00:00 UTC · no source list – reload this comparison')
     expect(html).toContain('2025-03-01 10:00 UTC · more than 400 days from the marks – not predicted')
-    expect(html).toContain('with no Gaia DR3 or AllWISE match, or with no catalogue answer, inside a search circle (2σ, at least 1.5 pixels)')
+    expect(html).toContain('with no Gaia DR3 or AllWISE match, or with no catalogue answer, inside a search circle (2σ plus the model error, at least 1.5 pixels)')
     expect(html).toContain('straight-line heliocentric motion + Earth parallax · 5 assumed distances, 20–2000 AU, uniform in 1/d. Each hypothesis')
     expect(html).not.toContain('Beyond')
     expect(html).not.toMatch(/confirmed|discover/i)
@@ -95,6 +95,8 @@ describe('DistantTrackCheck', () => {
       .toContain('Distant-object track: moves too fast for an object beyond 20 AU')
     expect(renderToStaticMarkup(<DistantTrackCheck state={state({ status: 'marksTooClose' })} />))
       .toContain('Distant-object track: needs marks more than 86 s apart')
+    expect(renderToStaticMarkup(<DistantTrackCheck state={state({ status: 'marksTooFar' })} />))
+      .toContain('Distant-object track: needs marks at most 400 days apart')
   })
 
   it('names nothing found, hits without a catalogue answer, positions off the field and nothing checkable in one line', () => {

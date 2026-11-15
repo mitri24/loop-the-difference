@@ -38,6 +38,7 @@ import { usePickLayer } from './pickLayer'
 import { usePlateLayer } from './historicalPlate'
 import { useMotionTrack } from './motionTrack'
 import { useDistantTrack } from './distantTrack'
+import { useFollowup } from './followup'
 import { checkFrames, possibleTrack, searchCircles } from './track'
 import { useTrackLayer } from './trackLayer'
 import { sliceForDetector } from './sky'
@@ -438,6 +439,7 @@ export default function App() {
     [possible, showDifference, manifest])
   useTrackLayer(sky, predictions)
   const distant = useDistantTrack(showDifference ? null : sky, possible, candidate.marks, manifest)
+  const followup = useFollowup(possible, candidate.marks, manifest)
   usePickLayer(sky, stage === 'explore' ? pick : null, draft.fov)
   // JPL SBIdent takes about a minute per time: one time per epoch, its first frame's.
   // A stack mixes exposures from up to 30 days: moving asteroids are looked up for single exposures.
@@ -542,6 +544,7 @@ export default function App() {
   // marks in the image and reads the check next to it.
   const candidateSide = manifest && hasFrames && <div className="candidate-side">
     <CandidatePanel candidate={candidate} blocked={markBlocked} track={possible && { ...possible, predictions }} distant={distant} sources={!skyUnavailable}
+      followup={followup}
       onDownload={() => downloadMarks({ link: link(), target: targetText(query), manifest, marks: candidate.marks, track: possible,
         verdict: candidate.verdict, verdictChosen: candidate.verdictChosen, exported: new Date(), base: window.location.href })}
       known={{ epochs: smallBodies.epochs, motion, detector: manifest.detector, target: targetText(query) }}
