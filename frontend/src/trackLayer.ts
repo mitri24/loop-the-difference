@@ -47,7 +47,8 @@ export function distantTrackShapes(track: DistantTrack, labelMjd: number | null,
   const picks = [...new Set(LABELLED_AU.map((au) => nearestHypothesis(hypotheses, au)))].sort((a, b) => a - b)
   const circles = times.flatMap((_, j) => picks.map((i) => {
     const point = hypotheses[i].points[j]
-    return { ...point, radius_arcsec: searchRadius(point.radius_arcsec, pixelScaleArcsec), distance_au: hypotheses[i].distance_au }
+    const radius_arcsec = searchRadius(point.radius_arcsec, pixelScaleArcsec, point.model_error_arcsec ?? 0)
+    return { ...point, radius_arcsec, distance_au: hypotheses[i].distance_au }
   }))
   return {
     lines: times.map((_, j) => hypotheses.map((h): [number, number] => [h.points[j].ra, h.points[j].dec])),
@@ -68,7 +69,7 @@ export function useDistantTrackLayer(aladin: AladinInstance | null, track: Dista
     void import('aladin-lite').then(({ default: A }) => {
       if (disposed) return
       const color = getComputedStyle(document.documentElement).getPropertyValue('--possible-track').trim()
-      overlay = A.graphicOverlay({ name: 'Distant-object track, search circles 2σ (at least 1.5 pixels)', color, lineWidth: 1, lineDash: [2, 4] })
+      overlay = A.graphicOverlay({ name: 'Distant-object track, search circles 2σ plus model error (at least 1.5 pixels)', color, lineWidth: 1, lineDash: [2, 4] })
       aladin.addOverlay(overlay)
       for (const line of lines) overlay.add(A.polyline(line))
       for (const c of circles) overlay.add(A.circle(c.ra, c.dec, c.radius_arcsec / 3600))
