@@ -18,13 +18,13 @@ describe('PairTable', () => {
   it('puts the essentials of A and B in the same row, the rest of the metadata folded under All metadata', () => {
     const html = table([frame(0, '2026-02-10T12:00:30Z', 4.61, { cloud_url: 'https://s3.example/0.fits' }),
       frame(1, '2026-05-11T12:00:00Z', 4.612, { n_combined: 6, release: 'QR3' })])
-    expect(html).toContain('<th scope="row">Observed</th><td>2026-02-10 12:00:30 UTC</td><td>2026-05-11 12:00:00 UTC</td>')
+    expect(html).toContain('<th scope="row">Observed</th><td>2026-02-10 12:00 UTC</td><td>2026-05-11 12:00 UTC</td>')
     expect(html).toContain('<td>single exposure</td><td>stack of 6</td>')
     expect(html).toContain('<td>λ 4.610 µm ± 0.020</td><td>λ 4.612 µm ± 0.020</td>')
     expect(html).toContain('<td>96 %<span class="muted"> · 1.2 % masked</span></td>')
     expect(html).toContain('href="https://irsa.example/obs-0"')
     // Folded: the Level-2 file, the archive's own fields, the field and the wavelength strip.
-    const more = html.indexOf('<summary>All metadata</summary>')
+    const more = html.indexOf('<summary>Image details &amp; original data</summary>')
     expect(more).toBeGreaterThan(html.indexOf('class="pair-verdict'))
     expect(html.indexOf('Level-2 file')).toBeGreaterThan(more)
     expect(html.indexOf('Field RA')).toBeGreaterThan(more)

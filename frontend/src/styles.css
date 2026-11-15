@@ -649,3 +649,34 @@ summary { cursor:pointer; min-height:32px; padding:5px 0; font-size:13px; }
 .candidate-side .candidate-check button,.candidate-side .known-check button { min-height:28px; padding:0 var(--space-2); font-size:var(--text-xs); }
 .candidate-side .disclosure { padding-top:var(--space-2); }
 .candidate-side summary { min-height:24px; padding:2px 0; font-size:var(--text-xs); }
+
+/* Comfortable comparison controls: essentials first, provenance on demand. */
+.player-side { gap:24px; padding:16px; }
+.images-toggle { gap:12px; }
+.images-toggle [role='radio'] { min-height:48px; padding:8px; font-size:14px; }
+.images-hint { font-size:14px; line-height:1.6; }
+.pair-panel { gap:16px; }
+.pair-table { font-size:13px; }
+.pair-table td,.pair-table th[scope='row'] { padding:10px 6px; line-height:1.6; }
+.pair-table th[scope='row'] { width:72px; }
+.pair-pick,.pair-letter,.pair-swap { min-height:40px; }
+.pair-verdict { padding:12px; font-size:13px; line-height:1.6; }
+.candidate-side { gap:20px; font-size:14px; }
+.candidate-side .candidate-check { gap:12px; padding-top:20px; }
+.candidate-side .candidate-check h3 { font-size:16px; }
+.candidate-side .candidate-check button,.candidate-side .known-check button { min-height:44px; padding:8px 12px; font-size:14px; }
+.candidate-side summary,.pair-more > summary { min-height:44px; padding:12px 0; font-size:14px; }
+.object-chooser { display:flex; flex-wrap:wrap; gap:8px; }
+.candidate-next,.candidate-hint { font-size:14px; line-height:1.6; }
+.inspector-tabs button { min-height:44px; }
+@media(max-width:599px) { .player-side { padding:12px; } .pair-table th[scope='row'] { width:62px; } }
+
+.changes > summary { min-height:44px; padding:12px 0; font-size:14px; color:var(--text-secondary); cursor:pointer; }
+.changes[open] { display:block; }
+.changes:not([open]) { display:block; }
+.pair-letter { width:40px; min-width:40px; }
+
+/* Identical structure keeps A/B aligned even when only one label would wrap. */
+.pair-col-head { display:grid; grid-template-columns:minmax(0,1fr); justify-items:start; align-items:start; gap:8px; }
+.pair-table thead th { vertical-align:top; }
+.pair-pick { max-width:100%; }

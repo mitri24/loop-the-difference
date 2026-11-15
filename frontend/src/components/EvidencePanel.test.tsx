@@ -86,14 +86,14 @@ describe('EvidencePanel', () => {
 
   it('groups problems by meaning and keeps the technical details on demand', () => {
     const html = panel({ checks: [flagged, mismatch] })
-    expect(html.indexOf('>Blocking</h4>')).toBeLessThan(html.indexOf('>Scientific limits</h4>'))
-    expect(html).toContain('Different wavelengths')
+    expect(html.indexOf('>Needs your attention</h4>')).toBeLessThan(html.indexOf('>Keep in mind</h4>'))
+    expect(html).toContain('Brightness cannot be compared with this pair')
     expect(html).toContain('<summary>Technical details</summary><ul><li>Effective wavelength ranges from 4.410 to 4.510 µm</li></ul>')
     expect(html).not.toContain('check-item__action')
   })
 
   it('offers a check’s action only where the workspace wires it', () => {
-    expect(panel({ checks: [mismatch], onAction: () => undefined })).toContain('class="check-item__action" data-action="choose-compatible-pair">Choose a compatible pair</button>')
+    expect(panel({ checks: [mismatch], onAction: () => undefined })).toContain('class="check-item__action" data-action="choose-compatible-pair">Find images in the same light band</button>')
   })
 
   it('names what the checks refer to, adds the caveat and keeps passed checks in one closed row', () => {

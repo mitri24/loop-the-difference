@@ -103,3 +103,27 @@ describe('the blink pair in a link', () => {
     expect(readPair('?ra=1&dec=2&a=%20&b=obs-b')).toBeNull()
   })
 })
+
+
+describe('multiple marked objects in shared links', () => {
+  it('keeps each object separate even when they share an observation', () => {
+    const marks = [
+      { obs_id: 'frame-1', ra: 10, dec: 20, object: 0 },
+      { obs_id: 'frame-2', ra: 11, dec: 21, object: 0 },
+      { obs_id: 'frame-1', ra: 30, dec: 40, object: 1 },
+    ]
+    expect(readMarks(toSearch(POLARIS, false, marks))).toEqual(marks)
+  })
+  it('rejects invalid object indices and positions', () => {
+    expect(readMarks('?objectmark=-1:obs:10,20&objectmark=1.5:obs:10,20&objectmark=1:obs:10,99')).toEqual([])
+  })
+})
+
+
+it('round-trips more than twenty objects without truncating their marks', () => {
+  const marks = Array.from({ length: 125 }, (_, object) => [
+    { obs_id: 'first', ra: 10, dec: 20, object },
+    { obs_id: 'second', ra: 11, dec: 21, object },
+  ]).flat()
+  expect(readMarks(toSearch(POLARIS, false, marks))).toEqual(marks)
+})

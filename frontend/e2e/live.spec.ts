@@ -40,7 +40,7 @@ test.describe('Live services (no mocked API responses)', () => {
     await expect.poll(() => page.locator('.viewer .viewport img').first().evaluate((img: HTMLImageElement) => img.naturalWidth)).toBeGreaterThan(1)
     await expect(page.locator('.layer-caption')).not.toContainText('loading', { timeout: 15_000 })
     await page.screenshot({ path: info.outputPath('live-difference-desktop.png') })
-    await page.getByRole('radio', { name: 'Stacks', exact: true }).click()
+    await page.getByRole('radio', { name: 'Combined images', exact: true }).click()
     await page.getByRole('button', { name: 'Play', exact: true }).click()
     await expect(page.getByRole('button', { name: 'Pause', exact: true })).toBeVisible()
     await page.getByRole('button', { name: 'Pause', exact: true }).click()

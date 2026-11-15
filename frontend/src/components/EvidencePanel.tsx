@@ -79,7 +79,7 @@ function CheckItem({ item, onAction }: { item: ExplainedCheck; onAction?: Props[
         {/* The title, and its severity as a pill on the right (read once, before the title, by screen readers). */}
         <div className="check-item__title">
           <span><span className="sr-only">{word}: </span>{item.title}</span>
-          <span className="check-item__label" aria-hidden="true">{word}</span>
+
         </div>
         {item.text && <p className="check-item__text">{item.text}</p>}
         {((item.action && onAction) || item.details.length > 0) && (
@@ -113,12 +113,17 @@ export function EvidencePanel({ checks, manifest, onAction, frameLabel }: Props)
   }
   return (
     <section className="evidence" aria-label="Checks for this view">
+      <p className="evidence-intro">Can I trust what I see?</p>
       {frameLabel && <p className="evidence__subject">Checks for {frameLabel}</p>}
       {groups.length === 0 && passed.length === 0 && <p className="muted">No issues found for this view</p>}
       {groups.map(({ kind, items }) => (
         <section key={kind} className="check-group" aria-label={KIND_TITLE[kind]}>
           <h4 className="check-group__title">{KIND_TITLE[kind]}</h4>
-          <ul className="check-list">{items.map((item) => <CheckItem key={item.code} item={item} onAction={onAction} />)}</ul>
+          <ul className="check-list">{items.filter((item) => item.severity !== 'info').map((item) => <CheckItem key={item.code} item={item} onAction={onAction} />)}</ul>
+          {items.some((item) => item.severity === 'info') && <details className="check-context">
+            <summary>More context · {items.filter((item) => item.severity === 'info').length}</summary>
+            <ul className="check-list">{items.filter((item) => item.severity === 'info').map((item) => <CheckItem key={item.code} item={item} onAction={onAction} />)}</ul>
+          </details>}
         </section>
       ))}
       {passed.length > 0 && (

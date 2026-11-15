@@ -7,10 +7,10 @@ import type { Check, CheckSeverity, FrameManifest } from './types'
 export type CheckKind = 'blocking' | 'fixable' | 'limit' | 'info'
 export const KIND_ORDER: CheckKind[] = ['blocking', 'fixable', 'limit', 'info']
 export const KIND_TITLE: Record<CheckKind, string> = {
-  blocking: 'Blocking',
+  blocking: 'Needs your attention',
   fixable: 'Can be fixed',
-  limit: 'Scientific limits',
-  info: 'Notes',
+  limit: 'Keep in mind',
+  info: 'About these images',
 }
 export const SEVERITY_ORDER: CheckSeverity[] = ['error', 'blocker', 'warning', 'info']
 
@@ -50,9 +50,9 @@ const GUIDE: Record<string, Guide> = {
     requires: 'Difference needs observations from two epochs; all usable ones here come from one epoch.',
   },
   WAVELENGTH_MISMATCH: {
-    kind: 'blocking', title: () => 'Different wavelengths',
-    action: { id: 'choose-compatible-pair', label: 'Choose a compatible pair' },
-    text: 'The selected observations cannot be directly subtracted: a wavelength change looks like a brightness change. Choose a compatible observation.',
+    kind: 'blocking', title: () => 'Brightness cannot be compared with this pair',
+    action: { id: 'choose-compatible-pair', label: 'Find images in the same light band' },
+    text: 'These images capture different bands of infrared light. An object can look brighter because of its colour. You can still look for movement; choose the same light band to compare brightness.',
     requires: 'Difference needs two observations at the same wavelength. Choose a compatible pair from the timeline.',
   },
   WAVELENGTH_CLOSE: {
@@ -77,8 +77,8 @@ const GUIDE: Record<string, Guide> = {
     text: 'A catalogue did not answer in time, so sources it could have matched are labelled unknown. Treat unknown sources as unverified.',
   },
   FLAGGED_PIXELS: {
-    kind: 'limit', title: (n) => `Flagged pixels at the target in ${images(n).toLowerCase()}`,
-    text: 'SPHEREx marks pixels next to the target as unusable, so a change there can be an artefact. Judge the target in the unflagged images.',
+    kind: 'limit', title: (n) => `Pixels near the target need care · ${images(n).toLowerCase()}`,
+    text: 'Some pixels near your target are unreliable. A spot appearing or disappearing there may be an image defect. Check the object in other images before marking it as a change.',
   },
   LOW_OVERLAP: {
     kind: 'limit', title: (n) => `${images(n)} left out`,
@@ -89,8 +89,8 @@ const GUIDE: Record<string, Guide> = {
     text: 'Some images carry no wavelength table, so a brightness change between epochs could be a wavelength effect. Treat brightness changes in the difference with care.',
   },
   MIXED_RELEASES: {
-    kind: 'limit', title: () => 'Mixed calibration releases',
-    text: 'The images come from releases with different calibration, so small brightness steps between them can be calibration, not change. Treat such steps with care.',
+    kind: 'limit', title: () => 'Small brightness shifts may come from processing',
+    text: 'These images were processed with different calibrations. Small brightness shifts may come from that processing. Confirm them in images from the same release.',
   },
   SOURCES: {
     kind: 'info', title: () => 'Sources matched with catalogues',

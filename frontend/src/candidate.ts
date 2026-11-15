@@ -1,7 +1,7 @@
 // Candidate check: the user's marks "something is here, in this frame", snapped to the nearest
 // SPHEREx detection. The app never decides what a candidate is; it names what still needs checking.
 import type { AladinInstance, Catalog } from 'aladin-lite'
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { skyToFrame } from './motion'
 import { MATCH_STYLE, degText } from './sourceLayer'
 import type { DetectedSource, Frame, FrameManifest } from './types'
@@ -16,6 +16,7 @@ export interface Mark {
   // 1σ per axis
   sigma_arcsec: number
   source?: DetectedSource
+  label?: string
 }
 
 export const MARK_LETTERS = ['A', 'B'] as const
@@ -139,6 +140,21 @@ const START = { marks: [] as Mark[], notice: '', verdict: VERDICTS[0] as Verdict
  * another comparison starts first. New marks start without a verdict. */
 export function useCandidate(jobId: string | null, allowed: boolean, final: FrameManifest | null = null, linked: LinkMark[] = []) {
   const [state, setState] = useState({ jobId, ...START })
+  const [objects, setObjects] = useState<{ jobId: string | null; active: number; items: (typeof START)[] }>({ jobId, active: 0, items: [] })
+  if (objects.jobId !== jobId) setObjects({ jobId, active: 0, items: [] })
+  const saveCurrent = () => {
+    const items = [...objects.items]
+    items[objects.active] = { marks: state.marks, notice: state.notice, verdict: state.verdict, verdictChosen: state.verdictChosen }
+    return items
+  }
+  const selectObject = (index: number) => {
+    const items = saveCurrent()
+    setObjects({ jobId, active: index, items })
+    setState({ jobId, ...(items[index] ?? START) })
+    setArmed(false)
+  }
+  const objectItems = [...objects.items]
+  objectItems[objects.active] = state
   const [armed, setArmed] = useState(false)
   const [pending, setPending] = useState<{ marks: LinkMark[]; jobId: string | null }>({ marks: linked, jobId: null })
   if (state.jobId !== jobId) setState({ jobId, ...START })
@@ -148,15 +164,36 @@ export function useCandidate(jobId: string | null, allowed: boolean, final: Fram
   } else if (pending.marks.length > 0 && jobId && pending.jobId === jobId && state.jobId === jobId && final?.frames.length) {
     const placed = placeLinkMarks(final, pending.marks)
     setPending({ marks: [], jobId: null })
+    if (pending.marks.some((mark) => mark.object != null)) {
+      const objectIds = [...new Set(pending.marks.map((mark) => mark.object ?? 0))].sort((a, b) => a - b)
+      const groups = objectIds.map((index) =>
+        placeLinkMarks(final, pending.marks.filter((mark) => (mark.object ?? 0) === index)))
+      const items = groups.map((group) => ({ ...START, marks: group.marks }))
+      setObjects({ jobId, active: 0, items })
+      placed.marks = items[0].marks
+      placed.missing = groups.reduce((sum, group) => sum + group.missing, 0)
+    }
     setState({ jobId, ...START, marks: placed.marks,
       notice: placed.missing ? `${placed.missing} ${placed.missing === 1 ? 'mark' : 'marks'} from the link could not be placed in this comparison.` : '' })
   }
+  const allMarks = useMemo(() => {
+    const items = [...objects.items]
+    items[objects.active] = state
+    return items.flatMap((item, index) => item.marks.map((mark, i) => ({ ...mark, label: `${index + 1}${MARK_LETTERS[i]}`, object: index })))
+  }, [objects, state])
+  const shareMarks = objectItems.length > 1 ? allMarks : state.marks
   const add = (mark: Mark) =>
     setState((old) => {
       const next = addMark(old.marks, mark)
       return 'error' in next ? { ...old, notice: next.error } : { ...old, marks: next.marks, notice: '', verdict: START.verdict, verdictChosen: false }
     })
   return {
+    objects: objectItems.map((item, index) => ({ index, count: item.marks.length })),
+    activeObject: objects.active,
+    selectObject,
+    newObject: () => selectObject(objectItems.length),
+    allMarks,
+    shareMarks,
     marks: state.marks,
     notice: state.notice,
     verdict: state.verdict,
@@ -190,7 +227,7 @@ export function useMarkLayer(aladin: AladinInstance | null, marks: Mark[]) {
         onClick: 'showTable', displayLabel: true, labelColumn: 'label', labelColor: color,
       })
       catalog.addSources(marks.map((m, i) => A.source(m.ra, m.dec, {
-        label: `◎ ${MARK_LETTERS[i]}`, obs_id: m.obs_id, date: m.date, 'σ (″)': m.sigma_arcsec.toFixed(1),
+        label: `◎ ${m.label ?? MARK_LETTERS[i]}`, obs_id: m.obs_id, date: m.date, 'σ (″)': m.sigma_arcsec.toFixed(1),
       })))
       aladin.addCatalog(catalog)
     })

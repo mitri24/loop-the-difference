@@ -47,6 +47,7 @@ export function readEmbed(search: string): boolean {
 // A candidate mark in a link: the frame it was set in and its position. The detection it snapped to is found again
 // from the position when the link opens.
 export interface LinkMark {
+  object?: number
   obs_id: string
   ra: number
   dec: number
@@ -54,7 +55,15 @@ export interface LinkMark {
 const MAX_LINK_MARKS = 2
 
 export function readMarks(search: string): LinkMark[] {
-  return new URLSearchParams(search).getAll('mark').flatMap((raw) => {
+  const params = new URLSearchParams(search)
+  const grouped = params.getAll('objectmark')
+  if (grouped.length) return grouped.flatMap((raw) => {
+    const colon = raw.indexOf(':')
+    const object = Number(raw.slice(0, colon))
+    if (!Number.isSafeInteger(object) || object < 0) return []
+    return readMarks(`?mark=${encodeURIComponent(raw.slice(colon + 1))}`).map((mark) => ({ ...mark, object }))
+  })
+  return params.getAll('mark').flatMap((raw) => {
     const at = raw.lastIndexOf(':')
     const obs_id = raw.slice(0, Math.max(at, 0)).trim()
     const [ra, dec, extra] = raw.slice(at + 1).split(',').map((part) => (part.trim() === '' ? Number.NaN : Number(part)))
@@ -87,6 +96,9 @@ export function toSearch(query: TargetQuery, embed = false, marks: LinkMark[] = 
   if (query.name) params.set('name', query.name)
   if (embed) params.set('embed', '1')
   for (const mark of marks.slice(0, MAX_LINK_MARKS)) params.append('mark', `${mark.obs_id}:${mark.ra.toFixed(6)},${mark.dec.toFixed(6)}`)
+  if (marks.some((mark) => mark.object != null)) for (const mark of marks) {
+    params.append('objectmark', `${mark.object ?? 0}:${mark.obs_id}:${mark.ra.toFixed(6)},${mark.dec.toFixed(6)}`)
+  }
   if (pair) {
     params.set('a', pair.a)
     params.set('b', pair.b)
