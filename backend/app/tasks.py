@@ -28,6 +28,7 @@ from app.frames import (
     comparable_wavelengths,
     cutout_url,
     delta_lambda_pct,
+    failure_reason,
     fetch_cutout,
     read_image,
     render_diff,
@@ -435,13 +436,14 @@ def download_cutouts(
             obs, url = futures[future]
             try:
                 downloaded.append((obs, url, future.result()))
-            except httpx.HTTPError:
+            except httpx.HTTPError as exc:
                 checks.append(
                     Check(
                         code="CUTOUT_MISSING",
                         severity="warning",
                         message="Archive did not deliver a cutout",
-                        detail=f"{obs.obs_id}: archive did not deliver the cutout, frame skipped "
+                        detail=f"{obs.obs_id}: archive did not deliver the cutout "
+                        f"({failure_reason(exc, settings.http_timeout_s)}), frame skipped "
                         "(requesting the same view again retries it)",
                         affects=[f"obs:{obs.obs_id}"],
                     )

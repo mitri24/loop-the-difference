@@ -1,3 +1,4 @@
+import httpx
 import numpy as np
 import pytest
 from PIL import Image
@@ -368,3 +369,20 @@ def test_preview_is_published_before_slow_cutout(monkeypatch, settings, tmp_path
     assert [f["obs_id"] for f in final["frames"]] == [o.obs_id for o in observations]
     assert all("preview_" not in f["url"] for f in final["frames"])
     assert "PREVIEW" not in [c["code"] for c in final["checks"]]
+
+
+def test_missing_cutout_says_why_the_archive_did_not_deliver(monkeypatch, settings):
+    def fetch(client, url, directory):
+        raise httpx.ReadTimeout("slow")
+
+    monkeypatch.setattr(tasks, "fetch_cutout", fetch)
+    observation = _observation(61000)
+
+    downloaded, checks = tasks.download_cutouts([observation], [observation.access_url], settings)
+
+    assert downloaded == []
+    assert [c.code for c in checks] == ["CUTOUT_MISSING"]
+    assert f"no answer within {settings.http_timeout_s:g} s, after 5 attempts" in checks[0].detail
+    assert checks[0].detail.startswith(
+        f"{observation.obs_id}: archive did not deliver the cutout ("
+    )
