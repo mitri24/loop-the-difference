@@ -236,7 +236,8 @@ def build_spectrum(ra: float, dec: float, collections: list[str] | None = None) 
     selected = select_frames(observations, MAX_SPECTRUM_POINTS)
     # A star with a known Gaia proper motion is measured where it stands on each visit's date.
     try:
-        star, gaia_down = find_proper_motion(ra, dec, strict=True), False
+        star = find_proper_motion(ra, dec, strict=True, cache_dir=settings.cache_dir)
+        gaia_down = False
     except httpx.HTTPError:
         star, gaia_down = None, True
     position = {o.obs_id: position_at(star, o.mjd) if star else (ra, dec) for o in selected}

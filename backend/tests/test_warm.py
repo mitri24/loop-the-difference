@@ -4,6 +4,7 @@ import pytest
 
 from app import warm
 from app.archive import sia_cache_path
+from app.catalogs import gaia_cache_path
 from app.coords import parse_dec, parse_ra
 from app.jobs import job_id_for
 from app.models import Frame, FrameManifest
@@ -134,10 +135,27 @@ def test_complete_cached_manifest_is_skipped_unless_forced(settings, capsys):
     )
     sia.parent.mkdir()
     sia.write_bytes(b"<stale/>")
+    gaia = gaia_cache_path(settings.cache_dir, parse_ra("02:31:49.09"), parse_dec("+89:15:50.8"))
+    gaia.parent.mkdir()
+    gaia.write_text("stale")
 
-    warm.run(["--targets", "polaris", "--force"], settings, resolver=_fail_resolver, build=build)
+    def spectrum(ra, dec, collections):
+        # Like build_spectrum: asks Gaia (here: writes the fresh answer) once per target.
+        assert not gaia.exists()
+        gaia.write_text("fresh")
+        return {"points": [], "checks": [], "complete": True}
+
+    warm.run(
+        ["--targets", "polaris", "--force"],
+        settings,
+        resolver=_fail_resolver,
+        build=build,
+        spectrum=spectrum,
+    )
     assert calls == [1, 6, 1]
     assert not sia.exists()
+    # Two detectors, one spectrum: the refreshed Gaia answer survives the second detector.
+    assert gaia.read_text() == "fresh"
 
 
 def test_incomplete_manifest_fails_the_run(settings, capsys):
