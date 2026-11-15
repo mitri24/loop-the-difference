@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { POLARIS, readEmbed, readMarks, readPair, readQuery, toSearch } from './url'
+import { addressFor, POLARIS, readEmbed, readMarks, readPair, readQuery, toSearch } from './url'
 
 describe('target in the URL', () => {
   it('needs both coordinates', () => {
@@ -140,4 +140,17 @@ it('preserves the requested comparison link, its marked position and selected A/
   const restored = toSearch(query, false, marks, pair)
   expect(readMarks(restored)).toEqual(marks)
   expect(readPair(restored)).toEqual(pair)
+})
+
+describe('addressFor', () => {
+  it('keeps the bare address for the untouched default view', () => {
+    expect(addressFor(POLARIS, null)).toBe('')
+  })
+  it('writes the parameters once something is chosen or the link had them', () => {
+    expect(addressFor({ ...POLARIS, band: 3 }, null)).toContain('band=3')
+    expect(addressFor({ ...POLARIS, name: 'Polaris' }, null)).toContain('name=Polaris')
+    expect(addressFor(POLARIS, POLARIS)).toContain('ra=') // a link to Polaris itself is never stripped
+    expect(addressFor(POLARIS, null, false, [], { a: 'x', b: 'y' })).toContain('a=x')
+    expect(addressFor(POLARIS, null, true)).toContain('embed=1')
+  })
 })

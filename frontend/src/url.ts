@@ -86,6 +86,17 @@ export function readPair(search: string): LinkPair | null {
   return a && b && a !== b ? { a, b } : null
 }
 
+/**
+ * The address for the view: bare (only the path) while nothing was chosen – the untouched default view
+ * opened without parameters, no marks, no A/B pair – otherwise the full shareable search.
+ */
+export function addressFor(query: TargetQuery, opened: TargetQuery | null, embed = false, marks: LinkMark[] = [],
+  pair: LinkPair | null = null): string {
+  const untouched = !opened && !embed && marks.length === 0 && !pair
+    && (Object.keys(POLARIS) as (keyof TargetQuery)[]).every((key) => query[key] === POLARIS[key]) && !query.name
+  return untouched ? '' : toSearch(query, embed, marks, pair)
+}
+
 export function toSearch(query: TargetQuery, embed = false, marks: LinkMark[] = [], pair: LinkPair | null = null): string {
   const params = new URLSearchParams({
     ra: query.ra,
