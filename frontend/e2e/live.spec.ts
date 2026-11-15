@@ -45,8 +45,8 @@ test.describe('Live services (no mocked API responses)', () => {
     await expect(page.getByRole('button', { name: 'Pause', exact: true })).toBeVisible()
     await page.getByRole('button', { name: 'Pause', exact: true }).click()
     await page.getByRole('button', { name: 'Next frame', exact: true }).click()
-    // The shown frame's provenance stands in the Frame tab of the inspector (behind All details).
-    await expect(page.locator('#inspect-panel-frame .frame-details a').first()).toHaveAttribute('href', /https:\/\//)
+    // A's and B's provenance stands in the table beside the image.
+    await expect(page.locator('.pair-table a').first()).toHaveAttribute('href', /https:\/\//)
     await page.getByTestId('inspect-data').click()
     await expect(page.locator('#inspect-panel-data')).toContainText('spherex_dr1')
     await page.screenshot({ path: info.outputPath('live-data-desktop.png') })
