@@ -91,8 +91,15 @@ export function PairTable({ frames, pair, index, letter, grid, motion, predictio
   const sources = (f: Frame) => {
     if (!f.sources) return <span className="muted">not yet</span>
     const counts = countSources(f.sources)
-    return <>{counts.detected} found{counts.none > 0 && <> · <strong>{counts.none}</strong> without catalogue match</>}</>
+    return <>{counts.detected}{counts.none > 0 && <> · <strong>{counts.none}</strong> unmatched</>}</>
   }
+  // One row each where two belong together: what the image is and how long it was exposed; how much of it is usable.
+  const image = (f: Frame) => <>{f.n_combined > 1 ? `stack of ${f.n_combined}` : 'single exposure'}
+    {f.exposure_s != null && <span className="muted"> · {exposure(f)}</span>}</>
+  const quality = (f: Frame) => <>{Math.round(f.coverage * 100)} %
+    <span className="muted"> · {f.masked_fraction == null ? 'masked n/a' : `${(f.masked_fraction * 100).toFixed(1)} % masked`}</span></>
+  const release = (f: Frame) => <>{frameRelease(f, grid.collection).replace(/^SPHEREx /, '')}
+    {f.release_date && <span className="muted"> · {f.release_date.slice(0, 10)}</span>}</>
   const gaia = (f: Frame) => (motion && markerPosition(motion, f.mjd, grid.ra, grid.dec, grid.size_deg) ? '○ in the image' : 'outside the image')
   const track = (f: Frame) => {
     const p = predictions.find((item) => item.mjd === f.mjd)
@@ -144,43 +151,45 @@ export function PairTable({ frames, pair, index, letter, grid, motion, predictio
             <th scope="col">{head('b')}</th>
           </tr>
         </thead>
+        {/* What a comparison needs, at a glance; everything else the archive says is one click below. */}
         <tbody>
           {row('Observed', (f) => <>{utcSecond(f.date)}{f.date_end && <> → {utcMinute(f.date_end)}</>}</>)}
-          {row('Time span', timeSpan, 'Start of the first exposure to the end of the last (t_min, t_max)')}
           {row('Wavelength', (f) => <>λ {lambda(f)}</>, 'Centre wavelength at the target ± half the bandwidth')}
-          {row('Resolving power', (f) => ifKnown(f.resolving_power, (r) => `${Number(r.toFixed(1))}`), 'λ/Δλ as the archive lists it (em_res_power)')}
-          {row('Image', (f) => (f.n_combined > 1 ? `stack of ${f.n_combined} exposures` : 'single exposure'))}
-          {row('Exposure', exposure, 'Exposure time (t_exptime); a stack adds up its exposures')}
-          {row('Spatial resolution', (f) => ifKnown(f.spatial_resolution_arcsec, (s) => `${Number(s.toFixed(3))}″`),
-            'Angular resolution as the archive lists it (s_resolution)')}
-          {row('Coverage', (f) => `${Math.round(f.coverage * 100)} %`, 'Share of the field with data')}
-          {row('Masked', (f) => (f.masked_fraction == null ? <span className="muted">not reported</span> : `${(f.masked_fraction * 100).toFixed(1)} %`),
-            'Pixels flagged as unusable (saturation, cosmic rays, …)')}
-          {row('Sources', sources, 'Detected at ≥ 5σ and matched with Gaia DR3 and AllWISE')}
-          {row('Release', (f) => frameRelease(f, grid.collection))}
-          {row('Released', (f) => ifKnown(f.release_date, (date) => date.slice(0, 10)),
-            'When IRSA made the image public (obs_release_date); a stack: its last exposure')}
-          {row('Calibration level', calibration, 'ObsCore calib_level: 0 raw … 2 calibrated, science-ready … 4 analysis product')}
-          {row('Instrument', instrument, 'Facility and instrument as the archive lists them')}
-          {row('Epoch · MJD', (f) => `${f.epoch + 1} · ${f.mjd.toFixed(5)}`)}
+          {row('Image', image, 'Single exposure or a stack of exposures, with its exposure time (t_exptime)')}
+          {row('Quality', quality, 'Share of the field with data · pixels flagged as unusable (saturation, cosmic rays, …)')}
+          {row('Sources', sources, 'Detected at ≥ 5σ · how many have no Gaia DR3 or AllWISE match (they need verification)')}
           {motion && row('Gaia DR3', gaia, `Predicted position of ${motion.source_id} · µ ${motion.pmra_mas_yr.toFixed(0)}, ${motion.pmdec_mas_yr.toFixed(0)} mas/yr`)}
           {predictions.length > 0 && row('Track', track, 'Where the possible track from your marks puts the object')}
-          {row('Data', (f) => <><a href={f.source_url} target="_blank" rel="noreferrer">{f.obs_id}</a>
-            {f.cloud_url && <> · <a href={f.cloud_url} target="_blank" rel="noreferrer">Level-2 file</a></>}</>)}
-          {row('Archive ID', (f) => ifKnown(f.publisher_did, (id) => <code className="pair-id">{id}</code>),
-            'IVOA publisher ID (obs_publisher_did), a click selects it for copying; a stack names its first exposure, like Data')}
+          {row('Data', (f) => <a href={f.source_url} target="_blank" rel="noreferrer">{f.obs_id}</a>, 'The observation at IRSA')}
         </tbody>
       </table>
       <p className={`pair-verdict ${verdict.tone}`}>
         <strong>Δt {baselineText(days)}</strong> · Δλ {wavelength.pct == null ? '–' : `${wavelength.pct.toFixed(2)} %`}: {verdict.text}
         {releases[0] !== releases[1] && <> · releases differ, so calibration can too</>}
       </p>
-      <p className="pair-field muted">
-        Field RA {grid.ra.toFixed(5)}° · Dec {grid.dec.toFixed(5)}° · {Number(grid.size_deg.toFixed(4))}°
-        {grid.pixel_scale_arcsec != null && ` · ${grid.pixel_scale_arcsec}″/px`}
-      </p>
-      <details className="disclosure">
-        <summary>Where the shown frame sits in wavelength</summary>
+      <details className="disclosure pair-more">
+        <summary>All metadata</summary>
+        <table className="pair-table">
+          <thead className="sr-only"><tr><td /><th scope="col">A</th><th scope="col">B</th></tr></thead>
+          <tbody>
+            {row('Time span', timeSpan, 'Start of the first exposure to the end of the last (t_min, t_max)')}
+            {row('Resolving power', (f) => ifKnown(f.resolving_power, (r) => `${Number(r.toFixed(1))}`), 'λ/Δλ as the archive lists it (em_res_power)')}
+            {row('Spatial resolution', (f) => ifKnown(f.spatial_resolution_arcsec, (v) => `${Number(v.toFixed(3))}″`),
+              'Angular resolution as the archive lists it (s_resolution)')}
+            {row('Release', release, 'The data release and when IRSA made the image public (obs_release_date); a stack: its last exposure')}
+            {row('Calibration', calibration, 'ObsCore calib_level: 0 raw … 2 calibrated, science-ready … 4 analysis product')}
+            {row('Instrument', instrument, 'Facility and instrument as the archive lists them')}
+            {row('Epoch · MJD', (f) => `${f.epoch + 1} · ${f.mjd.toFixed(5)}`)}
+            {row('Level-2 file', (f) => (f.cloud_url ? <a href={f.cloud_url} target="_blank" rel="noreferrer">AWS S3</a> : MISSING),
+              'The whole Level-2 image on AWS S3')}
+            {row('Archive ID', (f) => ifKnown(f.publisher_did, (id) => <code className="pair-id">{id}</code>),
+              'IVOA publisher ID (obs_publisher_did), a click selects it for copying; a stack names its first exposure, like Data')}
+          </tbody>
+        </table>
+        <p className="pair-field muted">
+          Field RA {grid.ra.toFixed(5)}° · Dec {grid.dec.toFixed(5)}° · {Number(grid.size_deg.toFixed(4))}°
+          {grid.pixel_scale_arcsec != null && ` · ${grid.pixel_scale_arcsec}″/px`}
+        </p>
         <WavelengthStrip detector={shown.detector} frame={shown} />
       </details>
     </section>
