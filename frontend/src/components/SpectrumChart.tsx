@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import { createSpectrum, getSpectrumJob } from '../api'
 import type { Check, SpectrumJob, SpectrumPoint } from '../types'
 import { BrightnessChart } from './BrightnessChart'
-import { ChartFrame, HIT_RADIUS, LegendItem, Marker, niceTicks, shapeOf, SHAPE_GLYPHS, tipHandlers } from './Chart'
+import { ChartFrame, HIT_RADIUS, LegendItem, Marker, NearestLayer, niceTicks, shapeOf, SHAPE_GLYPHS, tickLabel, tipHandlers } from './Chart'
 
 // Drawn at the measured panel width (ChartFrame); the height stays fixed.
 const H = 200
@@ -211,7 +211,8 @@ export function Plot({ points }: { points: SpectrumPoint[] }) {
             </td>
             <td>{p.date.slice(0, 10)}</td>
             <td>{p.epoch + 1}</td>
-            <td><a href={p.source_url} target="_blank" rel="noreferrer">{p.obs_id}</a></td>
+            {/* Plain text: the chart's points are the links; a link here would be an invisible tab stop. */}
+            <td>{p.obs_id}</td>
           </tr>
         ))}
       </tbody>
@@ -231,7 +232,7 @@ export function Plot({ points }: { points: SpectrumPoint[] }) {
                 <g key={`y${t}`}>
                   <line className="viz-grid" x1={M.left} x2={W - M.right} y1={y(t)} y2={y(t)} />
                   <text className="viz-tick" x={M.left - 6} y={y(t) + 4} textAnchor="end">
-                    {fluxTick(t, yTicks.decimals)}
+                    {tickLabel(t, yTicks)}
                   </text>
                 </g>
               ))}
@@ -248,6 +249,10 @@ export function Plot({ points }: { points: SpectrumPoint[] }) {
                 Flux (µJy)
               </text>
             </g>
+            <NearestLayer tip={tip} x={M.left - HIT_RADIUS} y={M.top - HIT_RADIUS} width={W - M.left - M.right + 2 * HIT_RADIUS}
+              height={H - M.top - M.bottom + 2 * HIT_RADIUS}
+              points={points.map((p) => ({ x: x(p.wavelength_um), y: y(p.flux_ujy), href: p.source_url,
+                lines: pointLines(p, offScale(toY(p.flux_ujy)) !== null) }))} />
             {points.map((p) => {
               const px = x(p.wavelength_um)
               const side = offScale(toY(p.flux_ujy))
@@ -264,7 +269,6 @@ export function Plot({ points }: { points: SpectrumPoint[] }) {
                   ) : (
                     <Marker shape={shapeOf(p.epoch)} x={px} y={toY(p.flux_ujy)} colour={bandColour(p.detector)} hollow={p.flagged} />
                   )}
-                  <circle className="viz-hit" cx={px} cy={y(p.flux_ujy)} r={HIT_RADIUS} />
                 </a>
               )
             })}

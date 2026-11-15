@@ -73,8 +73,10 @@
    note below (--reserve) and the bar; the viewer body is the size container. */
 .viewer .player {
   --rail:64px; --gap:var(--space-3); --bar:44px; --reserve:80px;
-  --side:clamp(220px, 30cqw, 340px); --pair:136px;
-  --img:clamp(160px, min(100cqw - var(--rail) - var(--side) - 2 * var(--gap), 100cqh - var(--reserve) - var(--bar) - 2 * var(--gap)), 1100px);
+  --side-min:clamp(220px, 30cqw, 340px); --pair:136px;
+  --img:clamp(160px, min(100cqw - var(--rail) - var(--side-min) - 2 * var(--gap), 100cqh - var(--reserve) - var(--bar) - 2 * var(--gap)), 1100px);
+  /* When the height limits the image, the side column takes the width left over (fewer wrapped lines). */
+  --side:min(420px, max(var(--side-min), 100cqw - var(--rail) - var(--img) - 2 * var(--gap)));
   display:grid; grid-template-columns:var(--rail) var(--img) var(--side); grid-template-rows:var(--img) auto auto;
   grid-template-areas:'rail view side' 'bar bar side' 'note note side'; gap:var(--gap); justify-content:center; align-items:start;
 }
@@ -87,18 +89,23 @@
 }
 /* After the rule above, and as specific: the difference view has no thumbnails and no bar rows. */
 .viewer .player.diff-player {
-  --img:clamp(160px, min(100cqw - var(--side) - var(--gap), 100cqh - var(--reserve)), 1100px);
+  --img:clamp(160px, min(100cqw - var(--side-min) - var(--gap), 100cqh - var(--reserve)), 1100px);
+  --side:min(420px, max(var(--side-min), 100cqw - var(--img) - var(--gap)));
   grid-template-columns:var(--img) var(--side); grid-template-rows:auto; grid-template-areas:'view side';
 }
 .viewer .player > .observation-gallery { grid-area:rail; position:relative; width:var(--rail); height:var(--img); margin:0; overflow:hidden; }
+.viewer .observation-strip { position:absolute; inset:0; flex-direction:column; overflow-x:hidden; overflow-y:auto; }
+.viewer .observation-card { flex:none; width:100%; }
 .viewer .player > .viewport,.viewer .player > .diff-blocker { grid-area:view; width:var(--img); }
 .viewer .player > .controls { grid-area:bar; min-width:0; }
 .viewer .player > .notice { grid-area:note; }
 .viewer .player > .player-side { grid-area:side; align-self:stretch; min-height:0; max-height:calc(var(--img) + var(--bar) + var(--gap)); overflow-y:auto; overscroll-behavior:contain; scrollbar-width:thin; }
 .viewer .diff-player > .player-side { max-height:var(--img); }
+/* The blocker message is a .notice too: it takes the image's place, not the bar's note row. */
+.viewer .player.diff-player > .diff-blocker { grid-area:view; }
 /* Narrow viewers (a wide panel open, phones): image, bar and the A/B pair stay in view; the shown-frame
    details follow below them (scrolling allowed there). */
-@container (max-width:479px) {
+@container (max-width:499px) {
   .viewer .player {
     /* The pair stays in view when that leaves the image at least 280 px; on phones the image wins. */
     --img:max(160px, min(100cqw - var(--rail) - var(--gap), max(280px, 100cqh - var(--reserve) - var(--bar) - var(--pair) - 4 * var(--gap)), 1100px));

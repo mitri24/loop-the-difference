@@ -525,7 +525,7 @@ test('fixture: vertical thumbnails select the large image and its own metadata',
     await expect(metadata).toContainText('2026-01-12')
     await expect(metadata).toContainText('96 %')
     await gallery.getByRole('button',{name:/^Show observation 11,/}).click()
-    await metadata.getByRole('button',{name:'Use observation 11 as A',exact:true}).click()
+    await metadata.getByRole('button',{name:'Set A',exact:true}).click()
     await expect(page.getByRole('combobox',{name:'Frame A'})).toHaveValue('10')
     const last=gallery.getByRole('button',{name:/^Show observation 12,/})
     await last.focus()

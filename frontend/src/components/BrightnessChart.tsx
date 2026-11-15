@@ -1,7 +1,7 @@
 import { isoDate } from '../catalogLayers'
 import { dateDomain, timeTicks } from '../timeAxis'
 import type { SpectrumPoint } from '../types'
-import { ChartFrame, HIT_RADIUS, LegendItem, Marker, niceTicks, tipHandlers } from './Chart'
+import { ChartFrame, HIT_RADIUS, LegendItem, Marker, NearestLayer, niceTicks, tickLabel, tipHandlers } from './Chart'
 import { bandColour, scale } from './SpectrumChart'
 import { DETECTOR_RANGES_UM } from './WavelengthStrip'
 
@@ -95,6 +95,14 @@ export function BrightnessChart({
   return <Plot points={shown} detector={win.detector} note={note} />
 }
 
+// Value first, then when and where: the tooltip and the link's accessible name.
+const brightnessLines = (p: SpectrumPoint) => [
+  `${p.flux_ujy.toFixed(1)} ± ${p.flux_err_ujy.toFixed(1)} µJy`,
+  `${p.date.slice(0, 10)} · D${p.detector} · ${p.wavelength_um.toFixed(3)} µm`,
+  p.obs_id,
+  ...(p.flagged ? ['flagged pixels in aperture, flux unreliable'] : []),
+]
+
 // One series (one detector, one wavelength window): the title names it, so the legend only explains
 // hollow points when there are any. Colour = the detector's band colour, as in the spectrum.
 function Plot({ points, detector, note }: { points: SpectrumPoint[]; detector: number; note: React.ReactNode }) {
@@ -138,7 +146,7 @@ function Plot({ points, detector, note }: { points: SpectrumPoint[]; detector: n
               {p.flux_ujy.toFixed(1)} ± {p.flux_err_ujy.toFixed(1)}
               {p.flagged ? ' (flagged pixels in aperture)' : ''}
             </td>
-            <td><a href={p.source_url} target="_blank" rel="noreferrer">{p.obs_id}</a></td>
+            <td>{p.obs_id}</td>
           </tr>
         ))}
       </tbody>
@@ -156,7 +164,7 @@ function Plot({ points, detector, note }: { points: SpectrumPoint[]; detector: n
                 <g key={t}>
                   <line className="viz-grid" x1={M.left} x2={W - M.right} y1={y(t)} y2={y(t)} />
                   <text className="viz-tick" x={M.left - 6} y={y(t) + 4} textAnchor="end">
-                    {t.toFixed(yTicks.decimals)}
+                    {tickLabel(t, yTicks)}
                   </text>
                 </g>
               ))}
@@ -176,14 +184,12 @@ function Plot({ points, detector, note }: { points: SpectrumPoint[]; detector: n
                 Flux (µJy)
               </text>
             </g>
+            <NearestLayer tip={tip} x={M.left - HIT_RADIUS} y={M.top - HIT_RADIUS} width={W - M.left - M.right + 2 * HIT_RADIUS}
+              height={H - M.top - M.bottom + 2 * HIT_RADIUS}
+              points={points.map((p) => ({ x: x(p.mjd), y: y(p.flux_ujy), href: p.source_url, lines: brightnessLines(p) }))} />
             {points.map((p) => {
               const px = x(p.mjd)
-              const lines = [
-                `${p.flux_ujy.toFixed(1)} ± ${p.flux_err_ujy.toFixed(1)} µJy`,
-                `${p.date.slice(0, 10)} · D${p.detector} · ${p.wavelength_um.toFixed(3)} µm`,
-                p.obs_id,
-                ...(p.flagged ? ['flagged pixels in aperture, flux unreliable'] : []),
-              ]
+              const lines = brightnessLines(p)
               return (
                 // Each point links to its cutout, as in the spectrum chart.
                 <a key={`${p.obs_id}-${p.detector}`} href={p.source_url} target="_blank" rel="noreferrer"
@@ -193,7 +199,6 @@ function Plot({ points, detector, note }: { points: SpectrumPoint[]; detector: n
                       stroke={colour} />
                     <Marker shape="circle" x={px} y={y(p.flux_ujy)} colour={colour} hollow={p.flagged} />
                   </g>
-                  <circle className="viz-hit" cx={px} cy={y(p.flux_ujy)} r={HIT_RADIUS} />
                 </a>
               )
             })}

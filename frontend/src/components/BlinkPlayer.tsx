@@ -292,8 +292,9 @@ export function BlinkPlayer({
               const other = pair[which === 'a' ? 'b' : 'a']
               const name = which.toUpperCase()
               return (
-                <div key={which} className={`pair-row${index === pair[which] ? ' current' : ''}`}>
-                  <button type="button" className="pair-letter" aria-pressed={index === pair[which]}
+                <div key={which} className={`pair-row${letter === name ? ' current' : ''}`}>
+                  {/* Pressed only while the image shows this letter (A↔B mode), like the stamp. */}
+                  <button type="button" className="pair-letter" aria-pressed={letter === name}
                     onClick={() => showLetter(which)} aria-label={`Show frame ${name}`}>
                     {name}
                   </button>
@@ -309,9 +310,11 @@ export function BlinkPlayer({
                       </optgroup>
                     ))}
                   </select>
+                  {/* The date names the frame (the list groups by epoch); λ and, when A and B differ, the release say
+                      whether the pair is comparable. The shown frame's details below spell everything out. */}
                   <span className="pair-detail">
-                    epoch {f.epoch + 1} · {lambdaText(f)}
-                    {mixedReleases && ` · ${frameRelease(f, grid.collection)}`}
+                    {lambdaText(f)}
+                    {mixedReleases && ` · ${f.release ?? frameRelease(f, grid.collection)}`}
                   </span>
                 </div>
               )
@@ -324,12 +327,13 @@ export function BlinkPlayer({
             <h3>Shown frame{letter && <span className="frame-letter"> · {letter}</span>}</h3>
             {pair && (
               <div className="gallery-pair-actions">
+                {/* The visible words are the name (label in name); pressed = this frame already is A or B. */}
                 {LETTERS.map((which) => (
                   <button key={which} type="button"
                     disabled={pair[which === 'a' ? 'b' : 'a'] === index} aria-pressed={pair[which] === index}
-                    aria-label={`Use observation ${index + 1} as ${which.toUpperCase()}`}
+                    title={`Use observation ${index + 1} as ${which.toUpperCase()}`}
                     onClick={() => { choose(which, index); setMode('ab') }}>
-                    {pair[which] === index ? `${which.toUpperCase()} ✓` : `Set ${which.toUpperCase()}`}
+                    Set {which.toUpperCase()}
                   </button>
                 ))}
               </div>

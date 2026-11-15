@@ -1,7 +1,7 @@
 import { isoDate } from '../catalogLayers'
 import { dateDomain, groupEpochs, isoToMjd, timeTicks, type EpochSpan } from '../timeAxis'
 import type { Frame, Observation } from '../types'
-import { ChartFrame, LegendItem, tipHandlers } from './Chart'
+import { ChartFrame, HIT_RADIUS, LegendItem, NearestLayer, tipHandlers } from './Chart'
 import { bandColour, scale } from './SpectrumChart'
 
 const DETECTORS = [1, 2, 3, 4, 5, 6]
@@ -181,13 +181,9 @@ export function ObservationTimeline({
                 <circle key={`${o.obs_id}-${o.detector}`} cx={x(o.mjd)} cy={rowY(o.detector)} r={3} />
               ))}
             </g>
-            {/* Hover targets larger than the dots; the table carries the same data for keyboards. */}
-            <g className="viz-hits">
-              {observations.map((o) => (
-                <circle key={`${o.obs_id}-${o.detector}`} className="viz-hit" cx={x(o.mjd)} cy={rowY(o.detector)} r={8}
-                  {...tipHandlers(tip, x(o.mjd), rowY(o.detector), [`${o.date.slice(0, 10)} · D${o.detector}`, o.obs_id])} />
-              ))}
-            </g>
+            {/* The nearest observation within 24 px answers the pointer; the table carries the same data for keyboards. */}
+            <NearestLayer tip={tip} x={M.left - HIT_RADIUS} y={M.top} width={W - M.left - M.right + 2 * HIT_RADIUS} height={bottom - M.top}
+              points={observations.map((o) => ({ x: x(o.mjd), y: rowY(o.detector), lines: [`${o.date.slice(0, 10)} · D${o.detector}`, o.obs_id] }))} />
             {current && (
               <g className="viz-current">
                 <line x1={x(current.mjd)} x2={x(current.mjd)} y1={M.top - 4} y2={bottom} />

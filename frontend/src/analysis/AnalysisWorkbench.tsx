@@ -176,7 +176,7 @@ export function AnalysisWorkbench({ target, detector, fovDegrees, view, sky, onS
         onStart={n => void spectrum.start(() => api.startSpectrum(target, n))} /><EvidencePanel groups={[groups[3]]} /></>}
       {view === 'evidence' && <EvidencePanel groups={groups} />}
     </>}
-    {/* Only these two views use their own aligned sequence; elsewhere the menu's science note covers it. */}
-    {(view === 'blink' || view === 'difference') && <p className="small muted">Changes and residuals need verification. These calculations complement the main comparison; they use their own aligned sequence.</p>}
+    {/* Where the analysis compares visits (blink, difference, spectrum) it says so; Evidence has the menu's own note. */}
+    {(view === 'blink' || view === 'difference' || view === 'spectrum') && <p className="small muted">Changes and residuals need verification. These calculations complement the main comparison; they use their own aligned sequence.</p>}
   </div>
 }
