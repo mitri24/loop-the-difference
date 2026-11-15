@@ -54,10 +54,12 @@ describe('SpectrumChart', () => {
       <Plot points={[point(0, 2.0, 5, 1), { ...point(1, 2.1, 6, 1), detector: 3 }]} />,
     )
 
-    expect(html.match(/<circle/g)).toHaveLength(1)
-    expect(html).toContain('stroke="var(--band-d3)"')
-    expect(html).toContain('D3')
-    expect(html).toContain('■ Epoch 2')
+    // Marks only (legend swatches and hover targets have their own classes): epoch 1 a circle, epoch 2 a square.
+    expect(html.match(/<circle class="viz-mark"/g)).toHaveLength(1)
+    expect(html.match(/<rect class="viz-mark"/g)).toHaveLength(1)
+    expect(html).toContain('fill="var(--band-d3)"')
+    expect(html).toContain('D3</li>')
+    expect(html).toContain('Epoch 2 (')
   })
 
   it('draws a single point with one tick per axis and links it to its cutout', () => {
@@ -97,7 +99,7 @@ describe('SpectrumChart', () => {
   it('draws the same exposure on two detectors as two points', () => {
     const twice = [point(0, 2.0, 5, 1), { ...point(0, 2.0, 5, 1), detector: 6, wavelength_um: 4.4 }]
 
-    expect(renderToStaticMarkup(<Plot points={twice} />).match(/<circle/g)).toHaveLength(2)
+    expect(renderToStaticMarkup(<Plot points={twice} />).match(/<circle class="viz-mark"/g)).toHaveLength(2)
   })
 
   it('draws a point with flagged aperture pixels hollow and says so', () => {
@@ -105,20 +107,21 @@ describe('SpectrumChart', () => {
       <Plot points={[point(0, 2.0, 5, 1), { ...point(0, 3.0, 5, 1), flagged: true }]} />,
     )
 
-    expect(html.match(/fill="var\(--bg\)"/g)).toHaveLength(1)
+    // Hollow = the chart surface inside, the band colour as outline.
+    expect(html.match(/class="viz-mark"[^>]*fill="var\(--surface-1\)"/g)).toHaveLength(1)
     expect(html).toContain('flagged pixels in aperture, flux unreliable')
-    expect(html).toContain('○ flagged pixels in aperture')
+    expect(html).toContain('flagged pixels in aperture</li>')
   })
 
   it('draws a point beyond the flux axis as an arrow on the edge and explains it', () => {
     const saturated = { ...point(0, 3.0, 125000, 10), flagged: true }
     const html = renderToStaticMarkup(<Plot points={[point(0, 2.0, 5, 1), saturated]} />)
 
-    expect(html.match(/<circle/g)).toHaveLength(1)
-    expect(html.match(/<path d="M[^"]+" fill="var\(--bg\)"/g)).toHaveLength(1)
+    expect(html.match(/<circle class="viz-mark"/g)).toHaveLength(1)
+    expect(html.match(/<path class="viz-mark" d="M[^"]+"[^>]*fill="var\(--surface-1\)"/g)).toHaveLength(1)
     expect(html).toContain('125000.0 ± 10.0 µJy')
     expect(html).toContain('beyond the flux axis · open the cutout')
-    expect(html).toContain('▲▼ beyond the flux axis, value and epoch in the tooltip')
+    expect(html).toContain('beyond the flux axis (value in the tooltip)')
   })
 
   it('tells above from below the axes', () => {
@@ -132,6 +135,6 @@ describe('SpectrumChart', () => {
   })
 
   it('shows no arrow legend when every point fits', () => {
-    expect(renderToStaticMarkup(<Plot points={[point(0, 2.0, 5, 1)]} />)).not.toContain('▲▼')
+    expect(renderToStaticMarkup(<Plot points={[point(0, 2.0, 5, 1)]} />)).not.toContain('beyond the flux axis')
   })
 })

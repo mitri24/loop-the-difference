@@ -70,7 +70,7 @@ describe('ObservationTimeline', () => {
     expect(html.match(/class="viz-frame shown"/g)).toHaveLength(1)
     expect(html).toContain('class="viz-row selected"')
     expect(html).toContain('Shown: 2025-05-01, D3, c')
-    expect(html).toContain('◉</span> shown frame (2025-11-11)')
+    expect(html).toContain('shown frame (2025-11-11)</li>')
   })
 
   it('has a table fallback with the visits per epoch', () => {

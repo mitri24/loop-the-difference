@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { defaultBlinkPair, lambdaText, letterOf, nextIndex, releaseLabel, stampText } from './blink'
+import { defaultBlinkPair, frameRelease, lambdaText, letterOf, nextIndex, releaseLabel, stampText } from './blink'
 import type { Frame } from './types'
 
 const frame = (epoch: number, date = '2026-03-10T12:00:00Z'): Frame => ({
@@ -50,5 +50,10 @@ describe('blink helpers', () => {
     expect(lambdaText({ ...frame(0), wavelength_um: 1.652, bandwidth_um: 0.04 })).toBe('λ 1.65 ± 0.02 µm')
     expect(releaseLabel('spherex_dr1')).toBe('SPHEREx DR1 (spherex_dr1)')
     expect(releaseLabel('TEST_FIXTURE')).toBe('TEST_FIXTURE')
+    // A search over several releases lists them instead of the raw comma-joined collection names.
+    expect(releaseLabel('spherex_dr1,spherex_dr1_deep,spherex_qr3,spherex_qr3_deep')).toBe('SPHEREx DR1 · DR1 deep · QR3 · QR3 deep')
+    expect(releaseLabel('spherex_dr1,TEST')).toBe('spherex_dr1,TEST')
+    expect(frameRelease({ release: 'QR3' }, 'spherex_dr1,spherex_qr3')).toBe('SPHEREx QR3')
+    expect(frameRelease({}, 'spherex_dr1')).toBe('SPHEREx DR1 (spherex_dr1)')
   })
 })

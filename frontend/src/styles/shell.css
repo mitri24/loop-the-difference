@@ -68,16 +68,45 @@
 .viewer-head .mode-switch { flex:1 1 280px; max-width:420px; flex-direction:row; align-items:center; }
 .back-button { background:transparent; }
 .viewer-body { flex:1; min-height:0; overflow-y:auto; overscroll-behavior:contain; padding:var(--space-3); display:flex; flex-direction:column; gap:var(--space-3); container-type:size; scrollbar-width:thin; }
-.viewer .player { display:grid; grid-template-columns:minmax(0,1fr); gap:var(--space-2); }
-.viewer .player .blink-mode { order:-1; display:flex; gap:var(--space-1); }
-.viewer .viewport { width:clamp(160px, min(100cqw, 100cqh - 120px), 1100px); justify-self:center; }
-.viewer .controls .speed { width:auto; }
-/* Keep one visual axis when switching between A/B and all observations. */
-.viewer .player > .blink-mode,
-.viewer .player > .controls { justify-content:center; }
-.viewer .player > .blink-pair,
-.viewer .player > .meta { width:min(100%, 680px); justify-self:center; }
-.viewer .player > .observation-gallery { width:100%; }
+/* One screen, no page scrolling: thumbnails | image | side column (A/B pair, shown frame), the transport
+   bar under the image. --img is the largest square that leaves room for the status line above, the science
+   note below (--reserve) and the bar; the viewer body is the size container. */
+.viewer .player {
+  --rail:64px; --gap:var(--space-3); --bar:44px; --reserve:88px;
+  --side:clamp(220px, 30cqw, 340px); --pair:136px;
+  --img:clamp(160px, min(100cqw - var(--rail) - var(--side) - 2 * var(--gap), 100cqh - var(--reserve) - var(--bar) - var(--gap)), 1100px);
+  display:grid; grid-template-columns:var(--rail) var(--img) var(--side); grid-template-rows:var(--img) auto auto;
+  grid-template-areas:'rail view side' 'bar bar side' 'note note side'; gap:var(--gap); justify-content:center; align-items:start;
+}
+/* Below about 444 px of image the bar wraps into two rows: reserve them, so nothing is pushed off screen. */
+@container (max-width:769px) or (max-height:599px) {
+  .viewer .player { --bar:88px; }
+}
+.viewer .player:not(:has(> .observation-gallery)) {
+  --rail:0px; grid-template-columns:var(--img) var(--side); grid-template-areas:'view side' 'bar side' 'note side';
+}
+.viewer .diff-player {
+  --img:clamp(160px, min(100cqw - var(--side) - var(--gap), 100cqh - var(--reserve)), 1100px);
+  grid-template-columns:var(--img) var(--side); grid-template-rows:auto; grid-template-areas:'view side';
+}
+.viewer .player > .observation-gallery { grid-area:rail; position:relative; width:var(--rail); height:var(--img); margin:0; overflow:hidden; }
+.viewer .player > .viewport,.viewer .player > .diff-blocker { grid-area:view; width:var(--img); }
+.viewer .player > .controls { grid-area:bar; min-width:0; }
+.viewer .player > .notice { grid-area:note; }
+.viewer .player > .player-side { grid-area:side; align-self:stretch; min-height:0; max-height:calc(var(--img) + var(--bar) + var(--gap)); overflow-y:auto; overscroll-behavior:contain; scrollbar-width:thin; }
+.viewer .diff-player > .player-side { max-height:var(--img); }
+/* Narrow viewers (a wide panel open, phones): image, bar and the A/B pair stay in view; the shown-frame
+   details follow below them (scrolling allowed there). */
+@container (max-width:519px) {
+  .viewer .player {
+    --img:clamp(160px, min(100cqw - var(--rail) - var(--gap), 100cqh - var(--reserve) - var(--bar) - var(--pair) - 3 * var(--gap)), 1100px);
+    grid-template-columns:var(--rail) var(--img); grid-template-rows:var(--img) auto auto auto;
+    grid-template-areas:'rail view' 'bar bar' 'note note' 'side side';
+  }
+  .viewer .player:not(:has(> .observation-gallery)) { grid-template-columns:var(--img); grid-template-areas:'view' 'bar' 'note' 'side'; }
+  .viewer .diff-player { --img:clamp(160px, 100cqw, 1100px); grid-template-columns:var(--img); grid-template-areas:'view' 'side'; }
+  .viewer .player > .player-side { max-height:none; overflow:visible; }
+}
 
 /* Timeline under the viewer: height from its top edge, collapsible to its heading. */
 .bottom-bar { grid-area:bar; position:relative; z-index:var(--z-chrome); display:flex; flex-direction:column; height:var(--bar-h); min-height:0; background:var(--surface-1); border-top:1px solid var(--border); }
@@ -106,8 +135,9 @@
 .close-button { flex:none; width:40px; padding:0; background:transparent; border-color:transparent; }
 .fpanel-body { flex:1; min-height:0; overflow-y:auto; overscroll-behavior:contain; padding:var(--space-4); container-type:inline-size; scrollbar-width:thin; }
 .fpanel-body > section { display:flex; flex-direction:column; gap:var(--space-4); }
+/* Charts draw at their measured width (components/Chart.tsx); this only keeps a chart inside the panel while it re-measures. */
 .fpanel-body svg,.fpanel-body table { max-width:100%; }
-.fpanel-body svg { width:100%; height:auto; }
+.fpanel-body svg { height:auto; }
 .fpanel-actions { flex:none; display:grid; gap:var(--space-2); padding:var(--space-3) var(--space-4); border-top:1px solid var(--border); }
 .fpanel-actions .primary { justify-content:space-between; }
 @container (min-width:560px) {
@@ -181,7 +211,6 @@
 .history-summary span { display:flex; flex-direction:column; }
 .history-summary strong { font-size:var(--text-lg, 18px); color:var(--text); }
 #timeline-panel .observation-timeline { margin:0; }
-#timeline-panel .observation-timeline svg { display:block; width:100%; height:auto; max-width:520px; margin:var(--space-2) auto; }
 @media (max-width:700px) {
   .history-trigger { min-height:44px; }
   .shell:has(> .fpanel:not([hidden])) .sky-area.overview { display:none; }
@@ -193,26 +222,6 @@
   .dock button { flex:none; min-height:48px; }
 }
 
-/* Selected image, metadata, then an image-only vertical rail on the right. */
-.viewer .observation-player { display:grid; grid-template-columns:minmax(0,1fr) 88px; grid-template-areas:'mode gallery' 'view gallery' 'controls gallery' 'metadata gallery' 'pair gallery' 'note gallery'; gap:12px; align-items:start; }
-.viewer .observation-player > .viewport { grid-area:view; align-self:start; width:min(100%, max(160px, 100cqh - 150px)); justify-self:center; }
-.viewer .observation-player > .blink-mode { grid-area:mode; }
-.viewer .observation-player > .controls { grid-area:controls; min-width:0; }
-.viewer .observation-player > .blink-pair { grid-area:pair; width:100%; }
-.viewer .observation-player > .notice { grid-area:note; }
-.viewer .observation-player > .selected-observation { grid-area:metadata; min-width:0; }
-.selected-observation h3 { margin:0 0 12px; font-size:14px; }
-.viewer .selected-observation .meta { width:100%; margin:0; display:grid; grid-template-columns:minmax(0,1fr); }
-.viewer .selected-observation .meta dd { margin:0 0 10px; overflow-wrap:anywhere; }
-.viewer .observation-player > .observation-gallery { grid-area:gallery; position:sticky; top:0; min-width:0; margin:0; padding:0; width:88px; border:0; }
-.viewer .observation-gallery .observation-strip { display:flex; flex-direction:column; gap:8px; width:100%; max-height:calc(100cqh - 16px); min-height:100px; overflow-x:hidden; overflow-y:auto; padding:3px; scrollbar-width:thin; }
-.viewer .observation-gallery .observation-card { flex:none; width:100%; display:block; padding:0; border:0; background:none; }
-.viewer .observation-preview { width:100%; height:auto; aspect-ratio:1; }
-.viewer .observation-preview > span { padding:2px; font-size:10px; }
-@container (min-width:850px) {
-  .viewer .observation-player { grid-template-columns:minmax(0,1fr) 250px 88px; grid-template-areas:'mode metadata gallery' 'view metadata gallery' 'controls metadata gallery' 'pair pair gallery' 'note note gallery'; gap:16px; }
-  .viewer .selected-observation { max-height:calc(100cqh - 16px); overflow-y:auto; padding-right:8px; scrollbar-width:thin; }
-}
 /* Give the aligned image browser room for its image, metadata and right-hand rail. */
 @media (min-width:1100px) {
   .fpanel.image-browser { width:clamp(320px, var(--panel-w), calc(100vw - var(--dock-w))); }
@@ -227,19 +236,4 @@
 @media (min-width:1100px) {
   .shell:has(#blink-panel:not([hidden])) .hud { grid-column:1 / -2; grid-row:1; }
   .fpanel.image-browser { grid-column:2; grid-row:2 / -1; }
-}
-/* Compact image browser: left previews, image centre, bounded metadata on the right. */
-.viewer .observation-player { grid-template-columns:68px minmax(0,1fr); grid-template-areas:'mode mode' 'gallery view' '. controls' 'metadata metadata' 'pair pair' 'note note'; gap:10px; }
-.viewer .observation-player > .observation-gallery { position:relative; top:auto; align-self:stretch; width:68px; min-height:0; overflow:hidden; }
-.viewer .observation-gallery .observation-strip { position:absolute; inset:0; height:auto; max-height:none; min-height:0; gap:6px; }
-.viewer .observation-player > .selected-observation { max-height:240px; overflow:auto; padding-right:6px; scrollbar-width:thin; }
-.viewer .selected-observation .meta { grid-template-columns:minmax(0,100px) minmax(0,1fr); gap:6px 10px; }
-.viewer .selected-observation .meta dd { margin:0; }
-@container (min-width:850px) {
-  .viewer .observation-player { --selected-image-size:min(100cqw - 370px, max(160px, 100cqh - 190px)); grid-template-columns:68px minmax(0,1fr) 250px; grid-template-areas:'mode mode mode' 'gallery view metadata' '. controls .' 'pair pair pair' 'note note note'; gap:16px; }
-  .viewer .observation-player > .viewport { width:var(--selected-image-size); max-width:100%; }
-  .viewer .observation-player > .selected-observation { max-height:var(--selected-image-size); }
-}
-@container (min-width:850px) {
-  .viewer .observation-player { grid-template-columns:68px minmax(0,var(--selected-image-size)) minmax(0,1fr); }
 }

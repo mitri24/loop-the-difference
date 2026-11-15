@@ -47,9 +47,18 @@ export function lambdaText(frame: Frame): string {
   return `λ ${frame.wavelength_min_um.toFixed(2)}–${frame.wavelength_max_um.toFixed(2)} µm`
 }
 
+// One collection keeps its IRSA name; a search over several (DR1, QR3 and their deep fields) lists the releases.
 export function releaseLabel(collection: string): string {
-  const release = /^spherex_(\w+)$/i.exec(collection)?.[1]
-  return release ? `SPHEREx ${release.toUpperCase()} (${collection})` : collection
+  const parts = collection.split(',').map((c) => c.trim())
+  const names = parts.map((c) => /^spherex_([a-z]+\d+)(_deep)?$/i.exec(c))
+  if (names.length === 0 || names.some((m) => !m)) return collection
+  const label = names.map((m) => `${m![1].toUpperCase()}${m![2] ? ' deep' : ''}`).join(' · ')
+  return parts.length === 1 ? `SPHEREx ${label} (${collection})` : `SPHEREx ${label}`
+}
+
+// The frame's own release (NAS-71) when the manifest has it, else the searched collection(s).
+export function frameRelease(frame: Pick<Frame, 'release'>, collection: string): string {
+  return frame.release ? `SPHEREx ${frame.release}` : releaseLabel(collection)
 }
 
 export function prefersReducedMotion(): boolean {

@@ -2,18 +2,16 @@ import { useEffect, useRef, useState } from 'react'
 import { createSpectrum, getSpectrumJob } from '../api'
 import type { Check, SpectrumJob, SpectrumPoint } from '../types'
 import { BrightnessChart } from './BrightnessChart'
+import { ChartFrame, HIT_RADIUS, LegendItem, Marker, niceTicks, shapeOf, SHAPE_GLYPHS, tipHandlers } from './Chart'
 
-// Drawn at the sidebar's width, so 11px text stays 11px.
-const W = 320
+// Drawn at the measured panel width (ChartFrame); the height stays fixed.
 const H = 200
-const M = { left: 64, right: 12, top: 12, bottom: 40 }
+const M = { left: 56, right: 12, top: 12, bottom: 38 }
 const POLL_MS = 2000
 
 // Colour = detector (fixed band tokens), marker shape = epoch, as in the NAS-9 design system.
 export const bandColour = (detector: number) => `var(--band-d${detector})`
-const SHAPES = ['●', '■', '▲', '◆', '▼', '✚']
-const shapeIndex = (epoch: number) => epoch % SHAPES.length
-export const epochShape = (epoch: number) => SHAPES[shapeIndex(epoch)]
+export const epochShape = (epoch: number) => SHAPE_GLYPHS[shapeOf(epoch)]
 
 // Linear map from a data range onto pixels; a flat range maps to the middle.
 export function scale([d0, d1]: [number, number], [r0, r1]: [number, number]) {
@@ -40,9 +38,6 @@ export const fluxTick = (value: number, decimals: number) =>
   Math.abs(value) >= 10_000
     ? value.toLocaleString('en', { notation: 'compact', maximumSignificantDigits: 3 })
     : value.toFixed(decimals)
-
-const ticks = ([a, b]: [number, number], n = 5) =>
-  a === b ? [a] : Array.from({ length: n }, (_, i) => a + ((b - a) * i) / (n - 1))
 
 // One missing cutout is one check: count them instead of listing every visit.
 export function summarize(checks: Check[]) {
@@ -144,144 +139,138 @@ const arrow = (px: number, py: number, side: 'above' | 'below') => {
   return `M${px} ${tip} L${px - 5} ${base} L${px + 5} ${base} Z`
 }
 
+// Value first, then where and when it was measured: the tooltip, and the link's accessible name.
+export function pointLines(p: SpectrumPoint, beyond: boolean): string[] {
+  return [
+    `${p.flux_ujy.toFixed(1)} ± ${p.flux_err_ujy.toFixed(1)} µJy`,
+    `D${p.detector} · ${p.wavelength_um.toFixed(3)} µm · epoch ${p.epoch + 1}`,
+    `${p.date.slice(0, 10)} · ${p.obs_id}`,
+    ...(p.flagged ? ['flagged pixels in aperture, flux unreliable'] : []),
+    ...(beyond ? ['beyond the flux axis'] : []),
+  ]
+}
+
 export function Plot({ points }: { points: SpectrumPoint[] }) {
   const { x: xr, y: yr } = ranges(points)
-  const x = scale(xr, [M.left, W - M.right])
   const toY = scale(yr, [H - M.bottom, M.top])
   // Points outside the range sit on the plot edge as arrows; the tooltip keeps the real value.
   const y = (v: number) => Math.min(H - M.bottom, Math.max(M.top, toY(v)))
   const epochs = [...new Set(points.map((p) => p.epoch))].sort((a, b) => a - b)
   const detectors = [...new Set(points.map((p) => p.detector))].sort((a, b) => a - b)
-  // Whole µJy for bright targets, decimals when the whole axis spans only a few µJy.
-  const decimals = yr[1] - yr[0] < 10 ? 1 : 0
+  const flagged = points.some((p) => p.flagged)
+  const beyond = points.some((p) => offScale(toY(p.flux_ujy)))
+  const yTicks = niceTicks(yr, 4)
   const firstDate = (epoch: number) =>
     points
       .filter((p) => p.epoch === epoch)
       .map((p) => p.date.slice(0, 10))
       .sort()[0]
+  const sorted = [...points].sort((a, b) => a.wavelength_um - b.wavelength_um)
 
-  return (
+  const legend = (
     <>
-      <svg viewBox={`0 0 ${W} ${H}`} width="100%" role="img" aria-label="Flux against wavelength">
-        <g stroke="var(--grid-line)" fill="var(--muted)" fontSize="11">
-          {ticks(xr).map((t, i) => (
-            <text key={`x${i}`} x={x(t)} y={H - M.bottom + 16} textAnchor="middle" stroke="none">
-              {t.toFixed(2)}
-            </text>
-          ))}
-          {ticks(yr).map((t, i) => (
-            <g key={`y${i}`}>
-              <line x1={M.left} x2={W - M.right} y1={y(t)} y2={y(t)} />
-              <text x={M.left - 6} y={y(t) + 4} textAnchor="end" stroke="none">
-                {fluxTick(t, decimals)}
-              </text>
-            </g>
-          ))}
-          <text x={(W + M.left) / 2} y={H - 6} textAnchor="middle" stroke="none">
-            Wavelength (µm)
-          </text>
-          <text
-            x={14}
-            y={H / 2}
-            textAnchor="middle"
-            stroke="none"
-            transform={`rotate(-90 14 ${H / 2})`}
-          >
-            Flux (µJy)
-          </text>
-        </g>
-        {points.map((p) => (
-          // Each point links to its cutout: provenance one click (or Tab + Enter) away.
-          <a key={`${p.obs_id}-${p.detector}`} href={p.source_url} target="_blank" rel="noreferrer">
-            <g stroke={bandColour(p.detector)} fill={bandColour(p.detector)}>
-              <line
-                x1={x(p.wavelength_um)}
-                x2={x(p.wavelength_um)}
-                y1={y(p.flux_ujy - p.flux_err_ujy)}
-                y2={y(p.flux_ujy + p.flux_err_ujy)}
-              />
-              <PointMark
-                px={x(p.wavelength_um)}
-                py={toY(p.flux_ujy)}
-                edge={y(p.flux_ujy)}
-                epoch={p.epoch}
-                hollow={p.flagged}
-              >
-                <title>
-                  {`${p.date.slice(0, 10)} · D${p.detector} · ${p.wavelength_um.toFixed(3)} µm · ` +
-                    `${p.flux_ujy.toFixed(1)} ± ${p.flux_err_ujy.toFixed(1)} µJy · ${p.obs_id} · ` +
-                    (p.flagged ? 'flagged pixels in aperture, flux unreliable · ' : '') +
-                    (offScale(toY(p.flux_ujy)) ? 'beyond the flux axis · ' : '') +
-                    'open the cutout'}
-                </title>
-              </PointMark>
-            </g>
-          </a>
-        ))}
-      </svg>
-      <p className="muted">
-        {detectors.map((d) => (
-          <span key={`d${d}`} style={{ marginRight: '1em' }}>
-            <span style={{ color: bandColour(d) }}>▬</span> D{d}
-          </span>
-        ))}
-        {epochs.map((e) => (
-          <span key={e} style={{ marginRight: '1em' }}>
-            {epochShape(e)} Epoch {e + 1} ({firstDate(e)})
-          </span>
-        ))}
-        {points.some((p) => p.flagged) && (
-          <span style={{ marginRight: '1em' }}>○ flagged pixels in aperture</span>
-        )}
-        {points.some((p) => offScale(toY(p.flux_ujy))) && (
-          <span>▲▼ beyond the flux axis, value and epoch in the tooltip</span>
-        )}
-      </p>
+      {detectors.map((d) => (
+        <LegendItem key={`d${d}`} mark={<circle r={5} fill={bandColour(d)} />}>D{d}</LegendItem>
+      ))}
+      {epochs.map((e) => (
+        <LegendItem key={`e${e}`} mark={<Marker shape={shapeOf(e)} x={0} y={0} r={5} colour="var(--text-secondary)" hollow className="viz-key" />}>
+          Epoch {e + 1} ({firstDate(e)})
+        </LegendItem>
+      ))}
+      {flagged && (
+        <LegendItem mark={<circle r={4} fill="var(--surface-1)" stroke="var(--text-secondary)" strokeWidth={1.6} />}>
+          flagged pixels in aperture
+        </LegendItem>
+      )}
+      {beyond && (
+        <LegendItem mark={<path d="M0 -5L5 3L-5 3Z" fill="var(--text-secondary)" />}>beyond the flux axis (value in the tooltip)</LegendItem>
+      )}
     </>
   )
-}
-
-// A circle inside the axes, an arrow on the edge (py = unclamped, edge = clamped) beyond them.
-function PointMark({
-  px,
-  py,
-  edge,
-  epoch,
-  hollow,
-  children,
-}: {
-  px: number
-  py: number
-  edge: number
-  epoch: number
-  hollow?: boolean
-  children: React.ReactNode
-}) {
-  const fill = hollow ? 'var(--bg)' : undefined
-  const side = offScale(py)
-  return side ? (
-    <path d={arrow(px, edge, side)} fill={fill}>
-      {children}
-    </path>
-  ) : shapeIndex(epoch) === 0 ? (
-    <circle cx={px} cy={py} r={4} fill={fill}>
-      {children}
-    </circle>
-  ) : (
-    <path d={shape(px, py, shapeIndex(epoch))} fill={fill}>
-      {children}
-    </path>
+  const table = (
+    <table>
+      <caption>Flux per visit and detector, by wavelength</caption>
+      <thead>
+        <tr>
+          <th scope="col">Wavelength (µm)</th>
+          <th scope="col">Detector</th>
+          <th scope="col">Flux (µJy)</th>
+          <th scope="col">Date (UTC)</th>
+          <th scope="col">Epoch</th>
+          <th scope="col">Observation</th>
+        </tr>
+      </thead>
+      <tbody>
+        {sorted.map((p) => (
+          <tr key={`${p.obs_id}-${p.detector}`}>
+            <td>{p.wavelength_um.toFixed(3)}</td>
+            <td>D{p.detector}</td>
+            <td>
+              {p.flux_ujy.toFixed(1)} ± {p.flux_err_ujy.toFixed(1)}
+              {p.flagged ? ' (flagged pixels in aperture)' : ''}
+            </td>
+            <td>{p.date.slice(0, 10)}</td>
+            <td>{p.epoch + 1}</td>
+            <td><a href={p.source_url} target="_blank" rel="noreferrer">{p.obs_id}</a></td>
+          </tr>
+        ))}
+      </tbody>
+    </table>
   )
-}
 
-// Square, triangle, diamond, triangle down and plus around (px, py), each about 8 px wide.
-const shape = (px: number, py: number, i: number) => {
-  const pts = [
-    [[-4, -4], [4, -4], [4, 4], [-4, 4]],
-    [[0, -5], [4.5, 3.5], [-4.5, 3.5]],
-    [[0, -5], [5, 0], [0, 5], [-5, 0]],
-    [[0, 5], [4.5, -3.5], [-4.5, -3.5]],
-    [[-1.5, -5], [1.5, -5], [1.5, -1.5], [5, -1.5], [5, 1.5], [1.5, 1.5], [1.5, 5], [-1.5, 5], [-1.5, 1.5], [-5, 1.5], [-5, -1.5], [-1.5, -1.5]],
-  ][i - 1]
-  return `M${pts.map(([dx, dy]) => `${px + dx} ${py + dy}`).join(' L')} Z`
+  return (
+    <ChartFrame className="spectrum-chart" title="Flux at the target by wavelength" legend={legend} table={table}>
+      {(W, tip) => {
+        const x = scale(xr, [M.left, W - M.right])
+        const xTicks = niceTicks(xr, Math.max(2, Math.floor((W - M.left - M.right) / 70)))
+        return (
+          <svg width={W} height={H} viewBox={`0 0 ${W} ${H}`} role="img"
+            aria-label={`Flux against wavelength: ${points.length} ${points.length === 1 ? 'visit' : 'visits'} on ${detectors.map((d) => `D${d}`).join(', ')}`}>
+            <g className="viz-axis">
+              {yTicks.values.map((t) => (
+                <g key={`y${t}`}>
+                  <line className="viz-grid" x1={M.left} x2={W - M.right} y1={y(t)} y2={y(t)} />
+                  <text className="viz-tick" x={M.left - 6} y={y(t) + 4} textAnchor="end">
+                    {fluxTick(t, yTicks.decimals)}
+                  </text>
+                </g>
+              ))}
+              <line className="viz-baseline" x1={M.left} x2={W - M.right} y1={H - M.bottom} y2={H - M.bottom} />
+              {xTicks.values.map((t) => (
+                <text key={`x${t}`} className="viz-tick" x={x(t)} y={H - M.bottom + 16} textAnchor="middle">
+                  {t.toFixed(xTicks.decimals)}
+                </text>
+              ))}
+              <text className="viz-axis-label" x={(W + M.left) / 2} y={H - 4} textAnchor="middle">
+                Wavelength (µm)
+              </text>
+              <text className="viz-axis-label" x={14} y={H / 2} textAnchor="middle" transform={`rotate(-90 14 ${H / 2})`}>
+                Flux (µJy)
+              </text>
+            </g>
+            {points.map((p) => {
+              const px = x(p.wavelength_um)
+              const side = offScale(toY(p.flux_ujy))
+              const lines = pointLines(p, side !== null)
+              return (
+                // Each point links to its cutout: provenance one click (or Tab + Enter) away.
+                <a key={`${p.obs_id}-${p.detector}`} href={p.source_url} target="_blank" rel="noreferrer"
+                  aria-label={[...lines, 'open the cutout'].join(' · ')} {...tipHandlers(tip, px, y(p.flux_ujy), lines)}>
+                  <line className="viz-errorbar" x1={px} x2={px} y1={y(p.flux_ujy - p.flux_err_ujy)} y2={y(p.flux_ujy + p.flux_err_ujy)}
+                    stroke={bandColour(p.detector)} />
+                  {side ? (
+                    <path className="viz-mark" d={arrow(px, y(p.flux_ujy), side)} stroke={bandColour(p.detector)} strokeWidth={1.6}
+                      fill={p.flagged ? 'var(--surface-1)' : bandColour(p.detector)} />
+                  ) : (
+                    <Marker shape={shapeOf(p.epoch)} x={px} y={toY(p.flux_ujy)} colour={bandColour(p.detector)} hollow={p.flagged} />
+                  )}
+                  <circle className="viz-hit" cx={px} cy={y(p.flux_ujy)} r={HIT_RADIUS} />
+                </a>
+              )
+            })}
+          </svg>
+        )
+      }}
+    </ChartFrame>
+  )
 }

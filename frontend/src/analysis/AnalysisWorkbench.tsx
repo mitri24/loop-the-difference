@@ -126,7 +126,11 @@ export function AnalysisWorkbench({ target, detector, fovDegrees, view, sky, onS
 
   return <div className={`reference-analysis${view === 'blink' || view === 'difference' ? ' standalone' : view === 'observations' || view === 'spectrum' ? ' chart-first' : ''}`} hidden={!view}>
     {view !== 'blink' && view !== 'difference' && <h3 className="h3">{view === 'spectrum' ? 'Aperture spectrum & visit comparison' : view === 'evidence' ? 'Additional analysis checks' : view === 'layers' ? 'Exposure footprints' : 'Wavelength coverage & other archives'}</h3>}
-    <p className="small muted">{target.name ?? 'Selected sky region'} · {band} · RA {target.ra.toFixed(6)}° · Dec {target.dec.toFixed(6)}°</p>
+    {/* Name, detector and field centre are in the search bar and the player; only a Gaia position
+        (moved with its proper motion) differs from them and is stated here. */}
+    {target.pm_ra_mas_yr != null && target.pm_dec_mas_yr != null && <p className="small muted">
+      Analysis position: Gaia DR3 at J{target.epoch_jyear} · RA {target.ra.toFixed(6)}° · Dec {target.dec.toFixed(6)}°, moved with its proper motion
+    </p>}
     {searching && <p role="status">Searching IRSA observations…</p>}
     {error && <div className="alert alert--fail" role="alert">{error}<button className="btn" onClick={() => void load()}>Retry observation search</button></div>}
     {search && <>
@@ -172,6 +176,7 @@ export function AnalysisWorkbench({ target, detector, fovDegrees, view, sky, onS
         onStart={n => void spectrum.start(() => api.startSpectrum(target, n))} /><EvidencePanel groups={[groups[3]]} /></>}
       {view === 'evidence' && <EvidencePanel groups={groups} />}
     </>}
-    <p className="small muted">Changes and residuals need verification. These calculations complement the main comparison; they use their own aligned sequence.</p>
+    {/* Only these two views use their own aligned sequence; elsewhere the menu's science note covers it. */}
+    {(view === 'blink' || view === 'difference') && <p className="small muted">Changes and residuals need verification. These calculations complement the main comparison; they use their own aligned sequence.</p>}
   </div>
 }
