@@ -62,7 +62,10 @@ for (const [width, height] of [[1024, 700], [1280, 800], [1440, 900]]) {
     await page.setViewportSize({ width, height })
     await page.goto(`/?ra=${manifest.ra}&dec=${manifest.dec}&fov=0.2&band=6&name=Barnard%27s%20Star`)
     await expect(page.locator('.player-side .meta')).toContainText('4472832130942575872')
-    expect(await overflow(page.locator('.viewer-body'))).toBeLessThanOrEqual(1)
+    // The page scrolls to its sections; the images, the pair and the shown frame fill the first screen.
+    expect(await page.locator('.viewer-body').evaluate((el) => el.scrollTop)).toBe(0)
+    await inView(page, page.locator('.viewer .viewport'))
+    await inView(page, page.locator('#images .science-note'))
     expect(await overflow(page.locator('.player-side'))).toBeLessThanOrEqual(1)
     await inView(page, page.locator('.transport'))
     await inView(page, page.locator('.blink-pair'))

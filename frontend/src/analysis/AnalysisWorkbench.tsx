@@ -21,13 +21,16 @@ interface Options {
   target: Target
   detector: number
   fovDegrees: number
-  // The page (or the Sky layers sheet) is visible: the metadata search may start; downloads need a button.
+  // An analysis section has been on screen (or the Sky layers sheet is open): the metadata search may start;
+  // downloads need a button.
   active: boolean
+  // The investigate page is shown: only then may the aligned image replace the frames on the sky.
+  onPage: boolean
   sky: AladinInstance | null
   onSkyCaption: (caption: string | null) => void
 }
 
-export function useAnalysisWorkbench({ target, detector, fovDegrees, active, sky, onSkyCaption }: Options) {
+export function useAnalysisWorkbench({ target, detector, fovDegrees, active, onPage, sky, onSkyCaption }: Options) {
   const [search, setSearch] = useState<ObservationSearch | null>(null)
   const [searching, setSearching] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -75,7 +78,7 @@ export function useAnalysisWorkbench({ target, detector, fovDegrees, active, sky
   const result = sequence.result
   const frames = result?.frames
   const currentFrame = frames?.[index]
-  const overlay = showOnSky && currentFrame ? currentFrame : null
+  const overlay = onPage && showOnSky && currentFrame ? currentFrame : null
   useEffect(() => {
     if (!overlay || !sky) return
     const name = `reference-analysis-${overlay.id}`
@@ -180,7 +183,6 @@ export function AnalysisPartView({ wb, part }: { wb: Workbench; part: AnalysisPa
         onStart={n => void spectrum.start(() => api.startSpectrum(target, n))} />
       <EvidencePanel groups={[groups[3]]} />
     </>}
-    {caveat}
   </div>
   // Aligned blink and difference share one sequence, its options and its checks.
   return <div className="reference-analysis standalone">

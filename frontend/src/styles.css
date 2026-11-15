@@ -141,7 +141,7 @@ summary { cursor:pointer; min-height:32px; padding:5px 0; font-size:13px; }
 .spectrum-section h3 { font-size:14px; margin-bottom:8px; }
 .spectrum-section svg { display:block; }
 .spectrum-section .progress { color:var(--muted); font-size:13px; }
-.spectrum-section button { width:100%; }
+.spectrum-section .spectrum-build { width:100%; }
 .frame-caption { color:var(--text); font-variant-numeric:tabular-nums; }
 
 /* Detected sources (NAS-52): marker colours --src-* in tokens.css, always paired with shape and word. */

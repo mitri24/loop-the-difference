@@ -123,7 +123,9 @@
 /* The page: the images fill the first screen (the player is sized to it), the sections follow in reading order. */
 .viewer-body > .page-section { flex:none; }
 .images-section { display:flex; flex-direction:column; gap:var(--space-3); min-height:100cqh; }
-.page-section:not(.images-section) { display:flex; flex-direction:column; gap:var(--space-3); max-width:980px; padding-top:var(--space-4); border-top:1px solid var(--border); scroll-margin-top:var(--space-2); }
+.page-section:not(.images-section) { display:flex; flex-direction:column; gap:var(--space-3); max-width:980px; padding-top:var(--space-4); border-top:1px solid var(--border); }
+/* The section bar moves the focus to a section (and a click on the page to the page): no ring for that. */
+.viewer-body:focus,.page-section:focus:not(:focus-visible) { outline:none; }
 .page-section > h2 { font-size:var(--text-lg); }
 .page-section > h3 { margin:var(--space-2) 0 0; font-size:var(--text-md); }
 /* Room after the last section, so every section can reach the top of the page when the bar jumps to it. */

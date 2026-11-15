@@ -95,7 +95,7 @@ export function SpectrumChart({
     <section aria-label="Quick-look spectrum">
       <h3>Quick-look spectrum at the target</h3>
       {!running && (!spectrum || !spectrum.complete) && (
-        <button type="button" onClick={start}>
+        <button type="button" className="spectrum-build" onClick={start}>
           {spectrum ? retry : 'Build quick-look spectrum from all SPHEREx visits'}
         </button>
       )}

@@ -105,6 +105,10 @@ export default function App() {
   const [alignedSlot, setAlignedSlot] = useState<HTMLDivElement | null>(null)
   const [spectrumSlot, setSpectrumSlot] = useState<HTMLDivElement | null>(null)
   const [footprintsSlot, setFootprintsSlot] = useState<HTMLDivElement | null>(null)
+  // Sections that have been on screen for this comparison: slow or external lookups wait for their section.
+  const [seen, setSeen] = useState<ReadonlySet<string>>(() => new Set())
+  const markSeen = useCallback((ids: string[]) =>
+    setSeen((previous) => (ids.every((id) => previous.has(id)) ? previous : new Set([...previous, ...ids]))), [])
 
   const closePanel = useCallback(() => {
     if (!panel) return
@@ -151,6 +155,9 @@ export default function App() {
     setFrameIndex(0)
     setStage('investigate')
     setPick(null)
+    // A new comparison starts at its images, with its own lookups.
+    setSeen(new Set())
+    pageRef.current?.scrollTo({ top: 0 })
     // The images show the result; the target panel would cover them on small screens.
     setPanel((open) => (open === 'target' ? null : open))
     setName(targetName ?? targetText(requested))
@@ -302,6 +309,7 @@ export default function App() {
   const markBlocked = skyUnavailable ? 'The sky view needs WebGL2.'
     : showDifference ? 'Marks are set on single frames, not on the difference image.'
     : manifest?.preview ? 'Mark candidates after the final images and checks are ready.'
+    : analysisSkyCaption ? 'The aligned analysis image is on the sky: turn off "Show on sky" under Aligned analysis to mark on the SPHEREx frames.'
     : !frameOnSky ? 'Turn on "SPHEREx frames on the sky" in Layers to mark by clicking.' : null
   // Marking by clicking the sky works on the overview map and, larger, on the full sky (Explore).
   const candidate = useCandidate(job?.job_id ?? null, !markBlocked)
@@ -388,22 +396,23 @@ export default function App() {
             <button type="button" className="back-button" onClick={() => setStage('explore')}><span aria-hidden="true">←</span> Back to sky</button>
             {modeSwitch}
             <LoadProgress busy={busy} job={job} />
-            <SectionNav sections={sections} page={pageRef} active={stage === 'investigate' && !panel} />
+            <SectionNav sections={sections} page={pageRef} active={stage === 'investigate' && !panel} onVisible={markSeen} />
           </div>
-          <div className="viewer-body" ref={pageRef}>
-            <section id="images" className="page-section images-section" aria-label="Images">
+          {/* Focusable so a click on the page gives it the focus (the section keys work within the page). */}
+          <div className="viewer-body" ref={pageRef} tabIndex={-1}>
+            <section id="images" className="page-section images-section" aria-label="Images" tabIndex={-1}>
               {statusBlock}
               {job && emptyState}
               {viewer}
               {hasFrames && scienceNote}
             </section>
-            <section id="checks" className="page-section" aria-labelledby="checks-title">
+            <section id="checks" className="page-section" aria-labelledby="checks-title" tabIndex={-1}>
               <h2 id="checks-title">Checks</h2>
               {manifest ? <EvidencePanel checks={checks} /> : loadFirst}
               {manifest && frame && !showDifference && <WavelengthStrip detector={manifest.detector} frame={frame} />}
             </section>
-            <section id="candidate" className="page-section" aria-labelledby="candidate-title">
-              <h2 id="candidate-title">Candidate check</h2>
+            <section id="candidate" className="page-section" aria-labelledby="candidate-title" tabIndex={-1}>
+              <h2 id="candidate-title">Candidate</h2>
               {manifest && hasFrames ? <CandidatePanel candidate={candidate} blocked={markBlocked} track={possible && { ...possible, predictions }}
                 known={{ epochs: smallBodies.epochs, motion, detector: manifest.detector, target: targetText(query) }}
                 visits={summary && { observations: summary.observations, inBlink: [...manifest.frames.map((f) => f.obs_id),
@@ -419,14 +428,13 @@ export default function App() {
                 ? <p className="muted">Known asteroids and comets (JPL SBIdent) are looked up for single exposures: switch the view to Exposures.</p>
                 : <SmallBodies lookup={smallBodies} currentMjd={frame?.mjd ?? null} />)}
             </section>
-            <section id="measure" className="page-section spectrum-section" aria-labelledby="measure-title">
+            <section id="measure" className="page-section spectrum-section" aria-labelledby="measure-title" tabIndex={-1}>
               <h2 id="measure-title">Brightness & spectrum</h2>
               {manifest ? <SpectrumChart key={`${manifest.ra},${manifest.dec}`} ra={`${manifest.ra}`} dec={`${manifest.dec}`}
                 centerUm={(frame ?? manifest.frames[0])?.wavelength_um} detector={manifest.detector} /> : loadFirst}
-              <h3>Aperture spectrum (aligned analysis)</h3>
-              <div ref={setSpectrumSlot} />
+              {analysisTarget && <><h3>Aperture spectrum (aligned analysis)</h3><div ref={setSpectrumSlot} /></>}
             </section>
-            <section id="coverage" className="page-section" aria-labelledby="coverage-title">
+            <section id="coverage" className="page-section" aria-labelledby="coverage-title" tabIndex={-1}>
               <h2 id="coverage-title">Coverage</h2>
               {summary ? <>
                 <div className="history-summary">
@@ -435,20 +443,23 @@ export default function App() {
                 </div>
                 <ObservationTimeline observations={summary.observations} frames={manifest?.frames}
                   currentIndex={showDifference ? undefined : frameIndex} detector={manifest?.detector ?? query.band} />
-              </> : loadFirst}
-              <h3>Wavelength coverage & other archives</h3>
-              <div ref={setCoverageSlot} />
+              </> : job ? <p className="muted">The observation history could not be loaded for this position.</p> : loadFirst}
+              {analysisTarget && <><h3>Wavelength coverage & other archives</h3><div ref={setCoverageSlot} /></>}
             </section>
-            <section id="aligned" className="page-section" aria-labelledby="aligned-title">
+            <section id="aligned" className="page-section" aria-labelledby="aligned-title" tabIndex={-1}>
               <h2 id="aligned-title">Aligned analysis</h2>
               <p className="muted">Blink and difference on one sky grid, from their own aligned sequence.</p>
-              <div ref={setAlignedSlot} />
+              {analysisTarget ? <div ref={setAlignedSlot} /> : loadFirst}
             </section>
-            <section id="data" className="page-section" aria-labelledby="data-title">
+            <section id="data" className="page-section" aria-labelledby="data-title" tabIndex={-1}>
               <h2 id="data-title">Data & sources</h2>
               {manifest && hasFrames && <DataLinks manifest={manifest} frame={showDifference ? null : frame} />}
               <DataPanel query={query} summary={summary} manifest={manifest}
-                open={stage === 'investigate'} onAbout={() => setPanel('about')} />
+                open={stage === 'investigate' && seen.has('data')} onAbout={() => {
+                  // The button that opened About takes the focus back when it closes.
+                  panelTrigger.current = document.activeElement instanceof HTMLButtonElement ? document.activeElement : null
+                  setPanel('about')
+                }} />
             </section>
           </div>
         </section>
@@ -492,7 +503,7 @@ export default function App() {
         </SkyFrame>
         {stage === 'explore' && <div className="explore-actions">
           {/* One short cue on the first visit; the sky stays the page. */}
-          {!pick && !job && <div className="pick-card explore-cue" role="note">
+          {!pick && !job && !panel && <div className="pick-card explore-cue" role="note">
             <span>Search a target, pick an example, or click the sky to choose a region.</span>
             <button type="button" onClick={useMapCenter} disabled={skyUnavailable || !sky}>Compare map center</button>
           </div>}
@@ -523,7 +534,6 @@ export default function App() {
         </>}>
         <section id="target-panel" hidden={panel !== 'target'}>
           <TargetForm value={draft} busy={busy} onShow={show} onFind={find} onChange={setDraft} />
-          {!job && emptyState}
         </section>
         <section id="layers-panel" hidden={panel !== 'layers'}>
           {skyUnavailable ? <p className="muted">Sky layers need WebGL2.</p> : <LayersSection aladin={sky} sizeDeg={query.fov} frame={frame}
@@ -540,7 +550,8 @@ export default function App() {
         </section>
       </FloatingPanel>
       {analysisTarget && <AnalysisHost key={`${analysisTarget.ra}:${analysisTarget.dec}:${query.band}:${query.fov}`}
-        target={analysisTarget} detector={query.band} fovDegrees={query.fov} active={stage === 'investigate' || panel === 'layers'}
+        target={analysisTarget} detector={query.band} fovDegrees={query.fov} onPage={stage === 'investigate'}
+        active={(stage === 'investigate' && ['measure', 'coverage', 'aligned'].some((id) => seen.has(id))) || panel === 'layers'}
         sky={sky} onSkyCaption={setAnalysisSkyCaption}
         slots={{ coverage: coverageSlot, aligned: alignedSlot, spectrum: spectrumSlot, footprints: footprintsSlot }} />}
 
