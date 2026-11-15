@@ -12,6 +12,7 @@ import type {
   SmallBodiesRequest,
   SpectrumJob,
   SpectrumRequest,
+  SurpriseTarget,
 } from './types'
 
 // nginx answers these itself, with an HTML page, while the API is down or restarting.
@@ -42,6 +43,9 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
 
 export const resolveName = (name: string, signal?: AbortSignal) =>
   request<ResolvedTarget>(`/api/resolve?${new URLSearchParams({ name })}`, { signal })
+
+export const getSurprise = (signal?: AbortSignal) =>
+  request<SurpriseTarget>('/api/surprise', { signal })
 
 export const getObservations = (ra: string, dec: string, signal?: AbortSignal) =>
   request<ObservationSummary>(`/api/observations?${new URLSearchParams({ ra, dec })}`, { signal })

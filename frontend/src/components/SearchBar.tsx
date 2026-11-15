@@ -21,6 +21,8 @@ interface Props {
   busy: boolean
   onShow: (query: TargetQuery) => void
   onFind: (name: string, base: TargetQuery) => void
+  // Surprise me: a random fast-moving Gaia DR3 star, picked by the API.
+  onSurprise: () => void
   onDraftChange?: (query: TargetQuery) => void
   // Buttons for the on-demand sheets (options, layers, about).
   tools?: ReactNode
@@ -28,7 +30,7 @@ interface Props {
 
 // Top of the workspace: one input for a name or "RA, Dec" with the example targets and Surprise me beside it, the
 // header tools (sheets, Share) at the end. The window's top-right corner belongs to the overview map.
-export function SearchBar({ value, onChange, draft, busy, onShow, onFind, onDraftChange, tools }: Props) {
+export function SearchBar({ value, onChange, draft, busy, onShow, onFind, onSurprise, onDraftChange, tools }: Props) {
   const [examplesOpen, setExamplesOpen] = useState(false)
   const examplesToggle = useRef<HTMLButtonElement>(null)
   const examples = useRef<HTMLDivElement>(null)
@@ -64,8 +66,9 @@ export function SearchBar({ value, onChange, draft, busy, onShow, onFind, onDraf
               <button type="button" key={target.label} className="chip" disabled={busy} title={target.hint ?? target.label}
                 onClick={() => { setExamplesOpen(false); openTarget(target, draft, { onShow, onFind }) }}>{target.label.split(' · ')[0]}</button>
             ))}
-            <button type="button" className="chip" disabled={busy} title="Open a random example target"
-              onClick={() => { setExamplesOpen(false); openTarget(CHALLENGE_TARGETS[Math.floor(Math.random() * CHALLENGE_TARGETS.length)], draft, { onShow, onFind }) }}>Surprise me</button>
+            <button type="button" className="chip" disabled={busy}
+              title="Open a random fast-moving nearby star from Gaia DR3 – a new region takes 1–3 minutes to load"
+              onClick={() => { setExamplesOpen(false); onSurprise() }}>Surprise me</button>
           </div>
         </div>
         <div className="header-actions">{tools}</div>
