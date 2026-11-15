@@ -72,10 +72,10 @@
 .back-button { background:transparent; }
 .viewer-body { flex:1; min-height:0; overflow-y:auto; overscroll-behavior:contain; padding:var(--space-3); display:flex; flex-direction:column; gap:var(--space-3); container-type:size; scrollbar-width:thin; }
 /* One screen, no page scrolling: thumbnails | image | side column (A/B pair, shown frame), the transport
-   bar under the image. --img is the largest square that leaves room for the status line above, the science
-   note below (--reserve) and the bar; the viewer body is the size container. */
+   bar under the image. --img is the largest square that leaves room for the science note below (--reserve; the
+   loading state is a bar on the viewer head) and the bar; the viewer body is the size container. */
 .viewer .player {
-  --rail:64px; --gap:var(--space-3); --bar:44px; --reserve:80px;
+  --rail:64px; --gap:var(--space-3); --bar:44px; --reserve:52px;
   --side-min:clamp(220px, 30cqw, 340px); --pair:136px;
   --img:clamp(160px, min(100cqw - var(--rail) - var(--side-min) - 2 * var(--gap), 100cqh - var(--reserve) - var(--bar) - 2 * var(--gap)), 1100px);
   /* When the height limits the image, the side column takes the width left over (fewer wrapped lines). */
