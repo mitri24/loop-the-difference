@@ -509,7 +509,7 @@ test('fixture: Explore picks a region on the sky, Investigate shows its images, 
   await expect(page.locator('.stamp')).toContainText('2026-09-10')
   await expect(page.locator('#checks')).toBeInViewport()
   await expect(page.locator('.sky-area.overview')).toBeVisible()
-  await page.getByRole('button', { name: 'Hide map' }).click()
+  await page.getByRole('button', { name: 'Minimize' }).click()
   await expect(page.locator('.sky-area.overview .sky-stage')).toBeHidden()
   await page.getByTestId('section-coverage').click()
   await expect(page.locator('.observation-timeline')).toBeInViewport()
@@ -758,6 +758,58 @@ test('fixture: the overview map holds the top-right corner – nothing above it 
   const examples = (await page.getByRole('button', { name: 'Examples' }).boundingBox())!
   expect(examples.x).toBeGreaterThanOrEqual(search.x + search.width - 1)
   await expect(page.locator('.hud').getByRole('button', { name: 'Share', exact: true })).toBeVisible()
+})
+
+test('fixture: the overview map expands over the page without moving anything, docks with Escape and minimizes', async ({ page }) => {
+  await fixtures(page)
+  await page.goto('/?ra=37.954542&dec=89.264111&band=6&fov=0.2')
+  await expect(page.locator('.stamp')).toBeVisible()
+  const canvas = page.locator('#sky-map')
+  const bar = page.locator('.overview-bar')
+  const expand = page.getByRole('button', { name: 'Expand', exact: true })
+  const box = async (selector: string) => (await page.locator(selector).boundingBox())!
+  for (const [width, height] of [[800, 700], [1024, 768], [1440, 900]]) {
+    await page.setViewportSize({ width, height })
+    const docked = (await canvas.boundingBox())!
+    const frame = await box('.sky-area.overview')
+    const viewer = await box('.viewer')
+    await expand.click()
+    const large = (await canvas.boundingBox())!
+    expect(large.width, `${width}px`).toBeGreaterThan(docked.width * 1.5)
+    // Nothing moves, the bar keeps the map's corner, and the map starts under the viewer head (mode switch, sections).
+    expect(await box('.viewer'), `${width}px`).toEqual(viewer)
+    const corner = (await bar.boundingBox())!
+    expect([corner.x, corner.y, corner.width], `${width}px`).toEqual([frame.x, frame.y, frame.width])
+    const head = await box('.viewer-head')
+    expect(large.y, `${width}px`).toBeGreaterThanOrEqual(head.y + head.height)
+    await page.getByRole('button', { name: 'Dock', exact: true }).click()
+    expect(await canvas.boundingBox(), `${width}px`).toEqual(docked)
+  }
+  const docked = (await canvas.boundingBox())!
+  // A comparison mode does not move the map.
+  await page.getByRole('radio', { name: 'Stacks' }).click()
+  expect(await canvas.boundingBox()).toEqual(docked)
+  // Escape closes the topmost layer first: a header menu, then the expanded map, then a sheet.
+  await expand.click()
+  await page.getByRole('button', { name: 'Examples' }).click()
+  await page.keyboard.press('Escape')
+  await expect(page.locator('.hud-chips')).toBeHidden()
+  expect((await canvas.boundingBox())!.width).toBeGreaterThan(docked.width * 1.5)
+  await openSheet(page, 'layers')
+  await expect(page.locator('.fpanel')).toBeVisible()
+  await page.locator('.fpanel-header h2').focus()
+  await page.keyboard.press('Escape')
+  expect(await canvas.boundingBox()).toEqual(docked)
+  await expect(page.locator('.fpanel')).toBeVisible()
+  await page.keyboard.press('Escape')
+  await expect(page.locator('.fpanel')).toBeHidden()
+  await page.getByRole('button', { name: 'Minimize', exact: true }).click()
+  await expect(canvas).toBeHidden()
+  await page.getByRole('button', { name: 'Show map', exact: true }).click()
+  expect(await canvas.boundingBox()).toEqual(docked)
+  // Phones keep the map under the viewer and have no Expand.
+  await page.setViewportSize({ width: 390, height: 800 })
+  await expect(expand).toBeHidden()
 })
 
 test('fixture: header menus close on Escape or a press outside, open above a sheet and never together', async ({ page }) => {
