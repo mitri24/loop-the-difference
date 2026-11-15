@@ -12,11 +12,13 @@ interface Props {
   onChange: (mode: ViewMode) => void
   // Why the difference mode cannot be chosen right now; undefined means it can.
   differenceBlocked?: string
+  // What resolves it, when something can (e.g. choose a compatible pair, retry).
+  blockedAction?: { label: string; onClick: () => void }
   // While a target name is being resolved, a mode change would restart the previous target.
   disabled?: boolean
 }
 
-export function ModeSwitch({ value, onChange, differenceBlocked, disabled = false }: Props) {
+export function ModeSwitch({ value, onChange, differenceBlocked, blockedAction, disabled = false }: Props) {
   const enabled = (mode: ViewMode) => mode !== 'difference' || !differenceBlocked
   // A link may open a mode that is disabled here; the group must still be reachable by Tab.
   const focusable = enabled(value) ? value : VIEW_MODES.find(enabled)
@@ -52,7 +54,10 @@ export function ModeSwitch({ value, onChange, differenceBlocked, disabled = fals
           </button>
         ))}
       </div>
-      {differenceBlocked && <span className="muted">{differenceBlocked}</span>}
+      {differenceBlocked && <span className="mode-blocked">
+        <span className="muted">{differenceBlocked}</span>
+        {blockedAction && <button type="button" className="mode-blocked-action" onClick={blockedAction.onClick}>{blockedAction.label}</button>}
+      </span>}
     </div>
   )
 }

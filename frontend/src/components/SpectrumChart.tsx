@@ -1,6 +1,6 @@
-import { useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { createSpectrum, getSpectrumJob } from '../api'
-import type { Check, SpectrumJob, SpectrumPoint } from '../types'
+import type { Check, Spectrum, SpectrumJob, SpectrumPoint } from '../types'
 import { BrightnessChart } from './BrightnessChart'
 import { ChartFrame, HIT_RADIUS, LegendItem, Marker, NearestLayer, niceTicks, shapeOf, SHAPE_GLYPHS, tickLabel, tipHandlers } from './Chart'
 
@@ -50,79 +50,102 @@ export function summarize(checks: Check[]) {
   }
 }
 
-// Key by target: the spectrum belongs to one position and starts on request. centerUm and detector
-// pick the visits for the brightness-over-time chart, which reuses the same points.
-export function SpectrumChart({
-  ra,
-  dec,
-  centerUm,
-  detector,
-}: {
-  ra: string
-  dec: string
-  centerUm?: number | null
-  detector?: number
-}) {
-  const [job, setJob] = useState<SpectrumJob | null>(null)
-  const [error, setError] = useState<string | null>(null)
-  const running = job?.status === 'queued' || job?.status === 'started'
+export interface QuickSpectrum {
+  job: SpectrumJob | null
+  error: string | null
+  running: boolean
+  spectrum: Spectrum | null
+  start: () => void
+}
+
+// One quick-look photometry job per position, shared by the Spectrum and the Brightness tab: it starts on request
+// in either and both read its points. A new position starts fresh; a late answer for the old one is dropped.
+export function useQuickSpectrum(ra: string | null, dec: string | null): QuickSpectrum {
+  const key = ra != null && dec != null ? `${ra},${dec}` : null
+  const [state, setState] = useState<{ key: string | null; job: SpectrumJob | null; error: string | null }>({ key, job: null, error: null })
+  if (state.key !== key) setState({ key, job: null, error: null })
+  const live = state.key === key ? state : { key, job: null, error: null }
+  const running = live.job?.status === 'queued' || live.job?.status === 'started'
 
   useEffect(() => {
+    const job = live.job
     if (!job || !running) return
     const timer = window.setTimeout(() => {
-      getSpectrumJob(job.job_id).then(setJob, (e: Error) => {
-        setJob(null)
-        setError(e.message)
-      })
+      getSpectrumJob(job.job_id).then(
+        (next) => setState((s) => (s.key === key ? { ...s, job: next } : s)),
+        (e: Error) => setState((s) => (s.key === key ? { ...s, job: null, error: e.message } : s)),
+      )
     }, POLL_MS)
     return () => window.clearTimeout(timer)
-  }, [job, running])
+  }, [live.job, running, key])
 
   const sending = useRef(false)
-  const start = () => {
-    if (sending.current) return
+  const start = useCallback(() => {
+    if (ra == null || dec == null || sending.current) return
     sending.current = true
-    setError(null)
+    const requested = `${ra},${dec}`
+    setState((s) => ({ ...s, error: null }))
     createSpectrum({ ra, dec })
-      .then(setJob, (e: Error) => setError(e.message))
+      .then(
+        (job) => setState((s) => (s.key === requested ? { ...s, job } : s)),
+        (e: Error) => setState((s) => (s.key === requested ? { ...s, error: e.message } : s)),
+      )
       .finally(() => (sending.current = false))
-  }
-  const spectrum = job?.status === 'finished' ? job.spectrum : null
-  const points = spectrum?.points ?? []
-  const { retry, notes } = summarize(spectrum?.checks ?? [])
+  }, [ra, dec])
 
+  return { job: live.job, error: live.error, running, spectrum: live.job?.status === 'finished' ? live.job.spectrum : null, start }
+}
+
+// Build button, progress and errors of the shared job, the same in both tabs.
+function QuickStatus({ quick, build }: { quick: QuickSpectrum; build: string }) {
+  const { job, error, running, spectrum, start } = quick
+  const { retry } = summarize(spectrum?.checks ?? [])
+  return (
+    <>
+      {!running && (!spectrum || !spectrum.complete) && (
+        <button type="button" className="spectrum-build" onClick={start}>
+          {spectrum ? retry : build}
+        </button>
+      )}
+      {job?.status === 'not_found' && <p className="notice">The measurement expired – start it again.</p>}
+      {running && job && (
+        <p className="progress">
+          {job.total > 0 ? `Measuring every visit… ${job.progress}/${job.total}` : 'Searching all detectors…'}
+        </p>
+      )}
+      {(error ?? job?.error) && <p className="notice error">Could not measure the target: {error ?? job?.error}</p>}
+      {spectrum && spectrum.points.length === 0 && <p className="notice">No visit gave a usable flux at this position.</p>}
+    </>
+  )
+}
+
+// Flux against wavelength from every SPHEREx visit of the target (the Spectrum tab).
+export function SpectrumChart({ quick }: { quick: QuickSpectrum }) {
+  const points = quick.spectrum?.points ?? []
+  const { notes } = summarize(quick.spectrum?.checks ?? [])
   return (
     <section aria-label="Quick-look spectrum">
       <h3>Quick-look spectrum at the target</h3>
-      {!running && (!spectrum || !spectrum.complete) && (
-        <button type="button" className="spectrum-build" onClick={start}>
-          {spectrum ? retry : 'Build quick-look spectrum from all SPHEREx visits'}
-        </button>
-      )}
-      {job?.status === 'not_found' && (
-        <p className="notice">The spectrum expired – build it again.</p>
-      )}
-      {running && (
-        <p className="progress">
-          {job.total > 0
-            ? `Measuring every visit… ${job.progress}/${job.total}`
-            : 'Searching all detectors…'}
-        </p>
-      )}
-      {(error ?? job?.error) && (
-        <p className="notice error">Could not build the spectrum: {error ?? job?.error}</p>
-      )}
-      {spectrum && points.length === 0 && (
-        <p className="notice">No visit gave a usable flux at this position.</p>
-      )}
+      <QuickStatus quick={quick} build="Build quick-look spectrum from all SPHEREx visits" />
       {points.length > 0 && <Plot points={points} />}
-      {spectrum && (
+      {quick.spectrum && (
         <p className="caveat">
           Quick-look only: aperture flux at the target without aperture correction, one point per
           visit, colour = detector, marker shape = epoch, bars = 1σ from the VARIANCE extension. Changes are candidates that
           need checking. {notes.join(' · ')}
         </p>
       )}
+    </section>
+  )
+}
+
+// The same visits over time, in a narrow window around the shown frame's wavelength (the Brightness tab).
+export function BrightnessPanel({ quick, centerUm, detector }: { quick: QuickSpectrum; centerUm?: number | null; detector?: number }) {
+  const points = quick.spectrum?.points ?? []
+  return (
+    <section aria-label="Quick-look brightness">
+      <h3>Quick-look brightness at the target</h3>
+      <QuickStatus quick={quick} build="Measure the target in all SPHEREx visits" />
       {points.length > 0 && <BrightnessChart points={points} centerUm={centerUm} detector={detector} />}
     </section>
   )

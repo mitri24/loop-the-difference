@@ -1,7 +1,7 @@
 /* One workspace, two stages. Explore: the full Aladin sky to choose a region.
    Investigate: the SPHEREx images large in the middle, the timeline under them, the sky as a small
-   overview map in the top-right corner. Search bar on top; no sidebar: Investigate is one page of sections, controls
-   open as a sheet on demand. Breakpoints match useResizable.ts. */
+   overview map in the top-right corner and the inspector (one menu for everything about the comparison) under it.
+   Search bar on top; no sidebar: controls open as a sheet on demand. Breakpoints match useResizable.ts. */
 :root { --z-map:0; --z-chrome:10; --z-panel:20; --z-menu:25; --z-feedback:30; --hud-pad-y:10px; }
 
 .shell {
@@ -92,73 +92,83 @@
 .viewer-head .mode-switch { flex:1 1 280px; max-width:420px; flex-direction:row; align-items:center; }
 .back-button { background:transparent; }
 .viewer-body { flex:1; min-height:0; overflow-y:auto; overscroll-behavior:contain; padding:var(--space-3); display:flex; flex-direction:column; gap:var(--space-3); container-type:size; scrollbar-width:thin; }
-/* One screen, no page scrolling: thumbnails | image | side column (A/B pair, shown frame), the transport
-   bar under the image. --img is the largest square that leaves room for the science note below (--reserve; the
-   loading state is a bar on the viewer head) and the bar; the viewer body is the size container. */
+/* One screen, no page scrolling: the A/B pair as the image's header, thumbnails | image, the transport bar under
+   the image. --img is the largest square that leaves room for the header, the bar and a notice above the player
+   (--reserve); the viewer body is the size container. */
 .viewer .player {
-  --rail:64px; --gap:var(--space-3); --bar:44px; --reserve:52px;
-  --side-min:clamp(220px, 30cqw, 340px); --pair:136px;
-  --img:clamp(160px, min(100cqw - var(--rail) - var(--side-min) - 2 * var(--gap), 100cqh - var(--reserve) - var(--bar) - 2 * var(--gap)), 1100px);
-  /* When the height limits the image, the side column takes the width left over (fewer wrapped lines). */
-  --side:min(420px, max(var(--side-min), 100cqw - var(--rail) - var(--img) - 2 * var(--gap)));
-  display:grid; grid-template-columns:var(--rail) var(--img) var(--side); grid-template-rows:var(--img) auto auto;
-  grid-template-areas:'rail view side' 'bar bar side' 'note note side'; gap:var(--gap); justify-content:center; align-items:start;
+  --rail:64px; --gap:var(--space-3); --head:48px; --bar:44px; --reserve:0px;
+  --img:clamp(160px, min(100cqw - var(--rail) - var(--gap), 100cqh - var(--reserve) - var(--head) - var(--bar) - 3 * var(--gap)), 1100px);
+  display:grid; grid-template-columns:var(--rail) var(--img); grid-template-rows:var(--head) var(--img) auto auto;
+  grid-template-areas:'head head' 'rail view' 'bar bar' 'note note'; gap:var(--gap); justify-content:center; align-items:start;
 }
-/* Below about 444 px of image the bar wraps into two rows: reserve them, so nothing is pushed off screen. */
-@container (max-width:769px) or (max-height:599px) {
+.viewer-body:has(> .notice) > .player { --reserve:calc(56px + var(--space-3)); }
+/* Below about 480 px of player the bar wraps into two rows: reserve them, so nothing is pushed off screen. */
+@container (max-width:499px) or (max-height:539px) {
   .viewer .player { --bar:88px; }
 }
+/* One frame: no thumbnails, no pair. */
 .viewer .player:not(:has(> .observation-gallery)) {
-  --rail:0px; grid-template-columns:var(--img) var(--side); grid-template-areas:'view side' 'bar side' 'note side';
-}
-/* After the rule above, and as specific: the difference view has no thumbnails and no bar rows. */
-.viewer .player.diff-player {
-  --img:clamp(160px, min(100cqw - var(--side-min) - var(--gap), 100cqh - var(--reserve)), 1100px);
-  --side:min(420px, max(var(--side-min), 100cqw - var(--img) - var(--gap)));
-  grid-template-columns:var(--img) var(--side); grid-template-rows:auto; grid-template-areas:'view side';
+  --rail:0px; --head:0px; grid-template-columns:var(--img); grid-template-rows:var(--img) auto auto; grid-template-areas:'view' 'bar' 'note';
 }
 .viewer .player > .observation-gallery { grid-area:rail; position:relative; width:var(--rail); height:var(--img); margin:0; overflow:hidden; }
 .viewer .observation-strip { position:absolute; inset:0; flex-direction:column; overflow-x:hidden; overflow-y:auto; }
 .viewer .observation-card { flex:none; width:100%; }
+.viewer .player > .pair-head { grid-area:head; height:var(--head); }
 .viewer .player > .viewport,.viewer .player > .diff-blocker { grid-area:view; width:var(--img); }
 .viewer .player > .controls { grid-area:bar; min-width:0; }
 .viewer .player > .notice { grid-area:note; }
-.viewer .player > .player-side { grid-area:side; align-self:stretch; min-height:0; max-height:calc(var(--img) + var(--bar) + var(--gap)); overflow-y:auto; overscroll-behavior:contain; scrollbar-width:thin; }
-.viewer .diff-player > .player-side { max-height:var(--img); }
-/* The blocker message is a .notice too: it takes the image's place, not the bar's note row. */
-.viewer .player.diff-player > .diff-blocker { grid-area:view; }
-/* Narrow viewers (a wide panel open, phones): image, bar and the A/B pair stay in view; the shown-frame
-   details follow below them (scrolling allowed there). */
+/* The difference view (its own slice of the refactor): image | side column with the epoch choice and legend. */
+.viewer .player.diff-player {
+  --side-min:clamp(220px, 30cqw, 340px);
+  --img:clamp(160px, min(100cqw - var(--side-min) - var(--gap), 100cqh - var(--reserve)), 1100px);
+  --side:min(420px, max(var(--side-min), 100cqw - var(--img) - var(--gap)));
+  grid-template-columns:var(--img) var(--side); grid-template-rows:auto; grid-template-areas:'view side';
+}
+.viewer .diff-player > .player-side { grid-area:side; align-self:stretch; min-height:0; max-height:var(--img); overflow-y:auto; overscroll-behavior:contain; scrollbar-width:thin; }
+/* Narrow viewers (phones): the pair stacks, A over B with Swap beside; the image keeps at least 280 px and the
+   page may scroll below it. */
 @container (max-width:499px) {
   .viewer .player {
-    /* The pair stays in view when that leaves the image at least 280 px; on phones the image wins. */
-    --img:max(160px, min(100cqw - var(--rail) - var(--gap), max(280px, 100cqh - var(--reserve) - var(--bar) - var(--pair) - 4 * var(--gap)), 1100px));
-    grid-template-columns:var(--rail) var(--img); grid-template-rows:var(--img) auto auto auto;
-    grid-template-areas:'rail view' 'bar bar' 'note note' 'side side';
+    --head:68px;
+    --img:max(160px, min(100cqw - var(--rail) - var(--gap), max(280px, 100cqh - var(--reserve) - var(--head) - var(--bar) - 3 * var(--gap)), 1100px));
   }
-  .viewer .player:not(:has(> .observation-gallery)) { grid-template-columns:var(--img); grid-template-areas:'view' 'bar' 'note' 'side'; }
+  .viewer .pair-head { grid-template-columns:minmax(0,1fr) auto; grid-template-rows:auto auto; row-gap:var(--space-1); }
+  .viewer .pair-head > .pair-swap { grid-column:2; grid-row:1 / span 2; }
+  .viewer .pair-side,.viewer .pair-side.b { grid-column:1; grid-row:1; grid-template-columns:32px auto minmax(0,1fr); grid-template-rows:auto; }
+  .viewer .pair-side.b { grid-row:2; }
+  .viewer .pair-side > *,.viewer .pair-side.b > * { grid-column:auto; grid-row:auto; text-align:left; }
+  .viewer .pair-side .pair-letter { width:32px; min-height:32px; }
   .viewer .player.diff-player { --img:clamp(160px, 100cqw, 1100px); grid-template-columns:var(--img); grid-template-rows:auto auto; grid-template-areas:'view' 'side'; }
-  .viewer .player > .player-side { max-height:none; overflow:visible; }
+  .viewer .diff-player > .player-side { max-height:none; overflow:visible; }
 }
 
-/* The page: the images fill the first screen (the player is sized to it), the sections follow in reading order. */
-.viewer-body > .page-section { flex:none; }
-.images-section { display:flex; flex-direction:column; gap:var(--space-3); min-height:100cqh; }
-.page-section:not(.images-section) { display:flex; flex-direction:column; gap:var(--space-3); max-width:980px; padding-top:var(--space-4); border-top:1px solid var(--border); }
-/* The section bar moves the focus to a section (and a click on the page to the page): no ring for that. */
-.viewer-body:focus,.page-section:focus:not(:focus-visible) { outline:none; }
-.page-section > h2 { font-size:var(--text-lg); }
-.page-section > h3 { margin:var(--space-2) 0 0; font-size:var(--text-md); }
-/* Room after the last section, so every section can reach the top of the page when the bar jumps to it. */
-.page-section:last-child { padding-bottom:max(var(--space-6), 45cqh); }
-
-/* Section bar: the page's table of contents in the viewer head; the section in view is marked. */
-.section-nav { order:3; flex:1 1 100%; display:flex; gap:var(--space-1); overflow-x:auto; scrollbar-width:none; margin:0 calc(-1 * var(--space-1)); padding:0 var(--space-1); }
-.section-nav a { flex:none; display:inline-flex; align-items:center; gap:var(--space-1); min-height:32px; padding:0 var(--space-3); border:1px solid transparent; border-radius:999px; color:var(--text-secondary); font-size:var(--text-xs); text-decoration:none; white-space:nowrap; }
-.section-nav a:hover { color:var(--text-primary); background:var(--surface-2); }
-.section-nav a[aria-current='true'] { color:var(--accent); border-color:var(--accent); background:var(--accent-subtle); }
-.section-count { min-width:18px; padding:0 5px; border-radius:var(--radius-md); background:var(--surface-3); color:var(--text-primary); font-size:10px; font-variant-numeric:tabular-nums; text-align:center; }
-.section-count.alert { background:var(--status-fail); color:var(--surface-0); }
+/* The inspector (components/Inspector.tsx): one menu for everything about the comparison – a tab per kind, one
+   bounded panel; only the panel scrolls, switching never resizes the viewer or the map. From 701 px it hangs under
+   the overview map, as wide as the map, down to the window's bottom; on phones it is a bottom sheet. */
+.inspector { display:flex; flex-direction:column; min-height:0; background:var(--surface-1); border:1px solid var(--border-strong); border-radius:var(--radius-md); }
+.inspector[hidden] { display:none; }
+.inspector-head { flex:none; display:flex; align-items:flex-start; gap:var(--space-1); padding:var(--space-1); border-bottom:1px solid var(--border); }
+.inspector-tabs { flex:1; display:flex; flex-wrap:wrap; gap:2px; min-width:0; }
+.inspector-tabs [role='tab'] { display:inline-flex; align-items:center; gap:var(--space-1); min-width:0; min-height:30px; padding:0 var(--space-2); border:1px solid transparent; border-radius:999px; background:transparent; color:var(--text-secondary); font-size:var(--text-xs); white-space:nowrap; }
+.inspector-tabs [role='tab']:hover { color:var(--text-primary); background:var(--surface-2); }
+.inspector-tabs [role='tab'][aria-selected='true'] { color:var(--accent); border-color:var(--accent); background:var(--accent-subtle); }
+.tab-count { min-width:18px; padding:0 5px; border-radius:var(--radius-md); background:var(--surface-3); color:var(--text-primary); font-size:10px; font-variant-numeric:tabular-nums; text-align:center; }
+.tab-count.alert { background:var(--status-fail); color:var(--surface-0); }
+.inspector-close { display:none; flex:none; width:36px; min-height:32px; padding:0; background:transparent; border-color:transparent; }
+.inspector-panel { flex:1; min-height:0; overflow-y:auto; overscroll-behavior:contain; padding:var(--space-3); display:flex; flex-direction:column; gap:var(--space-3); container-type:inline-size; scrollbar-width:thin; font-size:var(--text-sm); }
+.inspector-panel[hidden] { display:none; }
+.inspector-panel:focus:not(:focus-visible) { outline:none; }
+.inspector-panel > h3 { margin:var(--space-2) 0 0; font-size:var(--text-md); }
+.inspector-panel svg,.inspector-panel table { max-width:100%; }
+.inspect-toggle { display:none; }
+@media (width > 700px) {
+  .sky-area.overview > .inspector { position:absolute; left:-1px; top:calc(100% + 1px + var(--space-3)); width:var(--map-w);
+    height:calc(100dvh - env(safe-area-inset-top) - env(safe-area-inset-bottom) - var(--hud-pad-y) - 100% - 2px - 2 * var(--space-3)); }
+  /* Minimized, the card keeps the map's width, so the inspector keeps its width and only moves up. */
+  .sky-area.overview.collapsed:has(> .inspector:not([hidden])) { width:var(--map-w); }
+  /* Expanded, the map lies over the page; the inspector waits under it. */
+  .sky-area.overview.expanded > .inspector { visibility:hidden; }
+}
 
 /* On-demand sheets (options, layers, about) open from the header; narrow headers fold them into "⋯". */
 .header-tools { display:contents; }
@@ -250,6 +260,12 @@
   .sky-area.overview { flex:none; width:auto; max-width:none; height:min(calc(var(--map-w) * .75 + 36px), 50%); margin:0; border-width:1px 0 0; border-radius:0; }
   .sky-area.overview.collapsed { height:36px; }
   .overview-expand { display:none; }
+  /* The inspector: a bottom sheet over the page, opened with Inspect in the viewer head. */
+  .inspect-toggle { display:inline-flex; margin-left:auto; }
+  .sky-area.overview > .inspector { position:fixed; left:0; right:0; bottom:0; z-index:var(--z-panel); height:min(70dvh, 560px);
+    padding-bottom:env(safe-area-inset-bottom); border-width:1px 0 0; border-radius:var(--radius-lg) var(--radius-lg) 0 0; box-shadow:0 -8px 24px var(--shadow-color); }
+  .sky-area.overview > .inspector:not(.open) { display:none; }
+  .inspector-close { display:inline-flex; }
 }
 @media (max-height:600px) and (min-width:701px) {
 

@@ -28,18 +28,21 @@ interface Props {
   // Possible track from the user's marks, at the frame dates where a straight line is valid.
   predictions?: Prediction[]
   onIndexChange?: (index: number, letter: BlinkLetter | null) => void
+  // The blink pair whenever it changes: the frame details (Set A / Set B) read it.
+  onPairChange?: (pair: BlinkPair | null) => void
   // Playback and shortcuts pause while the player and the sky are covered by another panel.
   active?: boolean
   showShare?: boolean
   // Pauses and shows this frame; a new object each time, so the same frame can be asked for again.
   seek?: { index: number } | null
+  // Sets A and/or B (Set A / Set B in the frame details, "Choose a compatible pair" in the checks) and blinks
+  // the pair; a new object each time.
+  pairRequest?: { pair: Partial<BlinkPair> } | null
 }
 
-const LETTERS = ['a', 'b'] as const
-
-// One layout without page scrolling: thumbnails | image | side column (A/B pair, shown frame),
-// one transport bar under the image. Every fact appears once; the image stamp labels the image itself.
-// Remount with a new key for new frames: playback state then starts fresh.
+// One layout without page scrolling: the A/B pair as the image's header (with Swap), thumbnails | image, one
+// transport bar under the image. What the shown frame is stands in the Frame tab of the inspector; the stamp
+// labels the image itself. Remount with a new key for new frames: playback state then starts fresh.
 export function BlinkPlayer({
   frames,
   checks = [],
@@ -47,9 +50,11 @@ export function BlinkPlayer({
   motion,
   predictions = [],
   onIndexChange,
+  onPairChange,
   active = true,
   showShare = true,
   seek = null,
+  pairRequest = null,
 }: Props) {
   const [reduced] = useState(prefersReducedMotion)
   const [pair, setPair] = useState<BlinkPair | null>(() => defaultBlinkPair(frames))
@@ -66,6 +71,7 @@ export function BlinkPlayer({
   const letter = letterOf(index, blinkPair)
 
   useEffect(() => onIndexChange?.(index, letter), [index, letter, onIndexChange])
+  useEffect(() => onPairChange?.(pair), [pair, onPairChange])
 
   const [lastSeek, setLastSeek] = useState(seek)
   if (seek !== lastSeek) {
@@ -74,6 +80,18 @@ export function BlinkPlayer({
       setPlaying(false)
       setMode('all')
       setIndex(seek.index)
+    }
+  }
+  const [lastPairRequest, setLastPairRequest] = useState(pairRequest)
+  if (pairRequest !== lastPairRequest) {
+    setLastPairRequest(pairRequest)
+    const next = pair && pairRequest ? { ...pair, ...pairRequest.pair } : null
+    if (next && next.a !== next.b && [next.a, next.b].every((i) => i >= 0 && i < count)) {
+      setPair(next)
+      setMode('ab')
+      setPlaying(false)
+      // Set A / Set B keep the shown frame; a new pair starts at its A.
+      setIndex((i) => (i === next.a || i === next.b ? i : next.a))
     }
   }
 
@@ -114,6 +132,8 @@ export function BlinkPlayer({
     setMode('ab')
     show(pair[which])
   }
+  // The image stays; its letter changes with the pair.
+  const swap = () => pair && setPair({ a: pair.b, b: pair.a })
 
   // Space plays/pauses, arrows step – unless the key already means something where focus is.
   useEffect(() => {
@@ -155,6 +175,38 @@ export function BlinkPlayer({
     }
   }
 
+  const pairSide = (which: 'a' | 'b', current: BlinkPair) => {
+    const f = frames[current[which]]
+    const other = current[which === 'a' ? 'b' : 'a']
+    const name = which.toUpperCase()
+    return (
+      <div className={`pair-side ${which}${letter === name ? ' current' : ''}`}>
+        {/* Pressed only while the image shows this letter (A↔B mode), like the stamp. */}
+        <button type="button" className="pair-letter" aria-pressed={letter === name}
+          onClick={() => showLetter(which)} aria-label={`Show frame ${name}`}>
+          {name}
+        </button>
+        {/* The date names the frame; the list groups the frames by epoch. */}
+        <select aria-label={`Frame ${name}`} value={current[which]} onChange={(event) => choose(which, Number(event.target.value))}>
+          {epochGroups.map(([epoch, members]) => (
+            <optgroup key={epoch} label={`Epoch ${epoch + 1}`}>
+              {members.map((i) => (
+                <option key={frames[i].url} value={i} disabled={i === other}>
+                  {utcMinute(frames[i].date)}
+                </option>
+              ))}
+            </optgroup>
+          ))}
+        </select>
+        {/* λ and, when A and B differ, the release say whether the pair is comparable; the Frame tab has the rest. */}
+        <span className="pair-detail">
+          {lambdaText(f)}
+          {mixedReleases && ` · ${f.release ?? frameRelease(f, grid.collection)}`}
+        </span>
+      </div>
+    )
+  }
+
   return (
     <div
       ref={playerRef}
@@ -193,6 +245,16 @@ export function BlinkPlayer({
             ))}
           </div>
         </section>
+      )}
+
+      {pair && (
+        <div className="pair-head" role="group" aria-label="Blink pair">
+          {pairSide('a', pair)}
+          <button type="button" className="pair-swap" onClick={swap} aria-label="Swap A and B" title="Swap A and B">
+            <span aria-hidden="true">⇄</span>
+          </button>
+          {pairSide('b', pair)}
+        </div>
       )}
 
       <div className="viewport">
@@ -283,113 +345,6 @@ export function BlinkPlayer({
       </div>
 
       {autoPaused && <p className="notice">Paused after 20 swaps (reduced motion) – press Play to continue</p>}
-
-      <div className="player-side">
-        {pair && (
-          <section className="blink-pair" aria-label="Blink pair">
-            {LETTERS.map((which) => {
-              const f = frames[pair[which]]
-              const other = pair[which === 'a' ? 'b' : 'a']
-              const name = which.toUpperCase()
-              return (
-                <div key={which} className={`pair-row${letter === name ? ' current' : ''}`}>
-                  {/* Pressed only while the image shows this letter (A↔B mode), like the stamp. */}
-                  <button type="button" className="pair-letter" aria-pressed={letter === name}
-                    onClick={() => showLetter(which)} aria-label={`Show frame ${name}`}>
-                    {name}
-                  </button>
-                  {/* The date alone fits the side column; the list groups the frames by epoch. */}
-                  <select aria-label={`Frame ${name}`} value={pair[which]} onChange={(event) => choose(which, Number(event.target.value))}>
-                    {epochGroups.map(([epoch, members]) => (
-                      <optgroup key={epoch} label={`Epoch ${epoch + 1}`}>
-                        {members.map((i) => (
-                          <option key={frames[i].url} value={i} disabled={i === other}>
-                            {utcMinute(frames[i].date)}
-                          </option>
-                        ))}
-                      </optgroup>
-                    ))}
-                  </select>
-                  {/* The date names the frame (the list groups by epoch); λ and, when A and B differ, the release say
-                      whether the pair is comparable. The shown frame's details below spell everything out. */}
-                  <span className="pair-detail">
-                    {lambdaText(f)}
-                    {mixedReleases && ` · ${f.release ?? frameRelease(f, grid.collection)}`}
-                  </span>
-                </div>
-              )
-            })}
-          </section>
-        )}
-
-        <section className="selected-observation" aria-label="Shown frame">
-          <div className="selected-head">
-            <h3>Shown frame{letter && <span className="frame-letter"> · {letter}</span>}</h3>
-            {pair && (
-              <div className="gallery-pair-actions">
-                {/* The visible words are the name (label in name); pressed = this frame already is A or B. */}
-                {LETTERS.map((which) => (
-                  <button key={which} type="button"
-                    disabled={pair[which === 'a' ? 'b' : 'a'] === index} aria-pressed={pair[which] === index}
-                    title={`Use observation ${index + 1} as ${which.toUpperCase()}`}
-                    onClick={() => { choose(which, index); setMode('ab') }}>
-                    Set {which.toUpperCase()}
-                  </button>
-                ))}
-              </div>
-            )}
-          </div>
-          <dl className="meta">
-            <dt>Observed</dt>
-            <dd>
-              {frame.date.replace('T', ' ').replace('Z', ' UTC')}
-              {frame.date_end && ` → ${utcMinute(frame.date_end)}`}
-            </dd>
-            <dt>Epoch</dt>
-            <dd>{frame.epoch + 1} · {frame.n_combined > 1 ? `stack of ${frame.n_combined} exposures` : 'single exposure'}</dd>
-            <dt>Wavelength</dt>
-            <dd>
-              D{frame.detector} · {lambdaText(frame)}{' '}
-              <span className="muted">(detector {frame.wavelength_min_um.toFixed(2)}–{frame.wavelength_max_um.toFixed(2)} µm)</span>
-            </dd>
-            <dt>Release</dt>
-            <dd>{frameRelease(frame, grid.collection)}</dd>
-            <dt>Quality</dt>
-            <dd>
-              {Math.round(frame.coverage * 100)} % covered ·{' '}
-              {frame.masked_fraction == null ? 'masked pixels not reported' : `${(frame.masked_fraction * 100).toFixed(1)} % masked`}
-            </dd>
-            <dt>Field</dt>
-            <dd>
-              RA {grid.ra.toFixed(5)}° · Dec {grid.dec.toFixed(5)}° · {Number(grid.size_deg.toFixed(4))}° field
-              {grid.pixel_scale_arcsec != null && ` · ${grid.pixel_scale_arcsec}″/px`}
-            </dd>
-            {motion && (
-              <>
-                <dt>Gaia DR3</dt>
-                <dd>
-                  {motion.source_id} · µ {motion.pmra_mas_yr.toFixed(0)},{' '}
-                  {motion.pmdec_mas_yr.toFixed(0)} mas/yr
-                  {motion.parallax_mas !== null && ` · ϖ ${motion.parallax_mas.toFixed(1)} mas`} ·{' '}
-                  {marker ? '○ predicted position' : 'predicted position outside this frame'}
-                </dd>
-              </>
-            )}
-            {predicted && (
-              <>
-                <dt>Possible track</dt>
-                <dd>{searchArea ? `dashed circle: search area, ${SEARCH_AREA_LABEL}` : 'predicted position outside this frame'}</dd>
-              </>
-            )}
-            <dt>Source</dt>
-            <dd>
-              <a href={frame.source_url} target="_blank" rel="noreferrer">
-                {frame.obs_id}
-              </a>
-            </dd>
-          </dl>
-        </section>
-      </div>
     </div>
   )
 }

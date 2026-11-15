@@ -12,3 +12,15 @@ describe('HeaderTools actions', () => {
     expect(html).toContain('aria-label="More: layers, share"')
   })
 })
+
+describe('HeaderTools', () => {
+  it('offers the control sheets as buttons and folded into ⋯, the open one pressed', () => {
+    const html = renderToStaticMarkup(<HeaderTools open="layers" onToggle={() => undefined} items={[
+      { id: 'target', label: 'Options' }, { id: 'layers', label: 'Layers' }, { id: 'about', label: 'About' },
+    ]} />)
+    expect(html).toContain('data-testid="open-layers" aria-expanded="true"')
+    expect(html).toContain('data-testid="menu-layers" aria-expanded="true"')
+    expect(html).toContain('data-testid="header-more" aria-expanded="false"')
+    expect(html).toContain('<div id="header-more-menu" class="header-more-menu" role="group" aria-label="More" hidden="">')
+  })
+})
