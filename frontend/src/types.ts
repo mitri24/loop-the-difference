@@ -82,6 +82,7 @@ export interface Frame {
   wavelength_um: number | null
   bandwidth_um: number | null
   sources?: DetectedSource[]
+  completeness?: Completeness | null // measured only for the A and B the blink opens with; absent in older manifests
   release?: string | null // "DR1", "QR3", "DR1 deep", or "DR1 + QR3" for a mixed stack
   // IRSA's ObsCore metadata; absent in manifests cached before pipeline 13. A stack adds up the exposure times,
   // spans the first start to the last end, names its first exposure by publisher_did (like obs_id), takes the last
@@ -211,6 +212,20 @@ export interface DetectedSource {
   separation_arcsec: number | null
   catalog_mag: number | null
   catalog_band: 'G' | 'W1' | null
+}
+
+// Detection limit of a frame, measured: artificial stars of known flux set into it and searched for with its own
+// source detection (backend/app/completeness.py).
+export interface Completeness {
+  psf: 'epsf' | 'gaussian' // the frame's SPHEREx ePSF resampled like the data, or a Gaussian of the grid PSF
+  injected: number // stars set in all, equally many per flux step (3–30 × noise_ujy)
+  noise_ujy: number // 1σ total flux of a point source in the frame
+  flux50_ujy: number | null // total flux at which 50 % / 90 % of the stars are found again
+  flux90_ujy: number | null
+  ab50: number | null
+  ab90: number | null
+  false_per_frame: number // detections in the negated frame: noise peaks above the threshold
+  offset_arcsec: number | null // median distance of a star near the limit from where it was set
 }
 
 // Known asteroids and comets per epoch from NASA/JPL SBIdent (backend/app/smallbodies.py).

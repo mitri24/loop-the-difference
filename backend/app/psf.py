@@ -101,16 +101,27 @@ def psf_flux(
 def psf_at(path: Path, ra: float, dec: float) -> np.ndarray | None:
     """Unit-flux image of a point source at (ra, dec) on the pixels of a cached cutout, from the
     ePSF of the detector zone there; None when the cutout carries no EPSF table."""
+    found = cutout_epsf(path, ra, dec)
+    if found is None:
+        return None
+    model, wcs, shape = found
+    x, y = (float(v) for v in wcs.world_to_pixel_values(ra, dec))
+    return pixel_psf(model, x, y, shape)
+
+
+def cutout_epsf(path: Path, ra: float, dec: float) -> tuple[EPSF, WCS, tuple[int, int]] | None:
+    """The ePSF of the detector zone at (ra, dec) in a cached cutout, with the cutout's WCS and
+    shape; None when the cutout carries no EPSF table."""
     with warnings.catch_warnings():
         warnings.simplefilter("ignore", FITSFixedWarning)
         with fits.open(path) as hdul:
             if "EPSF" not in hdul:
                 return None
             header = hdul["IMAGE"].header
-            x, y = (float(v) for v in WCS(header).world_to_pixel_values(ra, dec))
+            wcs = WCS(header)
+            x, y = (float(v) for v in wcs.world_to_pixel_values(ra, dec))
             # The cutout's LINEAR 'A' WCS gives its position on the detector.
             dx = float(header.get("CRVAL1A", 0.0)) + 1.0 - float(header.get("CRPIX1A", 1.0))
             dy = float(header.get("CRVAL2A", 0.0)) + 1.0 - float(header.get("CRPIX2A", 1.0))
             model = epsf_at(hdul["EPSF"], x + dx, y + dy)
-            shape = header["NAXIS2"], header["NAXIS1"]
-    return pixel_psf(model, x, y, shape)
+            return model, wcs, (header["NAXIS2"], header["NAXIS1"])

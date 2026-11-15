@@ -85,7 +85,7 @@ class CatalogStar(NamedTuple):
     motion: ProperMotion | None = None
 
 
-def detect(frame: Aligned) -> tuple[list[Detection], bool]:
+def detect(frame: Aligned, fit: np.ndarray | None = None) -> tuple[list[Detection], bool]:
     """Point sources at least THRESHOLD_SIGMA above the noise, highest peak first; True if capped.
 
     The local sky goes first. Then at every pixel the PSF is fitted to the usable pixels around
@@ -93,6 +93,10 @@ def detect(frame: Aligned) -> tuple[list[Detection], bool]:
     pixels never enter, so a masked core moves no centroid. The VARIANCE planes leave out
     resampling and faint unresolved stars, so the S/N map is scaled to unit scatter (a median
     absolute deviation, which sources barely move), as SExtractor scales weight maps.
+
+    With `fit`, a boolean mask of the grid, only the peaks on its pixels get a centroid fit (the
+    others keep their peak pixel): the injection test (app/completeness.py) needs positions only
+    where it set stars, and the fits take nearly all the time. Which sources are found is the same.
     """
     usable = np.isfinite(frame.image)
     if not usable.any():
@@ -119,7 +123,7 @@ def detect(frame: Aligned) -> tuple[list[Detection], bool]:
     peaks = sorted((p for p in peaks if not near_gap[p[1], p[0]]), key=lambda p: -peak[p[1], p[0]])
     # A saturated core is placed by its rim's own light: the local sky would take the halo's share.
     saturated = _saturated(frame, gaps, large, snr)
-    found = saturated + _centroids(local, peaks[:MAX_SOURCES], peak, snr)
+    found = saturated + _centroids(local, peaks[:MAX_SOURCES], peak, snr, fit)
     found.sort(key=lambda d: d.peak, reverse=True)
     return found[:MAX_SOURCES], len(saturated) + len(peaks) > MAX_SOURCES
 
@@ -140,24 +144,32 @@ def _local_sky(frame: Aligned) -> np.ndarray:
 
 
 def _centroids(
-    frame: Aligned, peaks: list[tuple[int, int]], peak: np.ndarray, snr: np.ndarray
+    frame: Aligned,
+    peaks: list[tuple[int, int]],
+    peak: np.ndarray,
+    snr: np.ndarray,
+    fit: np.ndarray | None = None,
 ) -> list[Detection]:
-    """Sub-pixel positions from a PSF fit to the usable pixels around each S/N peak."""
-    if not peaks:
-        return []
-    usable = np.isfinite(frame.image)
-    with warnings.catch_warnings():
-        warnings.simplefilter("ignore")  # a fit that does not converge keeps its peak pixel
-        fit = fit_2dgaussian(
-            frame.image,
-            xypos=peaks,
-            fwhm=FWHM_PX,
-            fit_shape=len(PSF),
-            error=np.sqrt(np.where(usable, frame.variance, 1.0)),
-        ).results
+    """Sub-pixel positions from a PSF fit to the usable pixels around each S/N peak (each peak on
+    its own, so fitting fewer moves none); with `fit` only for the peaks on its pixels."""
+    fitted = [p for p in peaks if fit is None or fit[p[1], p[0]]]
+    places = {}
+    if fitted:
+        usable = np.isfinite(frame.image)
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore")  # a fit that does not converge keeps its peak pixel
+            result = fit_2dgaussian(
+                frame.image,
+                xypos=fitted,
+                fwhm=FWHM_PX,
+                fit_shape=len(PSF),
+                error=np.sqrt(np.where(usable, frame.variance, 1.0)),
+            ).results
+        for (px, py), fx, fy in zip(fitted, result["x_fit"], result["y_fit"], strict=True):
+            places[px, py] = (fx, fy) if max(abs(fx - px), abs(fy - py)) <= 1 else (px, py)
     found = []
-    for (px, py), fx, fy in zip(peaks, fit["x_fit"], fit["y_fit"], strict=True):
-        x, y = (fx, fy) if max(abs(fx - px), abs(fy - py)) <= 1 else (px, py)
+    for px, py in peaks:
+        x, y = places.get((px, py), (px, py))
         found.append(Detection(float(x), float(y), float(peak[py, px]), float(snr[py, px])))
     return found
 

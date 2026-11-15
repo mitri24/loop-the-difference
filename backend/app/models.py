@@ -107,6 +107,8 @@ class Frame(BaseModel):
     wavelength_um: float | None = None
     bandwidth_um: float | None = None
     sources: list["DetectedSource"] = []
+    # Measured detection limit (app/completeness.py): only the blink's first A and B have one.
+    completeness: "Completeness | None" = None
     # SPHEREx release of the frame's exposures: "DR1", "QR3", "DR1 deep", or "DR1 + QR3".
     release: str | None = None
     # The exposures' ObsCore metadata (Observation). A stack adds up their exposure times, spans
@@ -243,6 +245,29 @@ class DetectedSource(BaseModel):
     # Vega magnitude in catalog_band: Gaia DR3 G or AllWISE W1.
     catalog_mag: float | None = None
     catalog_band: Literal["G", "W1"] | None = None
+
+
+class Completeness(BaseModel):
+    """Detection limit of a frame, measured: artificial stars of known total flux set into the
+    frame and searched for with its own source detection (app/completeness.py)."""
+
+    # The stars' PSF: the frame's SPHEREx ePSF resampled like the data, or (cutouts without an
+    # EPSF table) a Gaussian of the grid PSF's measured width.
+    psf: Literal["epsf", "gaussian"]
+    # Stars set in all, in equal numbers per flux step (3-30 × noise_ujy).
+    injected: int
+    # 1σ total flux of a point source in the frame: the scatter of a PSF fit on its pixels.
+    noise_ujy: float
+    # Total flux at which 50 % and 90 % of the stars are found again, and as AB magnitude; None
+    # when the faintest step reaches it already or no step does.
+    flux50_ujy: float | None = None
+    flux90_ujy: float | None = None
+    ab50: float | None = None
+    ab90: float | None = None
+    # Detections in the negated frame: noise peaks that pass the threshold, per frame.
+    false_per_frame: int
+    # Median distance from where a star near the limit was set to where it was found.
+    offset_arcsec: float | None = None
 
 
 Frame.model_rebuild()

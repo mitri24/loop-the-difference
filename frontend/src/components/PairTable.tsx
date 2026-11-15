@@ -93,6 +93,8 @@ export function PairTable({ frames, pair, index, letter, grid, motion, predictio
     const counts = countSources(f.sources)
     return <>{counts.detected}{counts.none > 0 && <> · <strong>{counts.none}</strong> unmatched</>}</>
   }
+  // Measured only for the A and B the blink opens with; a comparison from before the measurement has no row.
+  const limit = (f: Frame) => ifKnown(f.completeness?.ab50, (ab) => `50 % at ${ab.toFixed(1)} AB`)
   // One row each where two belong together: what the image is and how long it was exposed; how much of it is usable.
   const image = (f: Frame) => <>{f.n_combined > 1 ? `stack of ${f.n_combined}` : 'single exposure'}
     {f.exposure_s != null && <span className="muted"> · {exposure(f)}</span>}</>
@@ -158,6 +160,8 @@ export function PairTable({ frames, pair, index, letter, grid, motion, predictio
           {row('Image', image, 'Single exposure or a stack of exposures, with its exposure time (t_exptime)')}
           {row('Quality', quality, 'Share of the field with data · pixels flagged as unusable (saturation, cosmic rays, …)')}
           {row('Sources', sources, 'Detected at ≥ 5σ · how many have no Gaia DR3 or AllWISE match (they need verification)')}
+          {(a.completeness || b.completeness) && row('Detection limit', limit,
+            'Measured with artificial stars set into the frame: half of the stars this bright are found again')}
           {motion && row('Gaia DR3', gaia, `Predicted position of ${motion.source_id} · µ ${motion.pmra_mas_yr.toFixed(0)}, ${motion.pmdec_mas_yr.toFixed(0)} mas/yr`)}
           {predictions.length > 0 && row('Track', track, 'Where the possible track from your marks puts the object')}
           {row('Data', (f) => <a href={f.source_url} target="_blank" rel="noreferrer">{f.obs_id}</a>, 'The observation at IRSA')}
