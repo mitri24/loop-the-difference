@@ -1,4 +1,5 @@
 import { useId } from 'react'
+import { Skeleton } from './Skeleton'
 import {
   BLANK_SLICES,
   CHANNELS_PER_BAND,
@@ -50,7 +51,7 @@ export function SkySlider({
         <i style={columns(BLANK_SLICES[0], BLANK_SLICES.length)}>×</i>
       </div>
       <output htmlFor={id}>{text}</output>
-      {status === 'loading' && <p className="viz-note">Reading channel wavelengths from IRSA…</p>}
+      {status === 'loading' && <div aria-busy="true"><p className="sr-only">Reading channel wavelengths from IRSA…</p><Skeleton variant="line" /></div>}
       {status === 'unavailable' && (
         <p className="notice">
           IRSA&apos;s cube metadata did not load, so the channel wavelengths are unknown.
