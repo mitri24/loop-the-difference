@@ -10,10 +10,10 @@ from rq import Queue
 from rq.exceptions import NoSuchJobError
 from rq.job import Job, JobStatus
 
-from app import followup
+from app import fingerprint, followup
 from app.archive import collection_key, spherex_collections
 from app.config import Settings
-from app.models import FollowupJob, FrameJob, FrameManifest, SpectrumJob
+from app.models import FingerprintJob, FollowupJob, FrameJob, FrameManifest, SpectrumJob
 from app.tasks import (
     PIPELINE_VERSION,
     SPECTRUM_VERSION,
@@ -123,9 +123,37 @@ def followup_status(redis: Redis, job_id: str) -> FollowupJob:
     return _result_status(redis, FollowupJob, job_id)
 
 
+def fingerprint_job_id(collection: str, params: dict) -> str:
+    key = (
+        f"fingerprint|{collection}|{json.dumps(params, sort_keys=True)}"
+        f"|v{fingerprint.VERSION}.{followup.VERSION}"
+    )
+    return hashlib.sha256(key.encode()).hexdigest()[:16]
+
+
+def submit_fingerprint(redis: Redis, settings: Settings, params: dict) -> FingerprintJob:
+    """Like `submit_followup`: one track in the visits of every detector, MAX_CUTOUTS at most."""
+    collections = spherex_collections(settings)
+    job_id = fingerprint_job_id(collection_key(collections), params)
+    kwargs = {**params, "collections": collections}
+    return _submit_result(
+        redis,
+        settings,
+        FingerprintJob,
+        job_id,
+        fingerprint.build_fingerprint,
+        kwargs,
+        JOB_TIMEOUT_S,
+    )
+
+
+def fingerprint_status(redis: Redis, job_id: str) -> FingerprintJob:
+    return _result_status(redis, FingerprintJob, job_id)
+
+
 # Jobs whose small result lives in the job itself, with the field that holds it.
-ResultJob = SpectrumJob | FollowupJob
-_RESULT_FIELD = {SpectrumJob: "spectrum", FollowupJob: "followup"}
+ResultJob = SpectrumJob | FollowupJob | FingerprintJob
+_RESULT_FIELD = {SpectrumJob: "spectrum", FollowupJob: "followup", FingerprintJob: "fingerprint"}
 
 
 def _submit_result(
