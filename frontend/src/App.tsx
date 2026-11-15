@@ -2,7 +2,7 @@ import { AnalysisReleaseInfo } from './analysis/AnalysisReleaseInfo'
 import { AnalysisHost } from './analysis/AnalysisHost'
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import type { AladinInstance } from 'aladin-lite'
-import { createFrames, getFrameJob, getObservations, resolveName } from './api'
+import { createFrames, getFrameJob, getObservations, getSurprise, resolveName } from './api'
 import { AboutPanel } from './components/AboutPanel'
 import { compatiblePair, stampText, type BlinkLetter, type BlinkPair } from './blink'
 import { blockedReason, CANDIDATE_CAVEAT, type CheckActionId } from './checkGuide'
@@ -29,6 +29,8 @@ import { SkyFrame } from './components/SkyFrame'
 import { SkyView } from './components/SkyView'
 import { SmallBodies, useSmallBodies } from './components/SmallBodies'
 import { SourceList } from './components/SourceList'
+import { PositionChart } from './components/PositionChart'
+import { followPosition } from './positionTrack'
 import { SpectrumChart, useQuickSpectrum } from './components/SpectrumChart'
 import { TargetForm } from './components/TargetForm'
 import { useFrameLayers } from './frameLayers'
@@ -131,6 +133,8 @@ export default function App() {
   const [coverageSlot, setCoverageSlot] = useState<HTMLDivElement | null>(null)
   const [alignedSlot, setAlignedSlot] = useState<HTMLDivElement | null>(null)
   const [spectrumSlot, setSpectrumSlot] = useState<HTMLDivElement | null>(null)
+  // A source picked in the list: the Measure tab follows it instead of the target, in this comparison only.
+  const [followed, setFollowed] = useState<{ ra: number; dec: number; job: string } | null>(null)
   const [footprintsSlot, setFootprintsSlot] = useState<HTMLDivElement | null>(null)
   // Tabs opened for this comparison (and the one on screen): slow or external lookups wait for their tab.
   const [opened, setOpened] = useState<ReadonlySet<InspectId>>(() => new Set())
@@ -308,6 +312,31 @@ export default function App() {
     if (target === searchShows.current) show({ ...base, ra: query.ra, dec: query.dec })
     else void run(base, target)
   }, [run, query, show])
+  // Surprise me: the API picks a random fast-moving Gaia DR3 star (an example target while Gaia is down). Why it was
+  // picked stays on screen while that position is shown, so it goes away when the user moves on.
+  const [surprise, setSurprise] = useState<{ ra: string, dec: string, reason: string } | null>(null)
+  const surpriseMe = useCallback(async () => {
+    controller.current?.abort()
+    const picking = new AbortController()
+    controller.current = picking
+    setBusy(true)
+    setError(null)
+    setJob(null)
+    setStage('investigate')
+    setStatus('Picking a fast-moving nearby star from Gaia DR3…')
+    try {
+      const star = await getSurprise(picking.signal)
+      if (picking.signal.aborted) return
+      const ra = star.ra.toFixed(6), dec = star.dec.toFixed(6)
+      setSurprise({ ra, dec, reason: star.reason })
+      void run({ ...draft, name: star.name, ra, dec }, undefined, star.proper_motion)
+    } catch (cause) {
+      if (picking.signal.aborted) return
+      setBusy(false)
+      setError(cause instanceof Error ? cause.message : String(cause))
+      setStatus('Could not pick a star.')
+    }
+  }, [run, draft])
 
   useEffect(() => {
     const timer = INITIAL ? window.setTimeout(() => void run(INITIAL), 0) : undefined
@@ -352,6 +381,13 @@ export default function App() {
   // The plate follows the field only once the map is centred on the current target.
   const plate = usePlateLayer(sky, plateOnSky, centred.ra === query.ra && centred.dec === query.dec ? center : null, motion)
   const frame = (hasFrames && manifest?.frames[frameIndex]) || null
+  const followedHere = followed && followed.job === job?.job_id ? followed : null
+  // Position over time from the detections of every frame: the target (along its Gaia motion when known) or the
+  // source picked in the list.
+  const positionTrack = useMemo(() => manifest && hasFrames
+    ? followPosition(manifest.frames, followedHere ?? { ra: manifest.ra, dec: manifest.dec }, manifest.pixel_scale_arcsec,
+      followedHere ? null : motion)
+    : null, [manifest, hasFrames, followedHere, motion])
   const counts = frame?.sources ? countSources(frame.sources) : null
   const sourceSummary = counts ? ` · ${counts.detected} in this frame · ${counts.none} ${counts.none === 1 ? 'needs' : 'need'} verification${counts.unknown ? ` · ${counts.unknown} unknown` : ''}` : ''
   const frameOnSky = frame && sky && framesOnSky && !showDifference && !analysisSkyCaption ? frame : null
@@ -500,7 +536,7 @@ export default function App() {
     </CandidatePanel>
     {!skyUnavailable && frame && !showDifference && <details className="disclosure">
       <summary>Detected sources{sourceSummary}</summary>
-      <SourceList frame={frame} onSelect={(ra, dec) => sky?.gotoRaDec(ra, dec)} onMark={(source) => candidate.markSource(frame, source)} />
+      <SourceList frame={frame} onSelect={(ra, dec) => { sky?.gotoRaDec(ra, dec); if (job) setFollowed({ ra, dec, job: job.job_id }) }} onMark={(source) => candidate.markSource(frame, source)} />
     </details>}
     {manifest.stacked
       ? <p className="muted">Known asteroids and comets (JPL SBIdent) are looked up for single exposures: switch the view to Exposures.</p>
@@ -549,6 +585,8 @@ export default function App() {
   const tabs: InspectorTab<InspectId>[] = [
     { id: 'quality', label: 'Quality', count: checks.length, alert: blocking, content: evidence || pending('lines', 'Loading the checks…') },
     { id: 'measure', label: 'Measure', content: <>
+      {manifest && positionTrack && <PositionChart track={positionTrack} subject={followedHere ? 'the selected source' : 'the target'}
+        detector={manifest.detector} onFollowTarget={followedHere ? () => setFollowed(null) : undefined} />}
       {manifest ? <SpectrumChart quick={quick} centerUm={(frame ?? manifest.frames[0])?.wavelength_um} detector={manifest.detector} />
         : pending('chart', 'Loading the comparison…')}
       {analysisTarget && <details className="disclosure" onToggle={(event) => { if (event.currentTarget.open) setAnalysisWanted(true) }}>
@@ -595,7 +633,7 @@ export default function App() {
     <div className="shell" data-testid="planet-x-shell" ref={shellRef}>
       <a className="skip-link" href="#sky-map">Skip to the sky map</a>
       <SearchBar tools={<HeaderTools items={PANELS} open={panel} onToggle={togglePanel}
-        actions={[{ id: 'share', label: 'Share', title: 'Copy this comparison link', onClick: () => void share() }]} />} onDraftChange={setDraft} value={name} onChange={(value) => { searchShows.current = null; setName(value) }} draft={draft} busy={busy} onShow={show} onFind={find} />
+        actions={[{ id: 'share', label: 'Share', title: 'Copy this comparison link', onClick: () => void share() }]} />} onDraftChange={setDraft} value={name} onChange={(value) => { searchShows.current = null; setName(value) }} draft={draft} busy={busy} onShow={show} onFind={find} onSurprise={() => void surpriseMe()} />
 
       <div className={`stage ${stage}`}>
         <section className="viewer" aria-label="SPHEREx images of the region" hidden={stage !== 'investigate'}>
@@ -710,6 +748,9 @@ export default function App() {
         slots={{ coverage: coverageSlot, aligned: alignedSlot, spectrum: spectrumSlot, footprints: footprintsSlot }} />}
 
       {shareStatus && <div className="share-feedback" role="status"><span>{shareStatus}</span><button type="button" aria-label="Dismiss share message" onClick={() => setShareStatus('')}>×</button></div>}
+      {!shareStatus && surprise?.ra === query.ra && surprise.dec === query.dec && (
+        <div className="share-feedback" role="status"><span>{surprise.reason}</span><button type="button" aria-label="Dismiss why this star was picked" onClick={() => setSurprise(null)}>×</button></div>
+      )}
     </div>
   )
 }

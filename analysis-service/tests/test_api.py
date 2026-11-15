@@ -39,3 +39,41 @@ def test_frame_file_name_is_sanitised():
 
 def test_unknown_job():
     assert client.get("/api/jobs/nope").status_code == 404
+
+
+def test_catalog_serves_catwise_motions_and_says_502_when_irsa_fails(monkeypatch):
+    from app import main
+    from app.schemas import CatalogSource
+
+    mover = CatalogSource(
+        catalog="CatWISE2020",
+        id="CatWISE2020 J085509.47-071502.9",
+        ra=133.79,
+        dec=-7.25,
+        mag=15.0,
+        mag_band="W1",
+        pm_ra_mas_yr=-8100.0,
+        pm_dec_mas_yr=680.0,
+        epoch_jyear=2015.22,
+    )
+    asked = []
+
+    async def catwise(ra, dec, radius_deg, client):
+        asked.append((ra, dec, radius_deg))
+        return [mover]
+
+    monkeypatch.setattr(main, "catwise_cone", catwise)
+    res = client.get(
+        "/api/catalog",
+        params={"ra": "133.79", "dec": "-7.25", "radius_arcmin": 6, "catalog": "catwise"},
+    )
+    assert res.status_code == 200
+    assert res.json()[0]["pm_ra_mas_yr"] == -8100.0 and res.json()[0]["epoch_jyear"] == 2015.22
+    assert asked == [(133.79, -7.25, 0.1)]
+
+    async def no_table(ra, dec, radius_deg, client):
+        raise ValueError("IRSA Gator answered no catwise_2020 table")
+
+    monkeypatch.setattr(main, "catwise_cone", no_table)
+    res = client.get("/api/catalog", params={"ra": "133.79", "dec": "-7.25", "catalog": "catwise"})
+    assert res.status_code == 502

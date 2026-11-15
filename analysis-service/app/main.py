@@ -25,6 +25,7 @@ from .catalogs import (
     allwise_cone,
     cadc_images,
     cadc_motion_check,
+    catwise_cone,
     gaia_cone,
     resolve_name,
 )
@@ -328,15 +329,17 @@ async def catalog(
     ra: str,
     dec: str,
     radius_arcmin: float = Query(5.0, gt=0, le=30),
-    catalog: str = Query("gaia", pattern="^(gaia|allwise)$"),
+    # catwise: CatWISE2020 positions at each source's mean epoch, motions only above 3σ
+    # (the sky view moves AllWISE's red sources with them to each frame's time).
+    catalog: str = Query("gaia", pattern="^(gaia|allwise|catwise)$"),
     epoch: float | None = Query(None, description="Propagate positions to this Julian year"),
 ) -> list[CatalogSource]:
     ra_d, dec_d = parse_ra(ra), parse_dec(dec)
     async with httpx.AsyncClient(follow_redirects=True) as client:
         try:
-            fn = gaia_cone if catalog == "gaia" else allwise_cone
+            fn = {"gaia": gaia_cone, "allwise": allwise_cone, "catwise": catwise_cone}[catalog]
             sources = await fn(ra_d, dec_d, radius_arcmin / 60, client)
-        except httpx.HTTPError as exc:
+        except (httpx.HTTPError, ValueError) as exc:  # ValueError: IRSA answered without a table
             raise HTTPException(502, f"{catalog} service unavailable: {exc}") from exc
     if epoch is None or catalog != "gaia":
         return sources

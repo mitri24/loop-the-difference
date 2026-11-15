@@ -11,7 +11,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, JSONResponse
 from redis.exceptions import RedisError
 
-from app import jobs, names, partners, tracks
+from app import jobs, names, partners, surprise, tracks
 from app.archive import (
     ArchiveError,
     collection_key,
@@ -32,6 +32,7 @@ from app.models import (
     ResolvedTarget,
     SpectrumJob,
     SpectrumRequest,
+    SurpriseTarget,
 )
 from app.smallbodies import router as smallbodies_router
 
@@ -107,6 +108,11 @@ def resolve(
         dec=dec,
         proper_motion=find_proper_motion(ra, dec, cache_dir=settings.cache_dir),
     )
+
+
+@app.get("/api/surprise", response_model_exclude_none=True)
+def surprise_target(settings: SettingsDep) -> SurpriseTarget:
+    return surprise.pick(settings)
 
 
 @app.get("/api/observations")

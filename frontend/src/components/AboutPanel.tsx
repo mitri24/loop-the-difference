@@ -126,7 +126,9 @@ export function AboutPanel() {
             known bodies are placed as SPHEREx saw them.
           </li>
           <li>
-            <strong>NEOSSat</strong> (Canadian Space Agency) – “This research used the facilities of
+            <strong>NEOSSat and other telescopes at this position</strong> (Canadian Space Agency, CADC) – Hubble and
+            Webb previews in that list come from the Mikulski Archive for Space Telescopes (MAST) at STScI. “This
+            research used the facilities of
             the Canadian Astronomy Data Centre operated by the National Research Council of Canada
             with the support of the Canadian Space Agency.”
           </li>

@@ -1,12 +1,21 @@
 // Field catalogues for the sky view, queried from CORS-enabled mirrors.
 import type { AladinInstance, Catalog, CatalogOptions } from 'aladin-lite'
 import { useCallback, useEffect, useRef, useState } from 'react'
+import { API_BASE } from './analysis/api/client'
 
 // Second mirror for timeouts and "database not reachable" answers; same query syntax, CORS *.
 export const VIZIER_MIRRORS = ['https://vizier.cfa.harvard.edu', 'https://vizier.idia.ac.za']
 const MJD_UNIX_EPOCH = 40587
 const MJD_J2000 = 51544.5
 const GAIA_EPOCH_YR = 2016.0
+// AllWISE positions lie at its mean epoch (as in analysis-service/app/catalogs.py). Its red sources move to each
+// frame's time with CatWISE2020's motions (about 12× more accurate than AllWISE's own; Barnard's Star: AllWISE
+// 13.7″/yr in Dec, Gaia 10.4″/yr), which the analysis service fetches from IRSA, only those above 3σ.
+export const ALLWISE_EPOCH_YR = 2010.5
+const ALLWISE_MJD = MJD_J2000 + (ALLWISE_EPOCH_YR - 2000) * 365.25
+// A CatWISE2020 source moved back to 2010.5 is the AllWISE source within this distance (W1 PSF 6″).
+const MATCH_ARCSEC = 3
+const CATWISE_MAX_ARCMIN = 30
 // Per layer; VizieR cuts in table order, so the queries sort by brightness first.
 export const MAX_SOURCES = 500
 // Gaia (sorted by magnitude) and SIMBAD get slow beyond this radius around the view centre.
@@ -20,6 +29,10 @@ export const gaiaUrl = (ra: number, dec: number, rDeg: number, mirror = VIZIER_M
 
 export const wiseUrl = (ra: number, dec: number, rDeg: number, mirror = VIZIER_MIRRORS[0]) =>
   `${mirror}/viz-bin/votable?-source=II/328/allwise&-c=${cone(ra, dec)}&-c.rd=${rDeg}&-out.max=${MAX_SOURCES}&-sort=W1mag&-out=AllWISE,RAJ2000,DEJ2000,W1mag,W2mag`
+
+// CatWISE2020 around the view, through the analysis service (IRSA has no CORS; VizieR's mirrors hold no rows).
+export const catwiseUrl = (ra: number, dec: number, rDeg: number) =>
+  `${API_BASE}/api/catalog?ra=${ra}&dec=${dec}&radius_arcmin=${Math.min(CATWISE_MAX_ARCMIN, rDeg * 60).toFixed(2)}&catalog=catwise`
 
 // TAP always answers with a table, also for an empty field; votable/td keeps the rows readable.
 // Brightest first: by V, then Gaia G where V is missing. The service speaks ADQL 2.0 (no NULLS LAST,
@@ -126,6 +139,55 @@ export function simbadSources(rows: string[][], mjd: number) {
     .filter((s) => Number.isFinite(s.ra) && Number.isFinite(s.dec))
 }
 
+/** A CatWISE2020 source in motion: position at its mean epoch, µα* and µδ in mas/yr. */
+export interface WiseMotion {
+  ra: number
+  dec: number
+  pmRa: number
+  pmDec: number
+  epochYr: number
+}
+
+/** The analysis service's CatWISE2020 answer, only sources with a motion; anything else is no answer (null). */
+export function catwiseMotions(json: unknown): WiseMotion[] | null {
+  if (!Array.isArray(json)) return null
+  return json.flatMap((source) => {
+    const { ra, dec, pm_ra_mas_yr: pmRa, pm_dec_mas_yr: pmDec, epoch_jyear: epochYr } = (source ?? {}) as Record<string, unknown>
+    const values = [ra, dec, pmRa, pmDec, epochYr]
+    return values.every((v) => typeof v === 'number' && Number.isFinite(v))
+      ? [{ ra, dec, pmRa, pmDec, epochYr } as WiseMotion] : []
+  })
+}
+
+const sepArcsec = (a: { ra: number; dec: number }, b: { ra: number; dec: number }) => {
+  const dRa = ((b.ra - a.ra + 540) % 360) - 180
+  return Math.hypot(dRa * Math.cos((a.dec * Math.PI) / 180), b.dec - a.dec) * 3600
+}
+
+/**
+ * AllWISE rows (columns as in wiseUrl, positions at 2010.5) at the frame's time: a source whose CatWISE2020
+ * counterpart moves (within 3″ once moved back to 2010.5) moves with it; the others keep their position.
+ */
+export function wiseSources(rows: string[][], motions: WiseMotion[] | null, mjd: number) {
+  const back = (motions ?? []).map((motion) => ({ motion, at: propagateGaia(motion, ALLWISE_MJD, motion.epochYr) }))
+  return rows
+    .filter(([, ra, dec]) => ra !== '' && dec !== '')
+    .map(([name, ra, dec, w1, w2]) => {
+      const here = { ra: +ra, dec: +dec }
+      let moving: WiseMotion | null = null
+      let nearest = MATCH_ARCSEC
+      for (const { motion, at } of back) {
+        const sep = sepArcsec(here, at)
+        if (sep <= nearest) [moving, nearest] = [motion, sep]
+      }
+      const pos = moving ? propagateGaia(moving, mjd, moving.epochYr) : here
+      const data: Record<string, string> = { AllWISE: name, ra: pos.ra.toFixed(6), dec: pos.dec.toFixed(6), W1mag: w1, W2mag: w2 }
+      if (moving) Object.assign(data, { pmRA: moving.pmRa.toFixed(0), pmDE: moving.pmDec.toFixed(0), motion: 'CatWISE2020' })
+      return { ...pos, data }
+    })
+    .filter((s) => Number.isFinite(s.ra) && Number.isFinite(s.dec))
+}
+
 /** The name column of a marker: SIMBAD, SkyBoT, AllWISE, Gaia DR3, then our own layers. */
 export const sourceName = (data: Record<string, string> = {}) =>
   data.main_id || data.Name || data.AllWISE || data.Source || data.label || ''
@@ -203,7 +265,21 @@ function attempts(key: LayerKey, { ra, dec, r }: View, mjd: number) {
   return [url, url]
 }
 
-// Gaia and SIMBAD answers do not depend on the epoch: one download per view, moved locally per epoch.
+// CatWISE2020 motions once per view, failures included (null): AllWISE then keeps its 2010.5 positions.
+const motionAnswers = new Map<string, Promise<WiseMotion[] | null>>()
+export function viewMotions({ ra, dec, r }: View): Promise<WiseMotion[] | null> {
+  const url = catwiseUrl(ra, dec, r)
+  let answer = motionAnswers.get(url)
+  if (!answer) {
+    answer = fetch(url, { signal: AbortSignal.timeout(TIMEOUT_MS.wise * 2) })
+      .then((res) => (res.ok ? res.json() : null))
+      .then(catwiseMotions, () => null)
+    motionAnswers.set(url, answer)
+  }
+  return answer
+}
+
+// Gaia, AllWISE and SIMBAD answers do not depend on the epoch: one download per view, moved locally per epoch.
 const answers: Partial<Record<LayerKey, { url: string; rows: Promise<string[][]> }>> = {}
 function viewRows(key: LayerKey, urls: string[], cancel: AbortSignal) {
   const url = urls[0]
@@ -233,9 +309,11 @@ async function loadSources(
   cancel: AbortSignal,
 ): Promise<unknown[] | 'none'> {
   const urls = attempts(key, view, mjd)
-  if (key === 'gaia' || key === 'simbad') {
+  if (key === 'gaia' || key === 'simbad' || key === 'wise') {
     const rows = await viewRows(key, urls, cancel)
-    const sources = key === 'gaia' ? gaiaSources(rows, mjd) : simbadSources(rows, mjd)
+    const sources = key === 'gaia' ? gaiaSources(rows, mjd)
+      : key === 'simbad' ? simbadSources(rows, mjd)
+      : wiseSources(rows, await viewMotions(view), mjd)
     if (sources.length === 0) return 'none'
     const A = (await import('aladin-lite')).default
     return sources.map((s) => A.source(s.ra, s.dec, s.data))
@@ -325,8 +403,8 @@ function useLayer(
       loadSources(key, v, epoch, cancel).catch(() => null),
     ),
   )
-  // SIMBAD without frames stays at J2000.
-  const epoch = key === 'wise' ? 0 : key === 'simbad' ? (mjd ?? MJD_J2000) : mjd
+  // SIMBAD without frames stays at J2000, AllWISE at its 2010.5 positions.
+  const epoch = key === 'wise' ? (mjd ?? ALLWISE_MJD) : key === 'simbad' ? (mjd ?? MJD_J2000) : mjd
   useEffect(() => {
     if (!aladin) return
     const show = (sources: unknown[] | null) => {
@@ -451,6 +529,19 @@ export function useCatalogLayers(
   useLayer('simbad', aladin, enabled.simbad, view, epoch, report, reportMarks)
   useLayer('skybot', aladin, enabled.skybot, view, epoch, report, reportMarks)
 
+  // Whether AllWISE moved with CatWISE2020 motions in this view; null until its layer loaded.
+  const [wiseMotion, setWiseMotion] = useState<{ view: View; moved: boolean } | null>(null)
+  useEffect(() => {
+    if (!enabled.wise || !view || status.wise !== 'ready') return
+    let alive = true
+    void viewMotions(view).then((motions) => {
+      if (alive) setWiseMotion({ view, moved: motions != null })
+    })
+    return () => {
+      alive = false
+    }
+  }, [enabled.wise, view, status.wise])
+
   const shownStatus = (key: LayerKey): LayerStatus => (enabled[key] ? status[key] : 'off')
   return {
     status: {
@@ -459,7 +550,9 @@ export function useCatalogLayers(
       simbad: shownStatus('simbad'),
       skybot: shownStatus('skybot'),
     },
-    skybotDate: epoch == null ? null : isoDate(epoch),
+    // The shown frame's date: the time the markers of Gaia, SIMBAD, SkyBoT and moving AllWISE sources apply to.
+    layerDate: epoch == null ? null : isoDate(epoch),
+    wiseMotion: wiseMotion?.view === view ? wiseMotion.moved : null,
     marks,
   }
 }

@@ -45,6 +45,8 @@ export function useMeasuredWidth(initial: number) {
 interface FrameProps {
   className?: string
   title: ReactNode
+  // The measured result in one line, under the title (results first), in the chart and in the table view.
+  result?: ReactNode
   // <LegendItem>s; leave out for a single series, the title names it.
   legend?: ReactNode
   // The chart's data as a <table>: visible behind the Table toggle, otherwise for screen readers only.
@@ -54,7 +56,7 @@ interface FrameProps {
   children: (width: number, tip: TipControl) => ReactNode
 }
 
-export function ChartFrame({ className = '', title, legend, table, note, initialWidth = 320, children }: FrameProps) {
+export function ChartFrame({ className = '', title, result, legend, table, note, initialWidth = 320, children }: FrameProps) {
   const [ref, width] = useMeasuredWidth(initialWidth)
   const [tip, setTip] = useState<Tip | null>(null)
   const [showTable, setShowTable] = useState(false)
@@ -73,6 +75,7 @@ export function ChartFrame({ className = '', title, legend, table, note, initial
           </button>
         )}
       </div>
+      {result && <p className="viz-result">{result}</p>}
       {legend && !showTable && <ul className="viz-legend">{legend}</ul>}
       {!showTable && (
         <div ref={ref} className="viz-body" onPointerLeave={control.hide}>

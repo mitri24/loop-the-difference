@@ -127,7 +127,8 @@ def unreachable_text(exc: httpx.HTTPError) -> str:
 def spherex_collections(settings: Settings) -> list[str]:
     """Every SPHEREx Level-2 image collection IRSA lists, kept on disk for a day.
 
-    IRSA silent: the last known list, else the configured collection alone.
+    IRSA silent: the last known list, else the collections with stored answers (warmed targets keep
+    working in every release they were found in), else the configured collection alone.
     """
     cached = collections_cache_path(settings.cache_dir)
     if cached.is_file() and time.time() - cached.stat().st_mtime < COLLECTIONS_MAX_AGE_S:
@@ -139,9 +140,15 @@ def spherex_collections(settings: Settings) -> list[str]:
     if found:
         _write_cached(cached, json.dumps(found).encode())
         return found
-    if not cached.is_file():
-        return [settings.spherex_collection]
     retry_at = time.time() - COLLECTIONS_MAX_AGE_S + COLLECTIONS_RETRY_S
+    if not cached.is_file():
+        stored = cached_collections(settings.cache_dir)
+        if not stored:
+            return [settings.spherex_collection]
+        # Kept like an old list: IRSA is asked again in an hour, not on every request.
+        _write_cached(cached, json.dumps(stored).encode())
+        os.utime(cached, (retry_at, retry_at))
+        return stored
     os.utime(cached, (retry_at, retry_at))  # IRSA is silent: keep the old list for an hour
     return json.loads(cached.read_text())
 
@@ -164,6 +171,12 @@ def parse_collections(content: bytes) -> list[str]:
         if option.tag.endswith("OPTION")
     )
     return sorted({value for value in options if _SPHEREX_COLLECTION.match(value)})
+
+
+def cached_collections(cache_dir: Path) -> list[str]:
+    """The SPHEREx collections with stored SIA answers ({collection}_{ra}_{dec}.xml), sorted."""
+    names = {path.stem.rsplit("_", 2)[0] for path in (cache_dir / "sia").glob("spherex_*.xml")}
+    return sorted(name for name in names if _SPHEREX_COLLECTION.match(name))
 
 
 def collections_cache_path(cache_dir: Path) -> Path:

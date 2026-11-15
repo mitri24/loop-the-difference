@@ -74,6 +74,8 @@ export function useAnalysisWorkbench({ target, detector, fovDegrees, active, onP
       ra: target.ra, dec: target.dec, name: target.name,
       pm_ra_mas_yr: target.pm_ra_mas_yr, pm_dec_mas_yr: target.pm_dec_mas_yr,
       target_epoch_jyear: target.epoch_jyear, band, fov_arcmin: fov, mode,
+      // One brightness scale for every frame, as in the main blink: a per-frame stretch would hide a variable star.
+      stretch: 'shared',
     }))
   }
   const result = sequence.result

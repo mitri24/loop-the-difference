@@ -28,6 +28,19 @@ def spectra(monkeypatch):
     return calls
 
 
+@pytest.fixture(autouse=True)
+def surprise_stars(monkeypatch):
+    """Every run also fills the Surprise-me star list: answer it without Gaia."""
+    calls = []
+
+    def candidates(settings, force=False):
+        calls.append(force)
+        return ["a star"]
+
+    monkeypatch.setattr(warm.surprise, "candidates", candidates)
+    return calls
+
+
 def _fail_resolver(name):
     raise AssertionError(f"network use: resolve {name}")
 
@@ -73,8 +86,9 @@ def test_dry_run_lists_every_target_and_detector_without_network(settings, capsy
 
     lines = capsys.readouterr().out.splitlines()
     assert code == 0
-    assert len(lines) == 7 * 5
-    assert lines[:3] == [
+    assert lines[0] == "surprise · Gaia DR3 fast-moving star list"
+    assert len(lines) == 1 + 7 * 5
+    assert lines[1:4] == [
         f"{POLARIS_D6} · Polaris · D6",
         "spectrum · Polaris",
         f"{POLARIS_D6_STACKS} · Polaris · D6 stacks",
@@ -296,3 +310,20 @@ def test_no_spectrum_warms_the_frames_only(settings, spectra):
     args = ["--targets", "polaris", "--no-spectrum"]
     assert warm.run(args, settings, resolver=_fail_resolver, build=build) == 0
     assert spectra == []
+
+
+def test_the_surprise_star_list_is_filled_and_force_refreshes_it(settings, surprise_stars, capsys):
+    build = lambda **_: {"frames": [], "warnings": [], "complete": True}  # noqa: E731
+
+    assert warm.run(["--targets", "polaris", "--force"], settings, _fail_resolver, build) == 0
+
+    assert surprise_stars == [True]
+    assert "surprise · 1 fast-moving Gaia stars" in capsys.readouterr().out
+
+
+def test_an_empty_surprise_star_list_fails_the_run(settings, monkeypatch, capsys):
+    monkeypatch.setattr(warm.surprise, "candidates", lambda settings, force: [])
+    build = lambda **_: {"frames": [], "warnings": [], "complete": True}  # noqa: E731
+
+    assert warm.run(["--targets", "polaris"], settings, _fail_resolver, build) == 1
+    assert "surprise · 0 fast-moving Gaia stars · FAILED" in capsys.readouterr().out

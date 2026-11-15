@@ -99,7 +99,7 @@ test('additional algorithms use the current target, share their sequence and sit
   await expect(build).toBeEnabled()
   const request=page.waitForRequest(r=>r.url().endsWith('/analysis/api/jobs/sequence'))
   await build.click()
-  expect((await request).postDataJSON()).toMatchObject({ra,dec,band:'D6',fov_arcmin:12,mode:'matched'})
+  expect((await request).postDataJSON()).toMatchObject({ra,dec,band:'D6',fov_arcmin:12,mode:'matched',stretch:'shared'})
   await expect(aligned.locator('.reference-analysis .blink')).toBeVisible()
   await expect(aligned.locator('.reference-analysis .blink')).toContainText('4.7000')
   // Blink and difference share the sequence, in the same section.
