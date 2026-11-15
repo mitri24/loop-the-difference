@@ -123,8 +123,9 @@ export function SkyView({ ra, dec, fov, detector, revision, onReady, onLayerChan
           const [currentRa, currentDec] = aladin.getRaDec()
           url.searchParams.set('ra', currentRa.toFixed(6))
           url.searchParams.set('dec', currentDec.toFixed(6))
-          // The view centre is a position now, not the named target any more.
+          // The view centre is a position now, not the named target (or its candidate marks) any more.
           url.searchParams.delete('name')
+          url.searchParams.delete('mark')
           return url.href
         })
         const color = getComputedStyle(document.documentElement).getPropertyValue('--overlay-footprint').trim()

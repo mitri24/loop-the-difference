@@ -11,7 +11,7 @@ import type { ImageMark } from './components/ImageMarks'
 import { BlinkPlayer } from './components/BlinkPlayer'
 import { CandidatePanel } from './components/CandidatePanel'
 import { TrackCheck } from './components/TrackCheck'
-import { useCandidate, useMarkLayer } from './candidate'
+import { MARK_LETTERS, useCandidate, useMarkLayer } from './candidate'
 import { DataLinks } from './components/DataLinks'
 import { EvidencePanel, manifestChecks } from './components/EvidencePanel'
 import { DataPanel } from './components/DataPanel'
@@ -44,11 +44,14 @@ import { epochFor, smallBodyMarkers, useSmallBodyLayer } from './smallBodyLayer'
 import { countSources, useSourceLayer } from './sourceLayer'
 import { targetText } from './targets'
 import type { FrameJob, ObservationSummary, ProperMotion } from './types'
-import { POLARIS, readEmbed, readQuery, toSearch, type TargetQuery, type ViewMode } from './url'
+import { POLARIS, readEmbed, readMarks, readQuery, toSearch, type TargetQuery, type ViewMode } from './url'
+import { downloadMarks } from './markExport'
 import { PHONE, useMedia } from './useMedia'
 
 const INITIAL = readQuery(window.location.search)
 const EMBED = readEmbed(window.location.search)
+// Candidate marks in a shared link belong to its comparison: they are placed once its frames are there (not embedded).
+const LINKED_MARKS = INITIAL && !EMBED ? readMarks(window.location.search) : []
 const POLARIS_CENTER = { ra: 37.954542, dec: 89.264111 }
 const MAX_FRAMES = 12
 const usesStacks = (mode: ViewMode) => mode !== 'exposures'
@@ -322,15 +325,6 @@ export default function App() {
     if (position) show({ ...draft, ra: position[0].toFixed(6), dec: position[1].toFixed(6) })
   }
 
-  const share = async () => {
-    try {
-      await navigator.clipboard.writeText(new URL(toSearch(query, EMBED), window.location.href).href)
-      setShareStatus('Comparison link copied')
-    } catch {
-      setShareStatus('Copy unavailable. Copy the address from your browser.')
-    }
-  }
-
   // SkyView jumps to the new detector's slice on a band change; the slider follows it.
   if (sliceBand !== query.band) {
     setSliceBand(query.band)
@@ -364,8 +358,27 @@ export default function App() {
   // Marking by clicking works on the image, and on the sky wherever the SPHEREx frame is on it: the overview map
   // and, larger, the full sky (Explore).
   const skyMarking = !markBlocked && !!frameOnSky
-  const candidate = useCandidate(job?.job_id ?? null, !markBlocked)
+  // A link's marks are placed only in the link's own comparison (stacks and difference share one).
+  const linkComparison = !!INITIAL && query.ra === INITIAL.ra && query.dec === INITIAL.dec && query.fov === INITIAL.fov
+    && query.band === INITIAL.band && usesStacks(query.mode) === usesStacks(INITIAL.mode)
+  const candidate = useCandidate(job?.job_id ?? null, !markBlocked, manifest && !manifest.preview && linkComparison ? manifest : null, LINKED_MARKS)
+  // The address bar carries the marks (the link's, until they are placed): a reload or a copied address keeps them.
+  const urlMarks = candidate.marks.length > 0 ? candidate.marks : candidate.linked
+  useEffect(() => {
+    if (!EMBED) window.history.replaceState(null, '', toSearch(query, EMBED, urlMarks))
+  }, [query, urlMarks])
   useMarkLayer(sky, candidate.marks)
+  // The link opens this comparison with the marks set in it.
+  const link = () => new URL(toSearch(query, EMBED, candidate.marks), window.location.href).href
+  const share = async () => {
+    try {
+      await navigator.clipboard.writeText(link())
+      const letters = candidate.marks.map((_, i) => MARK_LETTERS[i]).join(' and ')
+      setShareStatus(letters ? `Comparison link copied with marks ${letters}` : 'Comparison link copied')
+    } catch {
+      setShareStatus('Copy unavailable. Copy the address from your browser.')
+    }
+  }
   const possible = useMemo(() => manifest ? possibleTrack(candidate.marks, manifest, manifest.frames.map((f) => f.mjd)) : null, [candidate.marks, manifest])
   const predictions = useMemo(() => (showDifference ? [] : possible?.predictions ?? []), [possible, showDifference])
   useTrackLayer(sky, predictions)
@@ -464,6 +477,8 @@ export default function App() {
   // marks in the image and reads the check next to it.
   const candidateSide = manifest && hasFrames && <div className="candidate-side">
     <CandidatePanel candidate={candidate} blocked={markBlocked} track={possible && { ...possible, predictions }} distant={distant} sources={!skyUnavailable}
+      onDownload={() => downloadMarks({ link: link(), target: targetText(query), manifest, marks: candidate.marks, track: possible,
+        verdict: candidate.verdict, verdictChosen: candidate.verdictChosen, exported: new Date(), base: window.location.href })}
       known={{ epochs: smallBodies.epochs, motion, detector: manifest.detector, target: targetText(query) }}
       visits={summary && { observations: summary.observations, inBlink: [...manifest.frames.map((f) => f.obs_id),
         ...manifest.differences.flatMap((d) => [...d.obs_ids_a, ...d.obs_ids_b])] }}>

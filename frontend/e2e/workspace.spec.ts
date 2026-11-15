@@ -1,3 +1,4 @@
+import { readFile } from 'node:fs/promises'
 import { test, expect, type Page, type Locator } from '@playwright/test'
 import type { FrameJob, FrameManifest, ObservationSummary } from '../src/types'
 
@@ -530,6 +531,41 @@ test('fixture: Mark detected sources in two frames lists candidate marks A and B
   await page.getByRole('button', { name: /^Back to images/ }).click()
   await expect(panel.locator('.candidate-marks li')).toHaveText([/^◎ A · 2026-09-10 12:00 UTC/])
   await expect(panel.getByRole('button', { name: 'Mark in this frame' })).toHaveAttribute('aria-pressed', 'false')
+})
+
+test('fixture: the marks file keeps marks, frames and verdict; its link opens the same marks again', async ({ page }) => {
+  const detected = (index: number) => ({ ...frame(index), sources: [{ ra: manifest.ra + 0.05 * (index + 1), dec: manifest.dec - 0.02,
+    x: 40, y: 50, peak_mjy_sr: 2, snr: 122, match: 'none' as const, catalog_id: null, separation_arcsec: null,
+    catalog_mag: null, catalog_band: null }] })
+  await fixtures(page, { ...manifest, frames: [detected(0), detected(1)] })
+  await page.setViewportSize({ width: 1440, height: 900 })
+  await page.goto('/?ra=37.954542&dec=89.264111&fov=0.2&band=6')
+  const panel = page.locator('.candidate-check')
+  // A on the detection in frame 1, B clicked in the image of frame 2.
+  await page.locator('summary', { hasText: 'Detected sources' }).click()
+  await page.getByRole('button', { name: /^Mark source at RA .* in frame 1$/ }).click()
+  await page.getByRole('button', { name: 'Next frame', exact: true }).click()
+  await panel.getByRole('button', { name: 'Mark in this frame' }).click()
+  const image = (await page.locator('.viewer .viewport').boundingBox())!
+  await page.mouse.click(image.x + image.width * 0.3, image.y + image.height * 0.4)
+  const marks = [/^◎ A · 2026-03-10 12:00 UTC .*\(S\/N 122\)$/, /^◎ B · 2026-09-10 12:00 UTC · .* · position as clicked$/]
+  await expect(panel.locator('.candidate-marks li')).toHaveText(marks)
+  await panel.getByRole('radio', { name: 'possible artifact' }).check()
+  const [download] = await Promise.all([page.waitForEvent('download'), panel.getByRole('button', { name: 'Download marks' }).click()])
+  expect(download.suggestedFilename()).toMatch(/^candidate-marks-.+-\d{4}-\d{2}-\d{2}\.json$/)
+  const file = JSON.parse(await readFile(await download.path(), 'utf8'))
+  // The address bar carries the marks too: a reload or a copied address keeps them.
+  expect(new URL(page.url()).searchParams.getAll('mark')).toHaveLength(2)
+  expect(file).toMatchObject({ format: 'loop-the-difference/candidate-marks@1', verdict: 'possible artifact', verdict_chosen: true,
+    marks: [{ letter: 'A', position: 'detection', detection: { snr: 122 }, frame: { obs_id: 'fixture-0', detector: 6, source_url: 'https://example.test/fixture-0' } },
+      { letter: 'B', position: 'as clicked', detection: null, frame: { obs_id: 'fixture-1' } }] })
+  expect(file.link).toContain('mark=fixture-0')
+  // A colleague opens the link from the file: the same comparison, the same marks, on this site.
+  await page.goto(file.link)
+  await expect(panel.locator('.candidate-marks li')).toHaveText(marks)
+  await page.reload()
+  await expect(panel.locator('.candidate-marks li')).toHaveText(marks)
+  await expect(page.locator('.viewer .viewport .candidate-mark')).toHaveCount(2)
 })
 
 test('fixture: Explore picks a region on the sky, Investigate shows its images, Full map and back keep everything', async ({ page }) => {
