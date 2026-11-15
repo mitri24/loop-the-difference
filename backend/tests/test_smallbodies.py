@@ -1,5 +1,7 @@
+import ast
 import json
 import math
+import os
 from pathlib import Path
 
 import httpx
@@ -303,3 +305,23 @@ def _epoch_job():
             pass
 
     return _Job()
+
+
+ANALYSIS_CATALOGS = Path(__file__).resolve().parents[2] / "analysis-service" / "app" / "catalogs.py"
+
+
+def test_the_analysis_service_asks_horizons_for_spherex_with_the_same_code():
+    # The api image holds the backend only; the CI checkout (CI=true) must hold both.
+    if not ANALYSIS_CATALOGS.exists() and not os.environ.get("CI"):
+        pytest.skip("analysis-service is not in this checkout")
+
+    def definitions(path: Path) -> dict[str, str]:
+        tree = ast.parse(path.read_text())
+        return {
+            node.name: ast.dump(node) for node in tree.body if isinstance(node, ast.FunctionDef)
+        }
+
+    ours, theirs = definitions(Path(smallbodies.__file__)), definitions(ANALYSIS_CATALOGS)
+    assert [
+        name for name in ("horizons_params", "parse_horizons") if ours[name] != theirs[name]
+    ] == []

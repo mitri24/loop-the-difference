@@ -813,9 +813,10 @@ def _vet_residuals(
             vm = f"V={sso.vmag:.1f}, " if sso.vmag is not None else ""
             speed = math.hypot(sso.ra_rate_arcsec_h, sso.dec_rate_arcsec_h)
             kind, known = "solar_system", sso.name
+            seen = "seen from SPHEREx" if sso.observer == "SPHEREx" else "geocentric"
             expl = (
                 f'Known solar-system object {sso.name} ({vm}{speed:.0f}"/h) predicted '
-                f'{sso_sep:.0f}" away at this epoch (JPL SBIdent, geocentric). '
+                f'{sso_sep:.0f}" away at this epoch (JPL SBIdent, {seen}). '
                 "Residual explained by a known asteroid/comet."
             )
         elif bright is not None and (best is None or (best.mag or 99) > (bright.mag or 99)):
@@ -957,8 +958,9 @@ async def run_solar_system_check(diff_id: str, progress: Progress) -> Difference
         severity="ok" if n_sso == 0 else "info",
         title=f"Known asteroids/comets: {len(sso_a)} at A, {len(sso_b)} at B; "
         f"{n_sso} residual(s) explained",
-        detail="JPL Small-Body Identification API, geocentric positions (SPHEREx is in "
-        'low-Earth orbit: up to ~10" parallax for main-belt objects).',
+        detail="JPL Small-Body Identification API, positions seen from SPHEREx at each epoch "
+        "(JPL Horizons), from the geocentre where Horizons gave none (SPHEREx is in low-Earth "
+        'orbit: up to ~10" parallax for main-belt objects).',
     )
     checks = [c for c in ctx.result.checks if c.code != "solar_system"] + [check]
     n_unknown = sum(1 for r in residuals if r.known_source is None)
