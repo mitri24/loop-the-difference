@@ -12,7 +12,7 @@ export const DAYS_PER_YEAR = 365.25
 export const FASTEST_STAR_ARCSEC_YR = 10.4
 // Validity window of a straight line for a possible Solar System body (ticket choice: ±1 d).
 export const FAST_WINDOW_DAYS = 1
-export const SEARCH_AREA_LABEL = '2σ, from mark precision only'
+export const SEARCH_AREA_LABEL = '2σ from mark precision only, at least 1.5 pixels'
 
 export interface TrackFit {
   centre: { ra: number; dec: number }
@@ -64,7 +64,7 @@ export interface Prediction {
   mjd: number
   ra: number
   dec: number
-  // Drawn search radius: 2σ of the prediction.
+  // 2σ of the prediction; searchCircles widens it to the search radius the map, the blink and the check use.
   radius_arcsec: number
 }
 
@@ -127,6 +127,9 @@ export const SEARCH_PIXELS = 1.5
 /** The search radius around a prediction: its 2σ, at least SEARCH_PIXELS. */
 export const searchRadius = (radiusArcsec: number, pixelScaleArcsec: number) =>
   Math.max(radiusArcsec, SEARCH_PIXELS * pixelScaleArcsec)
+/** The predictions as the map and the blink draw them: each circle as wide as the search radius the check counts with. */
+export const searchCircles = (predictions: Prediction[], pixelScaleArcsec: number): Prediction[] =>
+  predictions.map((p) => ({ ...p, radius_arcsec: searchRadius(p.radius_arcsec, pixelScaleArcsec) }))
 // Mirrors MAX_SOURCES in backend/app/sources.py: a full list holds only the brightest detections.
 export const SPHEREX_SOURCE_CAP = 300
 

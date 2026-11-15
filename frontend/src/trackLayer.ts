@@ -6,7 +6,7 @@ import { isoDate } from './catalogLayers'
 import { SEARCH_AREA_LABEL, num, searchRadius, type Prediction } from './track'
 import type { DistanceHypothesis, DistantTrack } from './types'
 
-export const POSSIBLE_TRACK_LABEL = 'possible track – straight-line prediction (2σ)'
+export const POSSIBLE_TRACK_LABEL = 'possible track – straight-line prediction (2σ, at least 1.5 pixels)'
 
 export function useTrackLayer(aladin: AladinInstance | null, predictions: Prediction[]) {
   useEffect(() => {

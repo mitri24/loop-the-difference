@@ -38,7 +38,7 @@ import { usePickLayer } from './pickLayer'
 import { usePlateLayer } from './historicalPlate'
 import { useMotionTrack } from './motionTrack'
 import { useDistantTrack } from './distantTrack'
-import { checkFrames, possibleTrack } from './track'
+import { checkFrames, possibleTrack, searchCircles } from './track'
 import { useTrackLayer } from './trackLayer'
 import { sliceForDetector } from './sky'
 import { sliceText, useCubeWavelengths, useSkySlice } from './skyCube'
@@ -429,7 +429,9 @@ export default function App() {
     }
   }
   const possible = useMemo(() => manifest ? possibleTrack(candidate.marks, manifest, manifest.frames.map((f) => f.mjd)) : null, [candidate.marks, manifest])
-  const predictions = useMemo(() => (showDifference ? [] : possible?.predictions ?? []), [possible, showDifference])
+  // Drawn and checked with the same search radius: 2σ, at least 1.5 pixels.
+  const predictions = useMemo(() => (showDifference || !manifest ? [] : searchCircles(possible?.predictions ?? [], manifest.pixel_scale_arcsec)),
+    [possible, showDifference, manifest])
   useTrackLayer(sky, predictions)
   const distant = useDistantTrack(showDifference ? null : sky, possible, candidate.marks, manifest)
   usePickLayer(sky, stage === 'explore' ? pick : null, draft.fov)
