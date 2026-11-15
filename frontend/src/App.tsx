@@ -29,6 +29,8 @@ import { SkyFrame } from './components/SkyFrame'
 import { SkyView } from './components/SkyView'
 import { SmallBodies, useSmallBodies } from './components/SmallBodies'
 import { SourceList } from './components/SourceList'
+import { PositionChart } from './components/PositionChart'
+import { followPosition } from './positionTrack'
 import { SpectrumChart, useQuickSpectrum } from './components/SpectrumChart'
 import { TargetForm } from './components/TargetForm'
 import { useFrameLayers } from './frameLayers'
@@ -131,6 +133,8 @@ export default function App() {
   const [coverageSlot, setCoverageSlot] = useState<HTMLDivElement | null>(null)
   const [alignedSlot, setAlignedSlot] = useState<HTMLDivElement | null>(null)
   const [spectrumSlot, setSpectrumSlot] = useState<HTMLDivElement | null>(null)
+  // A source picked in the list: the Measure tab follows it instead of the target, in this comparison only.
+  const [followed, setFollowed] = useState<{ ra: number; dec: number; job: string } | null>(null)
   const [footprintsSlot, setFootprintsSlot] = useState<HTMLDivElement | null>(null)
   // Tabs opened for this comparison (and the one on screen): slow or external lookups wait for their tab.
   const [opened, setOpened] = useState<ReadonlySet<InspectId>>(() => new Set())
@@ -377,6 +381,13 @@ export default function App() {
   // The plate follows the field only once the map is centred on the current target.
   const plate = usePlateLayer(sky, plateOnSky, centred.ra === query.ra && centred.dec === query.dec ? center : null, motion)
   const frame = (hasFrames && manifest?.frames[frameIndex]) || null
+  const followedHere = followed && followed.job === job?.job_id ? followed : null
+  // Position over time from the detections of every frame: the target (along its Gaia motion when known) or the
+  // source picked in the list.
+  const positionTrack = useMemo(() => manifest && hasFrames
+    ? followPosition(manifest.frames, followedHere ?? { ra: manifest.ra, dec: manifest.dec }, manifest.pixel_scale_arcsec,
+      followedHere ? null : motion)
+    : null, [manifest, hasFrames, followedHere, motion])
   const counts = frame?.sources ? countSources(frame.sources) : null
   const sourceSummary = counts ? ` · ${counts.detected} in this frame · ${counts.none} ${counts.none === 1 ? 'needs' : 'need'} verification${counts.unknown ? ` · ${counts.unknown} unknown` : ''}` : ''
   const frameOnSky = frame && sky && framesOnSky && !showDifference && !analysisSkyCaption ? frame : null
@@ -525,7 +536,7 @@ export default function App() {
     </CandidatePanel>
     {!skyUnavailable && frame && !showDifference && <details className="disclosure">
       <summary>Detected sources{sourceSummary}</summary>
-      <SourceList frame={frame} onSelect={(ra, dec) => sky?.gotoRaDec(ra, dec)} onMark={(source) => candidate.markSource(frame, source)} />
+      <SourceList frame={frame} onSelect={(ra, dec) => { sky?.gotoRaDec(ra, dec); if (job) setFollowed({ ra, dec, job: job.job_id }) }} onMark={(source) => candidate.markSource(frame, source)} />
     </details>}
     {manifest.stacked
       ? <p className="muted">Known asteroids and comets (JPL SBIdent) are looked up for single exposures: switch the view to Exposures.</p>
@@ -574,6 +585,8 @@ export default function App() {
   const tabs: InspectorTab<InspectId>[] = [
     { id: 'quality', label: 'Quality', count: checks.length, alert: blocking, content: evidence || pending('lines', 'Loading the checks…') },
     { id: 'measure', label: 'Measure', content: <>
+      {manifest && positionTrack && <PositionChart track={positionTrack} subject={followedHere ? 'the selected source' : 'the target'}
+        detector={manifest.detector} onFollowTarget={followedHere ? () => setFollowed(null) : undefined} />}
       {manifest ? <SpectrumChart quick={quick} centerUm={(frame ?? manifest.frames[0])?.wavelength_um} detector={manifest.detector} />
         : pending('chart', 'Loading the comparison…')}
       {analysisTarget && <details className="disclosure" onToggle={(event) => { if (event.currentTarget.open) setAnalysisWanted(true) }}>

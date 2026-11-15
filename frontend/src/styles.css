@@ -291,6 +291,11 @@ summary { cursor:pointer; min-height:32px; padding:5px 0; font-size:13px; }
 .viz .viz-baseline { stroke:var(--axis-line); stroke-width:1; }
 .viz .viz-zero { stroke:var(--axis-line); }
 .viz-errorbar { stroke-width:1.5; opacity:.75; }
+/* Result first: one line with the measured number, above the legend and the plot (also in the table view). */
+.viz-result { margin:0; font-size:var(--text-sm); color:var(--text-primary); font-variant-numeric:tabular-nums; }
+/* Position over time: the Gaia prediction dashed, a frame without a detection as a tick on the date axis. */
+.viz .viz-predicted { fill:none; stroke:var(--text-secondary); stroke-width:1.5; stroke-dasharray:4 3; }
+.viz .viz-gap { stroke:var(--text-muted); stroke-width:2; }
 .viz-hit,.viz-hit-area { fill:transparent; stroke:none; }
 .viz a:focus-visible { outline:none; }
 .viz a:focus-visible .viz-mark { stroke:var(--focus-ring); stroke-width:2.5; }
